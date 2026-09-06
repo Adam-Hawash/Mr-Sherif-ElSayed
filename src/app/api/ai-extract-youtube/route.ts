@@ -4,6 +4,7 @@
 // PURPOSE: Extract questions from YouTube video safely with Gemini models
 
 import { NextResponse } from 'next/server'
+import { repairModelJson, repairCorruptMath } from '@/lib/math-text'
 import { callGemini as callGeminiCentral, hasGeminiKey } from '@/lib/gemini'
 
 export const runtime = 'nodejs'
@@ -93,7 +94,7 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Could not parse AI response' }, { status: 500 })
     }
 
-    var parsed = JSON.parse(jsonMatch[0])
+    var parsed = JSON.parse(repairModelJson(jsonMatch[0]))
     var extracted = {
       title: parsed.title || 'YouTube Lesson - ' + grade,
       content: parsed.content || 'Extracted from YouTube video (' + (parsed.questions || []).length + ' questions)',

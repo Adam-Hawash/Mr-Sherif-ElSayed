@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { repairCorruptMath } from '@/lib/math-text'
 
 /*
  * FractionText — FINAL math renderer for the whole platform.
@@ -34,8 +35,6 @@ type Node =
 /* ---------- legacy patterns ---------- */
 /* old stacked-text format: "3 \n ─── \n 4" */
 var OLD_STACKED_RE = /(\d+(?:\.\d+)?)\s*\n\s*─+\s*\n\s*(\d+(?:\.\d+)?)/g
-/* image attachment markers inserted by MathKeyboard */
-var IMG_RE = /\[📷[^\]]*\]/g
 
 /* ---------- LaTeX command → Unicode symbol map ---------- */
 var SYMBOL_MAP: Record<string, string> = {
@@ -57,28 +56,59 @@ var SYMBOL_MAP: Record<string, string> = {
 }
 
 /* ---------- protected image markers ---------- */
-function protectImages(src: string): { text: string; imgs: string[] } {
-  var imgs: string[] = []
-  var text = src.replace(IMG_RE, function (m) {
-    imgs.push(m)
-    return '@IMG' + (imgs.length - 1) + '@'
-  })
-  return { text: text, imgs: imgs }
+/*
+ * Image markers like [📷 صورة مرفقة: /api/files/<id>] are pulled OUT before
+ * parsing and rendered as REAL inline images (with a robust URL extractor
+ * that survives mangled markers — e.g. corrupted ids with junk after the cuid).
+ */
+function extractMarkerUrl(marker: string): string {
+  var m = marker.match(/\/api\/files\/[a-z0-9]+/i)
+  if (m) return m[0]
+  var m2 = marker.match(/(https?:\/\/[^\s\]]+)/i)
+  if (m2) return m2[1]
+  var m3 = marker.match(/[\w\-.]+\.(?:png|jpe?g|webp|gif)/i)
+  if (m3) return '/api/uploads/' + m3[0]
+  return ''
 }
 
-function restoreImages(nodes: Node[], imgs: string[]): void {
-  nodes.forEach(function (n) {
-    if (n.t === 'text') {
-      n.v = n.v.replace(/@IMG(\d+)@/g, function (_m, d) { return imgs[+d] || '' })
-    } else if (n.t === 'frac') {
-      restoreImages(n.a, imgs); restoreImages(n.b, imgs)
-    } else if (n.t === 'sqrt') {
-      if (n.deg) restoreImages(n.deg, imgs)
-      restoreImages(n.body, imgs)
-    } else if (n.t === 'sup' || n.t === 'sub') {
-      restoreImages(n.body, imgs)
-    }
-  })
+function splitImageMarkers(src: string): { img?: string; txt?: string }[] {
+  var parts: { img?: string; txt?: string }[] = []
+  var re = /\[📷[^\]]*\]?/g
+  var last = 0
+  var m: RegExpExecArray | null
+  while ((m = re.exec(src)) !== null) {
+    if (m.index > last) parts.push({ txt: src.slice(last, m.index) })
+    var url = extractMarkerUrl(m[0])
+    if (url) parts.push({ img: url })
+    else parts.push({ txt: m[0] })
+    last = m.index + m[0].length
+  }
+  if (last < src.length) parts.push({ txt: src.slice(last) })
+  if (parts.length === 0) parts.push({ txt: src })
+  return parts
+}
+
+function MarkerImage({ url }: { url: string }) {
+  var [failed, setFailed] = React.useState(false)
+  if (failed) {
+    return (
+      <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-primary underline underline-offset-2 align-middle mx-1" dir="ltr">
+        🖼 عرض الصورة
+      </a>
+    )
+  }
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" title="فتح الصورة بحجم كامل" className="inline-block align-middle mx-1">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={url}
+        alt="صورة مرفقة"
+        loading="lazy"
+        className="inline-block max-w-[260px] max-h-[200px] w-auto h-auto rounded-lg border border-border shadow-sm hover:shadow-md transition-shadow"
+        onError={function () { setFailed(true) }}
+      />
+    </a>
+  )
 }
 
 /* ---------- plain digit "a/b" → \frac{a}{b} (guarded like legacy) ---------- */
@@ -336,22 +366,24 @@ export function FractionText({ text, className }: { text: string; className?: st
   if (!text) return null
   var raw = String(text)
 
-  /* protect image markers from the math parser */
-  var prot = protectImages(raw)
-  raw = prot.text
+  /* repair JSON-corrupted math ("rac", stray control chars) BEFORE anything else */
+  raw = repairCorruptMath(raw)
 
-  /* legacy stacked text → \frac marker */
-  raw = raw.replace(OLD_STACKED_RE, '\\frac{$1}{$2}')
-
-  /* legacy plain digit a/b → \frac marker (guarded) */
-  raw = convertSlashFractions(raw)
-
-  var nodes = parse(raw)
-  restoreImages(nodes, prot.imgs)
+  /* split into text segments + real inline images */
+  var segments = splitImageMarkers(raw)
 
   return (
     <span className={'whitespace-pre-wrap ' + (className || '')}>
-      {renderNodes(nodes, 'm')}
+      {segments.map(function (seg, si) {
+        if (seg.img) return <MarkerImage key={'i' + si} url={seg.img} />
+        var segRaw = seg.txt || ''
+        /* legacy stacked text → \frac marker */
+        segRaw = segRaw.replace(OLD_STACKED_RE, '\\frac{$1}{$2}')
+        /* legacy plain digit a/b → \frac marker (guarded) */
+        segRaw = convertSlashFractions(segRaw)
+        var nodes = parse(segRaw)
+        return <React.Fragment key={'t' + si}>{renderNodes(nodes, 'm' + si)}</React.Fragment>
+      })}
     </span>
   )
 }

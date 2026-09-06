@@ -10,6 +10,7 @@
 
 import { NextResponse } from 'next/server'
 import { callGemini as callGeminiCentral, hasGeminiKey } from '@/lib/gemini'
+import { repairModelJson, repairCorruptMath } from '@/lib/math-text'
 
 export const runtime = 'nodejs'
 export const maxDuration = 180
@@ -54,7 +55,8 @@ async function callGemini(apiKey: string, parts: any[]): Promise<any> {
  */
 function normalizeMath(s: string): string {
   if (!s) return s
-  var out = String(s)
+  // first undo any JSON-escape corruption (\f eaten → "rac" …)
+  var out = repairCorruptMath(String(s))
   out = out.replace(/\$\$([\s\S]+?)\$\$/g, '$1').replace(/\$([^$\n]+?)\$/g, '$1')
   out = out.replace(/\\left\s*/g, '').replace(/\\right\s*/g, '')
   out = out.replace(/\\frac\s*\{\s*\(([^{}]*)\)\s*\}\s*\{\s*\(([^{}]*)\)\s*\}/g, '\\frac{$1}{$2}')
@@ -65,7 +67,8 @@ function parseAIJson(text: string): any | null {
   if (!text || !text.trim()) return null
   var jsonMatch = text.match(/\{[\s\S]*\}/)
   if (!jsonMatch) return null
-  var raw = jsonMatch[0]
+  // repair LaTeX-eating JSON escapes BEFORE parsing (\frac → \\frac …)
+  var raw = repairModelJson(jsonMatch[0])
   // 1) direct parse
   try {
     return JSON.parse(raw)
@@ -373,7 +376,7 @@ function buildSingleFilePrompt(grade: string, type: string): string {
   lines.push('- Match each question with its correct answer/solution')
   lines.push('- Grade: ' + grade + ' | Type: ' + type)
   lines.push('')
-  lines.push('Return ONE single valid JSON object — no text before or after, no markdown fences; all fields including answerKey must be INSIDE the same object:')
+  lines.push('Return ONE single valid JSON object — no text before or after, no markdown fences, no fields outside the object:')
   lines.push('{"title":"...","content":"...","questions":[{"type":"mcq","question":"...","options":["A","B","C","D"],"correct":0,"points":1,"modelAnswer":"step by step solution"},{"type":"writing","question":"...","options":[],"correct":-1,"points":5,"modelAnswer":"full step by step solution","acceptedAnswers":["5","x=5"]}],"answerKey":""}')
   return lines.join('\n')
 }

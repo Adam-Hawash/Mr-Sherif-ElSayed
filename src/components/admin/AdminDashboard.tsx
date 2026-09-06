@@ -2,6 +2,7 @@
 
 import { useAppStore, GRADES, type Student, type Video, type Homework, type Exam, type Announcement, type ExamResult, type GalleryImage, type Stats } from '@/stores/app-store'
 import { chunkedUpload } from '@/lib/chunked-upload'
+import { QuestionsEditorDialog, EditQuestionsButton, RegradeButton } from '@/components/admin/QuestionsEditor'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -1023,6 +1024,7 @@ interface MCQQuestion {
 }
 
 function ExamTrackingPanel({ onViewImage }: { onViewImage?: (src: string) => void }) {
+  const [examEditTarget, setExamEditTarget] = useState<any>(null)
   const [exams, setExams] = useState<Exam[]>([])
   const [selectedExam, setSelectedExam] = useState<string>('')
   const [results, setResults] = useState<ExamResult[]>([])
@@ -1312,13 +1314,29 @@ function ExamTrackingPanel({ onViewImage }: { onViewImage?: (src: string) => voi
                         {(exam as any).questions && (exam as any).questions !== '' && <Badge variant="outline" className="text-[9px] border-emerald-500/40 text-emerald-600">MCQ</Badge>}
                       </div>
                     </div>
-                    <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0"
-                      onClick={(e) => { e.stopPropagation(); handleDeleteExam(exam.id) }}><Trash2 className="h-3.5 w-3.5" /></Button>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button size="icon" variant="ghost" className="h-7 w-7 text-primary hover:text-primary hover:bg-primary/10 shrink-0"
+                        title="تعديل أسئلة الامتحان"
+                        onClick={(e) => { e.stopPropagation(); setExamEditTarget(exam as any) }}>
+                        ✏️
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0"
+                        onClick={(e) => { e.stopPropagation(); handleDeleteExam(exam.id) }}><Trash2 className="h-3.5 w-3.5" /></Button>
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
             <div className="lg:col-span-2 space-y-4">
+              <QuestionsEditorDialog
+                open={!!examEditTarget}
+                onOpenChange={function (o) { if (!o) setExamEditTarget(null) }}
+                title={examEditTarget ? (examEditTarget.title || '') : ''}
+                apiPath="/api/exams"
+                itemId={examEditTarget ? examEditTarget.id : ''}
+                initialQuestionsRaw={examEditTarget ? (examEditTarget as any).questions : null}
+                onSaved={function () { if (selectedExam) loadExamResults(selectedExam) }}
+              />
               {!selectedExam ? (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
                   <FileText className="h-10 w-10 text-muted-foreground/30 mb-3" />
@@ -1369,6 +1387,9 @@ function ExamTrackingPanel({ onViewImage }: { onViewImage?: (src: string) => voi
                                       {writingAns.length > 0 && (
                                         <Badge variant="outline" className="text-[9px] border-amber-500/40 text-amber-600">{writingAns.length} مقالي</Badge>
                                       )}
+                                      <span onClick={function (e) { e.stopPropagation() }}>
+                                        <RegradeButton kind="exam" resultId={r.id} onDone={function () { if (selectedExam) loadExamResults(selectedExam) }} />
+                                      </span>
                                     </div>
                                   </div>
                                 </div>
@@ -1987,6 +2008,9 @@ function MyStudentsPanel({ onViewImage }: { onViewImage?: (src: string) => void 
                             <div className="flex items-center gap-2 shrink-0">
                               <span className={`text-xs font-bold ${er.passed ? 'text-emerald-600' : 'text-red-500'}`}>{er.score}/{er.maxScore}</span>
                               <Badge variant={er.passed ? 'default' : 'outline'} className={`text-[9px] h-5 ${er.passed ? '' : 'border-amber-500 text-amber-600'}`}>{er.passed ? 'ناجح' : 'عايز مراجعة'}</Badge>
+                              <span onClick={function (e) { e.stopPropagation() }}>
+                                <RegradeButton kind="exam" resultId={er.id} onDone={function () { if (selectedStudent && selectedStudent.id) loadDetail(selectedStudent.id) }} />
+                              </span>
                             </div>
                           </div>
                           {/* All Questions Review (correct + wrong) */}
@@ -2105,6 +2129,9 @@ function MyStudentsPanel({ onViewImage }: { onViewImage?: (src: string) => void 
                             <div className="flex items-center gap-2 shrink-0">
                               <span className={`text-xs font-bold ${hr.score >= (hr.maxScore / 2) ? 'text-emerald-600' : 'text-red-500'}`}>{hr.score}/{hr.maxScore}</span>
                               <span className="text-[9px] text-muted-foreground">{hr.submittedAt ? new Date(hr.submittedAt).toLocaleDateString('ar-EG') : ''}</span>
+                              <span onClick={function (e) { e.stopPropagation() }}>
+                                <RegradeButton kind="homework" resultId={hr.id} onDone={function () { if (selectedStudent && selectedStudent.id) loadDetail(selectedStudent.id) }} />
+                              </span>
                             </div>
                           </div>
                           {/* All Questions Review (correct + wrong) */}
@@ -2262,6 +2289,7 @@ interface CMProps<T extends { id: string; grade: string; createdAt: string }> {
 function ContentManager<T extends { id: string; grade: string; createdAt: string }>({ title, apiPath, itemName, fields, renderTitle, renderSubtitle, supportFileUpload, fileCategory, acceptedTypes, supportAnswerKey, supportThumbnail, supportMCQ, onRefresh }: CMProps<T>) {
   const [items, setItems] = useState<T[]>([])
   const [loading, setLoading] = useState(true)
+  const [editTarget, setEditTarget] = useState<any>(null)
   const [showForm, setShowForm] = useState(false)
   const [formGrade, setFormGrade] = useState('')
   const [formValues, setFormValues] = useState<Record<string, string>>({})
@@ -2606,10 +2634,26 @@ function ContentManager<T extends { id: string; grade: string; createdAt: string
                     <span className="text-[10px] text-muted-foreground">{new Date(item.createdAt).toLocaleDateString('ar-EG')}</span>
                   </div>
                 </div>
-                <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0" onClick={() => handleDelete(item.id)}><Trash2 className="h-4 w-4" /></Button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {supportMCQ && (
+                    <EditQuestionsButton onClick={function () { setEditTarget(item) }} label="" />
+                  )}
+                  <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0" onClick={() => handleDelete(item.id)}><Trash2 className="h-4 w-4" /></Button>
+                </div>
               </div>
             ))}
           </div>
+        )}
+        {supportMCQ && (
+          <QuestionsEditorDialog
+            open={!!editTarget}
+            onOpenChange={function (o) { if (!o) setEditTarget(null) }}
+            title={editTarget ? (renderTitle(editTarget) || '') : ''}
+            apiPath={apiPath}
+            itemId={editTarget ? editTarget.id : ''}
+            initialQuestionsRaw={editTarget ? (editTarget as any).questions : null}
+            onSaved={function () { loadItems(false); if (onRefresh) onRefresh() }}
+          />
         )}
       </CardContent>
     </Card>
