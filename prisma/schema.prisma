@@ -1,0 +1,211 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Admin {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String   @default("Admin")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Student {
+  id           String            @id @default(cuid())
+  name         String
+  phone        String            @unique
+  password     String            @default("")
+  grade        String
+  status       String            @default("pending")
+  parentName   String            @default("")
+  parentPhone  String            @default("")
+  loginCount   Int               @default(0)
+  lastLogin    DateTime?
+  isPaidAccess Boolean           @default(false)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  examResults  ExamResult[]
+  activities   StudentActivity[]
+  payments     Payment[]
+}
+
+model StudentActivity {
+  id        String   @id @default(cuid())
+  studentId String
+  action    String
+  details   String   @default("")
+  createdAt DateTime @default(now())
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+}
+
+model Video {
+  id        String   @id @default(cuid())
+  title     String
+  url       String   @default("")
+  filePath  String   @default("")
+  fileType  String   @default("")
+  thumbnail String   @default("")
+  grade     String
+  price     Float    @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Homework {
+  id            String   @id @default(cuid())
+  title         String
+  content       String   @default("")
+  filePath      String   @default("")
+  fileType      String   @default("")
+  thumbnail     String   @default("")
+  answerKeyPath String   @default("")
+  answerKeyType String   @default("")
+  grade         String
+  questions     String           @default("")
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  results       HomeworkResult[]
+}
+
+model HomeworkResult {
+  id          String   @id @default(cuid())
+  homeworkId  String
+  studentId   String
+  score       Float    @default(0)
+  maxScore    Float    @default(100)
+  answers     String   @default("")
+  submittedAt DateTime @default(now())
+  homework    Homework @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, homeworkId])
+}
+
+model Exam {
+  id            String       @id @default(cuid())
+  title         String
+  content       String       @default("")
+  filePath      String       @default("")
+  fileType      String       @default("")
+  thumbnail     String       @default("")
+  answerKeyPath String       @default("")
+  answerKeyType String       @default("")
+  grade         String
+  questions     String       @default("")
+  passScore     Float        @default(50)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  results       ExamResult[]
+}
+
+model ExamResult {
+  id          String   @id @default(cuid())
+  examId      String
+  studentId   String
+  score       Float    @default(0)
+  maxScore    Float    @default(100)
+  submittedAt DateTime @default(now())
+  student     Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  exam        Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+}
+
+model Announcement {
+  id        String   @id @default(cuid())
+  title     String
+  content   String   @default("")
+  grade     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Discussion {
+  id           String   @id @default(cuid())
+  studentId    String
+  studentName  String
+  grade        String
+  content      String
+  isAdminReply Boolean  @default(false)
+  likes        Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model SiteConfig {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String   @default("")
+  updatedAt DateTime @updatedAt
+}
+
+model Media {
+  id        String   @id @default(cuid())
+  filename  String
+  filePath  String
+  fileType  String
+  fileSize  String   @default("")
+  data      String   @default("")
+  category  String   @default("general")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model VideoProgress {
+  id             String   @id @default(cuid())
+  studentId      String
+  videoId        String
+  watchedSeconds Float    @default(0)
+  totalSeconds   Float    @default(0)
+  completed      Boolean  @default(false)
+  lastWatchedAt  DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([studentId, videoId])
+}
+
+model GalleryImage {
+  id        String   @id @default(cuid())
+  title     String   @default("")
+  filePath  String   @default("")
+  type      String   @default("image")
+  videoUrl  String   @default("")
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Payment {
+  id           String    @id @default(cuid())
+  studentId    String
+  studentName  String    @default("")
+  studentPhone String    @default("")
+  studentGrade String    @default("")
+  method       String    @default("")
+  amount       Float     @default(0)
+  videoId      String    @default("")
+  videoTitle   String    @default("")
+  receiptPath  String    @default("")
+  receiptType  String    @default("")
+  status       String    @default("pending")
+  note         String    @default("")
+  reviewedAt   DateTime?
+  reviewedBy   String    @default("")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  student      Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+}
+
+model VideoAccess {
+  id        String   @id @default(cuid())
+  videoId   String
+  studentId String
+  grantedBy String   @default("admin")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([videoId, studentId])
+}
