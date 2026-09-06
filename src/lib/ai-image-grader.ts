@@ -18,6 +18,7 @@
 
 import { db } from '@/lib/db'
 import { callGemini as callGeminiCentral, hasGeminiKey } from '@/lib/gemini'
+import { repairModelJson, repairCorruptMath } from '@/lib/math-text'
 
 // Grading calls: low thinking = much faster, output is small structured JSON.
 async function callGrader(parts: any[]): Promise<{ ok: boolean; text?: string; error?: string }> {
@@ -36,7 +37,7 @@ function parseAIJson(text: string): any | null {
   var jsonMatch = text.match(/\{[\s\S]*\}/)
   if (!jsonMatch) return null
   try {
-    return JSON.parse(jsonMatch[0])
+    return JSON.parse(repairModelJson(jsonMatch[0]))
   } catch (e) {
     return null
   }
@@ -49,6 +50,9 @@ function parseAIJson(text: string): any | null {
  * ------------------------------------------------------------------ */
 export function normalizeFinalAnswer(s: string): string {
   var out = String(s || '').toLowerCase()
+  // Arabic-Indic digits → Western (٤٢ = 42)
+  out = out.replace(/[٠-٩]/g, function (d) { return String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)) })
+  out = out.replace(/[۰-۹]/g, function (d) { return String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)) })
   // unicode superscripts → ^digits
   var supMap: Record<string, string> = { '⁰': '0', '¹': '1', '²': '2', '³': '3', '⁴': '4', '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9' }
   out = out.replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]+/g, function (m) {
@@ -66,6 +70,8 @@ export function normalizeFinalAnswer(s: string): string {
   out = out.replace(/[\s{}$]/g, '')
   out = out.replace(/\\left|\\right/g, '')
   out = out.replace(/\\/g, '')
+  // aaaa… (letter run of 3+) → a^n  so "aaaaaaa" === "a^7"
+  out = out.replace(/([a-z])\1{2,}/g, function (m, ch) { return ch + '^' + m.length })
   // strip trailing punctuation
   out = out.replace(/[.,;:]+$/, '')
   return out
@@ -77,6 +83,30 @@ function finalPart(s: string): string {
   return (parts[parts.length - 1] || '').trim()
 }
 
+/* canonicalize a pure monomial so x^6y^4 === y^4*x^6 (order never matters).
+ * Returns '' for anything that is NOT a pure monomial (fractions, sums …). */
+function canonicalMonomial(s: string): string {
+  var t = normalizeFinalAnswer(s)
+  if (!t || !/^[a-z0-9^*]+$/.test(t)) return ''
+  var tokens = t.match(/[a-z](?:\^\d+)?|\d+(?:\^\d+)?/g)
+  if (!tokens || tokens.length === 0) return ''
+  tokens.sort()
+  return tokens.join('*')
+}
+
+/* safe numeric evaluation for pure arithmetic/exponent forms: 2^10 = 1024,
+ * 1/2 = 0.5. Returns null for anything with letters (no eval of words). */
+function tryNumeric(s: string): number | null {
+  var t = normalizeFinalAnswer(s).replace(/\^/g, '**')
+  if (!t || !/\d/.test(t) || !/^[\d+\-*/(). ]+$/.test(t)) return null
+  try {
+    var v = Function('"use strict"; return (' + t + ')')()
+    return typeof v === 'number' && isFinite(v) ? v : null
+  } catch (e) {
+    return null
+  }
+}
+
 /* EXACT normalized equivalence (never substring) — exported for tests */
 export function exactEquivalent(a: string, b: string): boolean {
   var na = normalizeFinalAnswer(a)
@@ -85,7 +115,16 @@ export function exactEquivalent(a: string, b: string): boolean {
   if (na === nb) return true
   // tolerate a leading "x=" / "ans:" label on either side
   var stripLabel = function (t: string) { return t.replace(/^[a-z]{1,4}[:=]/, '') }
-  return stripLabel(na) === stripLabel(nb)
+  if (stripLabel(na) === stripLabel(nb)) return true
+  // multiplication order never matters: x^6y^4 === y^4x^6
+  var ca = canonicalMonomial(a)
+  var cb = canonicalMonomial(b)
+  if (ca !== '' && cb !== '' && ca === cb) return true
+  // pure arithmetic evaluates equal: 2^10 = 1024, 1/2 = 0.5
+  var va = tryNumeric(a)
+  var vb = tryNumeric(b)
+  if (va !== null && vb !== null && Math.abs(va - vb) < 1e-9) return true
+  return false
 }
 
 /* word-overlap similarity (used ONLY to detect "AI read the question text") */
@@ -186,9 +225,9 @@ export async function gradeImageAnswer(params: {
     : ''
 
   var prompt = 'You are an expert, STRICT math teacher grading one student submission.\n\n'
-  prompt += 'THE QUESTION the student answered:\n' + question + '\n\n'
+  prompt += 'THE QUESTION the student answered:\n' + repairCorruptMath(question) + '\n\n'
   if (modelAnswer) {
-    prompt += 'MODEL SOLUTION:\n' + modelAnswer + '\n'
+    prompt += 'MODEL SOLUTION:\n' + repairCorruptMath(modelAnswer) + '\n'
   }
   prompt += acceptedStr + '\n\n'
   prompt += 'The student attached a PHOTO that is supposed to show THEIR OWN handwritten or typed solution to the question above.\n\n'
@@ -312,20 +351,30 @@ export async function gradeImageAnswer(params: {
 //   1. [📷 صورة مرفقة: MEDIA_ID]
 //   2. [📷 صورة مرفقة: /api/files/MEDIA_ID]
 //   3. [📷 صورة مرفقة: /some/path/MEDIA_ID]
+//   4. CORRUPTED markers — junk glued after the id like "…/cmt…4y(85owp8h/"
+//      → the cuid pattern c[a-z0-9]{14,} is extracted and trailing junk dropped.
 export function extractImageMediaIds(answerText: string): string[] {
   if (!answerText || typeof answerText !== 'string') return []
-  var matches = answerText.match(/\[📷\s*صورة\s*مرفقة:\s*([^\]]+?)\]/g) || []
+  var matches = answerText.match(/\[📷[^\]]*\]?/g) || []
   var ids: string[] = []
   matches.forEach(function (m) {
-    var idMatch = m.match(/\[📷\s*صورة\s*مرفقة:\s*([^\]]+?)\]/)
-    if (idMatch && idMatch[1]) {
-      var raw = idMatch[1].trim()
-      raw = raw.replace(/^["']|["']$/g, '')
-      var lastSlash = raw.lastIndexOf('/')
-      var mediaId = lastSlash >= 0 ? raw.substring(lastSlash + 1) : raw
-      mediaId = mediaId.trim()
-      if (mediaId) ids.push(mediaId)
+    // 1st try: a real /api/files/<id> path (also survives junk right after the id)
+    var pathMatch = m.match(/\/api\/files\/(c[a-z0-9]{8,})/i)
+    var mediaId = pathMatch ? pathMatch[1] : ''
+    if (!mediaId) {
+      var idMatch = m.match(/[:\s]\s*([^\]]+)/)
+      var raw = idMatch && idMatch[1] ? idMatch[1].trim().replace(/^["']+|["']+$/g, '') : ''
+      if (raw) {
+        var cuid = raw.match(/c[a-z0-9]{14,}/i)
+        if (cuid) mediaId = cuid[0]
+        else {
+          var lastSlash = raw.lastIndexOf('/')
+          mediaId = (lastSlash >= 0 ? raw.substring(lastSlash + 1) : raw).trim()
+          mediaId = mediaId.replace(/[^\w\-].*$/, '').trim()
+        }
+      }
     }
+    if (mediaId && ids.indexOf(mediaId) === -1) ids.push(mediaId)
   })
   return ids
 }
@@ -362,15 +411,20 @@ export async function gradeTextAnswer(params: {
     ? '\nOther accepted final answers: ' + acceptedAnswers.join(' | ')
     : ''
 
-  var prompt = 'You are an expert, STRICT math teacher. Grade the student\'s typed answer.\n\n'
-  prompt += 'THE QUESTION:\n' + question + '\n\n'
-  prompt += 'STUDENT ANSWER:\n' + studentAnswer + '\n\n'
-  prompt += 'MODEL SOLUTION:\n' + modelAnswer + '\n'
+  var prompt = 'You are an expert, FAIR math teacher who grades by MATHEMATICAL VALUE — never by literal wording. Grade the student\'s typed answer.\n\n'
+  prompt += 'THE QUESTION:\n' + repairCorruptMath(question) + '\n\n'
+  prompt += 'STUDENT ANSWER:\n' + repairCorruptMath(studentAnswer) + '\n\n'
+  prompt += 'MODEL SOLUTION:\n' + repairCorruptMath(modelAnswer) + '\n'
   prompt += acceptedStr + '\n\n'
+  prompt += 'CORE PRINCIPLE — the student answer is CORRECT (full points) whenever its FINAL value is mathematically EQUAL to the model final value, even if written differently:\n'
+  prompt += '- Different order: y^4x^6 = x^6y^4\n'
+  prompt += '- Different notation: a^7 = aaaaaaa (a multiplied 7 times), 2^10 = 1024, 1/2 = 0.5 = ½, x^(1/2) = √x, √50 = 5√2\n'
+  prompt += '- Arabic digits ٤٢ = 42; with or without × * · spaces or steps\n'
+  prompt += '- The final value may be CONTAINED in the model solution (model shows steps, student wrote only the final result) → still CORRECT\n'
   prompt += 'Rules:\n'
   prompt += '1. Extract the student\'s FINAL answer (after the last "=" or the last result written).\n'
-  prompt += '2. Compare with the model final answer / accepted answers. Equivalent forms are CORRECT: 1024 = 2^10, 0.5 = 1/2, n=5 = n = 5.\n'
-  prompt += '3. A correct final answer with wrong/missing steps is CORRECT. A different final answer is WRONG.\n'
+  prompt += '2. Compare ONLY final values with the model final answer / accepted answers — accept all equivalent forms above.\n'
+  prompt += '3. A correct final answer with wrong/missing steps is CORRECT. A genuinely different final value is WRONG.\n'
   prompt += '4. If the student answer does not actually address the question (e.g. it is just the question text, or unrelated) → isCorrect=false and confidence="low".\n'
   prompt += '5. Never guess. If unsure → confidence="low".\n\n'
   prompt += 'awardedPoints: integer 0 to ' + maxPoints + ' (' + maxPoints + ' only when isCorrect=true).\n\n'
