@@ -24,6 +24,13 @@ interface SymbolGroup {
   symbols: SymbolButton[]
 }
 
+// Unicode superscript digits — multi-digit powers like 2^10 → 2¹⁰ (ALL digits small above the number)
+const SUP_MAP: Record<string, string> = {
+  '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
+  '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
+}
+const SUP_CHARS = '⁰¹²³⁴⁵⁶⁷⁸⁹'
+
 const SYMBOL_GROUPS: SymbolGroup[] = [
   {
     title: 'Numbers & Operations',
@@ -188,15 +195,11 @@ export function MathKeyboard({ value, onChange, placeholder = 'Type your answer 
     }
 
     // SMART: powers — ^ then number → superscript
-    // ^2 → ², ^3 → ³, ^4 → ⁴ (and similar for higher powers using Unicode where available)
+    // ^2 → ², ^3 → ³, ^10 → ¹⁰ (multi-digit: EVERY digit stays small above the number)
     if (charBefore === '^') {
-      const superMap: Record<string, string> = {
-        '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
-        '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
-      }
-      if (superMap[symbol]) {
+      if (SUP_MAP[symbol]) {
         // Replace ^ + digit with superscript digit
-        const newValue = value.substring(0, start - 1) + superMap[symbol] + value.substring(end)
+        const newValue = value.substring(0, start - 1) + SUP_MAP[symbol] + value.substring(end)
         onChange(newValue)
         setTimeout(() => {
           if (textareaRef.current) {
@@ -206,25 +209,20 @@ export function MathKeyboard({ value, onChange, placeholder = 'Type your answer 
         }, 0)
         return
       }
-      // x^n where x is letter (like x^2) - convert x^2 → x²
-      if (/[0-9a-z]/i.test(charBefore) === false) {
-        // ^ alone (no preceding letter), insert as superscript directly
-        const superMap2: Record<string, string> = {
-          '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
-          '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
+    }
+
+    // SMART: continue multi-digit powers — typing a digit right after a superscript
+    // keeps it small (¹ then 0 → ¹⁰). This is what makes 2^10, 2^15, 2^100 work.
+    if (SUP_CHARS.indexOf(charBefore) !== -1 && SUP_MAP[symbol]) {
+      const newValue = value.substring(0, start) + SUP_MAP[symbol] + value.substring(end)
+      onChange(newValue)
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus()
+          textareaRef.current.setSelectionRange(start + 1, start + 1)
         }
-        if (superMap2[symbol]) {
-          const newValue = value.substring(0, start - 1) + superMap2[symbol] + value.substring(end)
-          onChange(newValue)
-          setTimeout(() => {
-            if (textareaRef.current) {
-              textareaRef.current.focus()
-              textareaRef.current.setSelectionRange(start, start)
-            }
-          }, 0)
-          return
-        }
-      }
+      }, 0)
+      return
     }
 
     // SMART: × or ÷ between numbers — automatically space them
@@ -398,21 +396,25 @@ export function MathKeyboard({ value, onChange, placeholder = 'Type your answer 
           ref={textareaRef}
           value={value}
           onChange={(e) => {
-            // Auto-convert ^ followed by digit to superscript
+            // Auto-convert ^ followed by digits to superscript — MULTI-DIGIT SAFE:
+            // ^10 → ¹⁰, ^100 → ¹⁰⁰ (the whole power stays small above the number)
             var val = e.target.value
-            var superMap: Record<string, string> = {
-              '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
-              '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
-            }
-            // Replace ^digit patterns with superscript
-            var converted = val.replace(/\^([0-9])/g, function(match, digit) {
-              return superMap[digit] || match
-            })
-            // Also handle multi-digit powers like ^12 → ¹²
-            converted = converted.replace(/\^([0-9]+)/g, function(match, digits) {
+            // IMPORTANT: single multi-digit replace ONLY. Converting ^ + one digit
+            // first (old code) consumed the ^ and left the rest of the power as
+            // normal-size digits (2^10 → 2¹0) — that was the bug.
+            var converted = val.replace(/\^([0-9]+)/g, function(match, digits) {
               var result = ''
               for (var i = 0; i < digits.length; i++) {
-                result += superMap[digits[i]] || digits[i]
+                result += SUP_MAP[digits[i]] || digits[i]
+              }
+              return result
+            })
+            // Heal previously-broken text: a normal digit stuck directly onto a
+            // superscript run joins the power (2¹0 → 2¹⁰, ¹00 → ¹⁰⁰)
+            converted = converted.replace(/([⁰¹²³⁴⁵⁶⁷⁸⁹])([0-9]+)/g, function(match, sup, digits) {
+              var result = sup
+              for (var i = 0; i < digits.length; i++) {
+                result += SUP_MAP[digits[i]] || digits[i]
               }
               return result
             })

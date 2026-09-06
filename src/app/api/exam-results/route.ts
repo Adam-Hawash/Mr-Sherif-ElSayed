@@ -14,14 +14,29 @@ export async function GET(request: NextRequest) {
   // Student mode: all exam results for this student (raw SQL)
   if (studentId && !examId) {
     try {
+      // writingGrades column may not exist on old databases — ensure it first
+      try { await db.$executeRawUnsafe('ALTER TABLE ExamResult ADD COLUMN writingGrades TEXT DEFAULT ""') } catch (e) {}
       var rows = await db.$queryRawUnsafe(
-        'SELECT id, examId, studentId, score, maxScore FROM ExamResult WHERE studentId = ?',
+        'SELECT id, examId, studentId, score, maxScore, submittedAt, writingGrades FROM ExamResult WHERE studentId = ?',
         studentId
       )
-      return NextResponse.json({ results: rows || [] })
+      var withGrades = (rows || []).map(function(r: any) {
+        var wg: any[] = []
+        try { wg = r.writingGrades ? JSON.parse(r.writingGrades) : [] } catch (e) { wg = [] }
+        return { id: r.id, examId: r.examId, studentId: r.studentId, score: r.score, maxScore: r.maxScore, submittedAt: r.submittedAt, writingGrades: wg }
+      })
+      return NextResponse.json({ results: withGrades })
     } catch (error) {
       console.error('Student exam results error:', error)
-      return NextResponse.json({ results: [] })
+      try {
+        var rows2 = await db.$queryRawUnsafe(
+          'SELECT id, examId, studentId, score, maxScore, submittedAt FROM ExamResult WHERE studentId = ?',
+          studentId
+        )
+        return NextResponse.json({ results: (rows2 || []).map(function(r: any) { return { ...r, writingGrades: [] } }) })
+      } catch (e2) {
+        return NextResponse.json({ results: [] })
+      }
     }
   }
 
@@ -50,6 +65,7 @@ export async function GET(request: NextRequest) {
       await db.$executeRawUnsafe('CREATE TABLE IF NOT EXISTS ExamResult (id TEXT PRIMARY KEY, examId TEXT NOT NULL, studentId TEXT NOT NULL, score REAL DEFAULT 0, maxScore REAL DEFAULT 100, submittedAt DATETIME DEFAULT CURRENT_TIMESTAMP)')
     } catch (e) {}
     try { await db.$executeRawUnsafe('ALTER TABLE ExamResult ADD COLUMN answers TEXT DEFAULT ""') } catch (e) {}
+    try { await db.$executeRawUnsafe('ALTER TABLE ExamResult ADD COLUMN writingGrades TEXT DEFAULT ""') } catch (e) {}
 
     // Get exam info first (title, questions, grade, passScore)
     var examInfo: any = null
@@ -70,11 +86,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Exam not found' }, { status: 404 })
     }
 
-    // Get all results for this exam using RAW SQL with answers
+    // Get all results for this exam using RAW SQL with answers + stored writingGrades
     var rawResults: any[] = []
     try {
       rawResults = await db.$queryRawUnsafe(
-        'SELECT id, examId, studentId, score, maxScore, submittedAt, answers FROM ExamResult WHERE examId = ? ORDER BY submittedAt DESC',
+        'SELECT id, examId, studentId, score, maxScore, submittedAt, answers, writingGrades FROM ExamResult WHERE examId = ? ORDER BY submittedAt DESC',
         examId
       ) || []
     } catch (e) {
@@ -85,7 +101,7 @@ export async function GET(request: NextRequest) {
           where: { examId },
           orderBy: { submittedAt: 'desc' },
         })
-        rawResults = prismaResults.map((r: any) => ({ ...r, answers: '' }))
+        rawResults = prismaResults.map((r: any) => ({ ...r, answers: '', writingGrades: '' }))
       } catch (e2) { rawResults = [] }
     }
 
@@ -158,6 +174,16 @@ export async function GET(request: NextRequest) {
       var wrongQuestions: any[] = []
       var writingAnswers: any[] = []
 
+      // Stored AI writing grades (saved at submit time) — reuse them instead of
+      // re-calling the AI live for every admin view (fast + consistent)
+      var storedByOrig: Record<number, any> = {}
+      try {
+        var storedArr: any[] = r.writingGrades ? (typeof r.writingGrades === 'string' ? JSON.parse(r.writingGrades) : r.writingGrades) : []
+        if (Array.isArray(storedArr)) {
+          storedArr.forEach(function(sg: any) { if (sg && typeof sg.origIdx === 'number') storedByOrig[sg.origIdx] = sg })
+        }
+      } catch (e) {}
+
       // MCQ all questions - iterate by ORIGINAL index
       mcqQs.forEach(function(item, qi) {
         var q = item.q
@@ -210,7 +236,53 @@ export async function GET(request: NextRequest) {
         var acceptedAnswers = Array.isArray(wq.acceptedAnswers) ? wq.acceptedAnswers : []
         var pts = (typeof wq.points === 'number' && wq.points > 0) ? wq.points : 5
 
-        // AI grading - image OR text
+        // FAST PATH: grades stored at submit time → use them directly (no live AI)
+        var stored = storedByOrig[wOrigIdx]
+        if (stored) {
+          var storedAwarded = Math.min(Math.max(Math.round(Number(stored.awardedPoints) || 0), 0), pts)
+          var storedIsCorrect = stored.isCorrect === true || (storedAwarded >= Math.ceil(pts * 0.5) && storedAwarded > 0)
+          var storedExtracted = stored.aiExtractedAnswer || (String(stored.answer || '') !== '' ? String(stored.answer) : '')
+          var storedFeedback = stored.feedback || (storedIsCorrect ? 'صح' : 'غلط')
+          var storedAnsText = String(stored.answer || studentText || '')
+
+          allQuestions.push({
+            type: 'writing',
+            question: qText,
+            studentAnswer: storedAnsText,
+            correctAnswer: stored.modelAnswer || modelAnswer,
+            isCorrect: storedIsCorrect,
+            aiExtractedAnswer: storedExtracted,
+            aiIsCorrect: storedIsCorrect,
+            aiFeedback: storedFeedback,
+            imageGraded: /\[📷/.test(storedAnsText),
+            textGraded: !/\[📷/.test(storedAnsText),
+            needsGrading: false,
+            isGraded: true,
+            awardedPoints: storedAwarded,
+            maxPoints: stored.maxPoints || pts,
+          })
+          writingAnswers.push({
+            question: qText,
+            answer: storedAnsText,
+            points: pts,
+            modelAnswer: stored.modelAnswer || modelAnswer,
+            acceptedAnswers: acceptedAnswers,
+            needsGrading: false,
+            aiExtractedAnswer: storedExtracted,
+            aiIsCorrect: storedIsCorrect,
+            aiFeedback: storedFeedback,
+            imageGraded: /\[📷/.test(storedAnsText),
+            textGraded: !/\[📷/.test(storedAnsText),
+            isGraded: true,
+            isCorrect: storedIsCorrect,
+            awardedPoints: storedAwarded,
+            maxPoints: stored.maxPoints || pts,
+          })
+          continue
+        }
+
+        // AI grading - image OR text (live fallback for results saved before
+        // submit-time grading existed)
         var aiExtracted = ''
         var aiIsCorrect = false
         var aiFeedback = ''

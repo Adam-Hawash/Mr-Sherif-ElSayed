@@ -26,6 +26,21 @@ export function repairCorruptMath(input: string): string {
   var s = String(input)
   // U+FFFD replacement chars are lossy-encoding leftovers — never legitimate
   s = s.replace(/\uFFFD/g, '')
+  // ---- power heal (multi-digit powers stored broken by the old keyboard bug) ----
+  // "2¹0" → "2¹⁰" , "x²15" → "x²¹⁵" : a superscript run followed by normal-size
+  // digits was ALWAYS meant to be one whole power — join them at render time.
+  // Also upgrades Arabic-Indic digits that got stuck onto a Latin superscript run.
+  s = s.replace(/([⁰¹²³⁴⁵⁶⁷⁸⁹])([0-9٠-٩]+)/g, function (_m, sup: string, digits: string) {
+    var SUP_OF: Record<string, string> = {
+      '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
+      '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
+      '٠': '⁰', '١': '¹', '٢': '²', '٣': '³', '٤': '⁴',
+      '٥': '⁵', '٦': '⁶', '٧': '⁷', '٨': '⁸', '٩': '⁹',
+    }
+    var out = sup
+    for (var i = 0; i < digits.length; i++) out += SUP_OF[digits[i]] || digits[i]
+    return out
+  })
   // <FF>rac{…} → \frac{…}  (restore only when letters follow — a real command)
   s = s.replace(/\f(?=[a-zA-Z])/g, '\\f')
   // leftover invisible FF junk (not part of a command) → drop

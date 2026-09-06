@@ -113,6 +113,10 @@ function buildAiPrompt(needAI: WritingAnswer[]): string {
   lines.push('- UNDERSTAND the answer: find the FINAL value (usually the last thing written: after the last =, or a boxed/circled value, or after ANSWER). Messy steps, extra working or unusual formatting NEVER make a correct final value wrong. Simplify BOTH sides mentally before deciding.')
   lines.push('- ALWAYS decide: every graded answer gets a definite isCorrect true or false — never leave one undecided.')
   lines.push('')
+  lines.push('NO MODEL ANSWER? SOLVE IT YOURSELF:')
+  lines.push('- If the model answer is (none): read the QUESTION carefully, solve it step by step yourself, find the correct final answer, then grade the student answer against YOUR solution.')
+  lines.push('- Grade on BOTH the final answer AND the solution steps: correct final value → full points; correct method with a small slip → about half; wrong method → 0.')
+  lines.push('')
   lines.push('Scoring rules:')
   lines.push('- Final value mathematically equal → full points, isCorrect: true (even if the steps are messy or partially unreadable)')
   lines.push('- Correct method/steps but wrong final value → about half the points (rounded), isCorrect: false')
@@ -204,20 +208,8 @@ export async function gradeWritingSmart(writingAnswers: WritingAnswer[]): Promis
       continue
     }
 
-    // no model answer at all → cannot grade
-    if (!wa.modelAnswer && (!wa.acceptedAnswers || wa.acceptedAnswers.length === 0)) {
-      graded[i] = {
-        question: wa.question,
-        answer: answerText,
-        modelAnswer: '',
-        awardedPoints: 0,
-        maxPoints: maxPts,
-        isCorrect: false,
-        feedback: 'لا توجد إجابة نموذجية — يحتاج تصحيح يدوي',
-        gradingStatus: 'manual',
-      }
-      continue
-    }
+    // no model answer at all → STILL grade with AI (it solves the question itself)
+    // (old behavior left this as "يحتاج تصحيح يدوي" — the teacher wants NOTHING left ungraded)
 
     needAI.push(wa)
     needAIIdx.push(i)
@@ -233,7 +225,16 @@ export async function gradeWritingSmart(writingAnswers: WritingAnswer[]): Promis
     }
   }
 
-  if (needAI.length === 0 || !hasGeminiKey()) {
+  if (needAI.length === 0) {
+    return { graded: graded, aiUsed: false }
+  }
+
+  if (!hasGeminiKey()) {
+    // No AI key at all → fallback heuristic so nothing stays pending
+    for (var hk = 0; hk < needAIIdx.length; hk++) {
+      var hIdx = needAIIdx[hk]
+      graded[hIdx] = heuristicFallback(graded[hIdx], needAI[hk])
+    }
     return { graded: graded, aiUsed: false }
   }
 
@@ -243,12 +244,20 @@ export async function gradeWritingSmart(writingAnswers: WritingAnswer[]): Promis
     timeoutMs: 90000,
   })
 
+  // one retry on transient failure
   if (!result.ok) {
-    // AI failed → mark remaining as manual, keep fast-path verdicts
+    result = await callGeminiCentral({
+      parts: [{ text: buildAiPrompt(needAI) }],
+      generationConfig: { temperature: 0.1, maxOutputTokens: 8192 },
+      timeoutMs: 90000,
+    })
+  }
+
+  if (!result.ok) {
+    // AI failed twice → heuristic fallback (never leave anything ungraded)
     for (var k = 0; k < needAIIdx.length; k++) {
       var gi = needAIIdx[k]
-      graded[gi].gradingStatus = 'manual'
-      graded[gi].feedback = 'تعذر التصحيح التلقائي — يحتاج مراجعة يدوية'
+      graded[gi] = heuristicFallback(graded[gi], needAI[k])
     }
     return { graded: graded, aiUsed: false }
   }
@@ -262,7 +271,11 @@ export async function gradeWritingSmart(writingAnswers: WritingAnswer[]): Promis
       for (var r = 0; r < aiResults.length; r++) {
         if (aiResults[r] && Number(aiResults[r].index) === n) { aiRes = aiResults[r]; break }
       }
-      if (!aiRes) continue
+      if (!aiRes) {
+        // AI skipped this index → heuristic fallback for it
+        graded[idx] = heuristicFallback(graded[idx], wa2)
+        continue
+      }
       var awarded = Math.min(Math.max(Math.round(Number(aiRes.awardedPoints) || 0), 0), wa2.points || 1)
       graded[idx].awardedPoints = awarded
       graded[idx].isCorrect = awarded >= Math.ceil((wa2.points || 1) * 0.5) && awarded > 0
@@ -271,10 +284,77 @@ export async function gradeWritingSmart(writingAnswers: WritingAnswer[]): Promis
     }
   } else {
     for (var m2 = 0; m2 < needAIIdx.length; m2++) {
-      graded[needAIIdx[m2]].gradingStatus = 'manual'
-      graded[needAIIdx[m2]].feedback = 'تعذر قراءة نتيجة الذكاء الاصطناعي — يحتاج مراجعة يدوية'
+      graded[needAIIdx[m2]] = heuristicFallback(graded[needAIIdx[m2]], needAI[m2])
     }
   }
 
   return { graded: graded, aiUsed: true }
+}
+
+/*
+ * heuristicFallback — last-resort deterministic grading (no AI).
+ * Compares the normalized FINAL segments (and overall text similarity) of the
+ * student answer vs the model answer. Guarantees a definite grade so the
+ * student NEVER sees "يحتاج تصحيح يدوي" — the teacher can still override.
+ */
+function heuristicFallback(slot: GradedAnswer, wa: WritingAnswer): GradedAnswer {
+  var st = normalizeForMatch(wa.answer || '')
+  var model = normalizeForMatch(wa.modelAnswer || '')
+  var maxPts = wa.points || 1
+  var awarded = 0
+  var feedback = 'الإجابة مش مطابقة للإجابة النموذجية'
+
+  if (!model) {
+    // nothing to compare with at all → count anything written as attempted work
+    if (st && st.replace(/[^0-9a-zA-Z\u0600-\u06FF]/g, '').length >= 3) {
+      awarded = Math.ceil(maxPts / 2)
+      feedback = 'الإجابة مكتوبة بس محتاجة مراجعة المستر النهائية'
+    } else {
+      awarded = 0
+      feedback = 'لم يتم الإجابة'
+    }
+  } else {
+    var stFinal = stripFactorForm(finalSegment(st))
+    var mFinal = stripFactorForm(finalSegment(model))
+    var sim = bigramSimilarity(st, model)
+    if (stFinal && mFinal && stFinal === mFinal) {
+      awarded = maxPts
+      feedback = 'الإجابة النهائية مطابقة للإجابة النموذجية ✓'
+    } else if (sim >= 0.55) {
+      awarded = Math.ceil(maxPts / 2)
+      feedback = 'فيه تشابه جزئي مع الحل النموذجي — راجعها مع المستر'
+    }
+  }
+
+  return {
+    question: slot.question,
+    answer: slot.answer,
+    modelAnswer: slot.modelAnswer,
+    awardedPoints: awarded,
+    maxPoints: maxPts,
+    isCorrect: awarded >= Math.ceil(maxPts * 0.5) && awarded > 0,
+    feedback: feedback,
+    gradingStatus: 'graded',
+  }
+}
+
+/* bigram Dice similarity 0..1 — cheap, deterministic */
+function bigramSimilarity(a: string, b: string): number {
+  var cleanA = a.replace(/[^0-9a-z\u0600-\u06FF]/g, '')
+  var cleanB = b.replace(/[^0-9a-z\u0600-\u06FF]/g, '')
+  if (cleanA.length < 2 || cleanB.length < 2) return 0
+  var grams: Record<string, number> = {}
+  var total = 0
+  for (var i = 0; i < cleanA.length - 1; i++) {
+    var g = cleanA.substring(i, i + 2)
+    grams[g] = (grams[g] || 0) + 1
+    total++
+  }
+  var hits = 0
+  for (var j = 0; j < cleanB.length - 1; j++) {
+    var g2 = cleanB.substring(j, j + 2)
+    if (grams[g2] && grams[g2] > 0) { hits++; grams[g2]-- }
+  }
+  var denom = total + (cleanB.length - 1)
+  return denom > 0 ? (2 * hits) / denom : 0
 }

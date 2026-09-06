@@ -7,7 +7,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { useAppStore, GRADES } from '@/stores/app-store'
-import { ArrowRight, Phone, Lock, GraduationCap, Users, Loader2, AlertCircle, Eye, EyeOff } from 'lucide-react'
+import { getDeviceId } from '@/lib/device'
+import { ArrowRight, Phone, Lock, GraduationCap, Users, Loader2, AlertCircle, AlertTriangle, Eye, EyeOff } from 'lucide-react'
 import { toast } from 'sonner'
 
 var fadeInUp = {
@@ -113,8 +114,13 @@ export function LoginView() {
 
     setStudentLoading(true)
     try {
-      var res = await fetch('/api/students?phone=' + encodeURIComponent(studentPhone.trim()) + '&password=' + encodeURIComponent(studentPassword.trim()))
+      var res = await fetch('/api/students?phone=' + encodeURIComponent(studentPhone.trim()) + '&password=' + encodeURIComponent(studentPassword.trim()) + '&deviceId=' + encodeURIComponent(getDeviceId()))
       var data = await res.json()
+      // ربط الجهاز: الحساب مربوط بجهاز تاني → مرفوض unless المستر سمح
+      if (res.status === 403 && data.deviceBlocked) {
+        toast.error(data.error || 'الحساب مربوط بجهاز تاني — تواصل مع المستر', { duration: 12000 })
+        return
+      }
       var students = data.students || []
       var student: any = null
       for (var i = 0; i < students.length; i++) {
@@ -223,7 +229,7 @@ export function RegisterView() {
     var fullParentName = parentName1.trim() + ' ' + parentName2.trim()
     setLoading(true)
     try {
-      var res = await fetch('/api/students', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: fullName, phone: phone.trim(), grade: grade, parentName: fullParentName, parentPhone: parentPhone.trim(), password: password.trim() }) })
+      var res = await fetch('/api/students', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: fullName, phone: phone.trim(), grade: grade, parentName: fullParentName, parentPhone: parentPhone.trim(), password: password.trim(), deviceId: getDeviceId() }) })
       var data = await res.json()
       if (res.ok) { setCurrentStudent(data.student); setView('student-pending'); toast.success('تم تسجيل طلبك بنجاح! خش اعمل تسجيل دخول وشوف اتمقبلت ولا لسه') }
       else { toast.error(data.error || 'حدث خطأ في التسجيل') }
@@ -276,6 +282,14 @@ export function RegisterView() {
                   </div>
                 </div>
                 <PhoneField value={parentPhone} onChange={setParentPhone} placeholder="رقم هاتف ولي الأمر" id="reg-parent-phone" error={errors.parentPhone} />
+                <div className="rounded-lg border border-amber-500/40 bg-amber-50 dark:bg-amber-900/10 p-3 flex gap-2.5">
+                  <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="text-xs text-amber-800 dark:text-amber-300 space-y-1">
+                    <p className="font-bold">تنبيه مهم قبل ما تعمل الحساب:</p>
+                    <p>الحساب هيتقيد على <span className="font-bold">الجهاز اللي أنت مسجل بيه دلوقتي بس</span>. مش هينفع تعمل تسجيل دخول من أي جهاز تاني (موبايل تاني أو لاب تاني) غير لما تتواصل مع المستر الأول وهو يعمل لك سماح من كل الأجهزة.</p>
+                    <p className="text-[10px] text-amber-700 dark:text-amber-400">فاكرك: مسح بيانات المتصفح ممكن يغيّر بصمة الجهاز — خلي بالك.</p>
+                  </div>
+                </div>
                 <Button className="w-full min-h-[44px] font-semibold" onClick={handleRegister} disabled={loading}>{loading ? (<><Loader2 className="h-4 w-4 ml-2 animate-spin" />جاري التسجيل...</>) : 'اعمل الحساب'}</Button>
                 <p className="text-center text-sm text-muted-foreground">عندك حساب؟ <button onClick={function () { setView('auth-login') }} className="text-primary font-medium hover:underline cursor-pointer">سجل دخولك</button></p>
               </div>

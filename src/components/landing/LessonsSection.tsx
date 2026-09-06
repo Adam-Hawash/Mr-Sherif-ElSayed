@@ -130,8 +130,8 @@ export default function LessonsSection() {
                   if (!video) return <div key={offset} style={{ width: getStyle(offset).w }} />
                   var s = getStyle(offset)
                   var isCenter = offset === 0
-                  var ytId = getYouTubeId(video.url)
-                  var thumb = video.thumbnail || (ytId ? 'https://img.youtube.com/vi/' + ytId + '/mqdefault.jpg' : null)
+                  // حماية الفيديو: الصورة المصغرة بتاعتها بتيجي من بروكسي سيرفرنا
+                  var thumb = video.thumbnail || video.thumb || null
 
                   return (
                     <div

@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
 
     if (phone) {
       var password = searchParams.get('password') || ''
+      var deviceId = searchParams.get('deviceId') || ''
       try {
         var student = await db.student.findFirst({
           where: { phone },
@@ -24,6 +25,32 @@ export async function GET(request: NextRequest) {
         // Password check for login
         if (!password || student.password !== password) {
           return NextResponse.json({ students: [], total: 0, page: 1, pageSize: 1, totalPages: 0 })
+        }
+        // ===== ربط الجهاز =====
+        // الحساب مربوط بجهاز معين + المستر ماسمحش بكل الأجهزة + الجهاز الحالي مختلف → مرفوض
+        if (
+          student.deviceId &&
+          !student.allowAllDevices &&
+          deviceId &&
+          student.deviceId !== deviceId
+        ) {
+          return NextResponse.json(
+            {
+              students: [],
+              deviceBlocked: true,
+              error: 'الحساب ده مربوط بجهاز تاني. مش هينفع تسجل دخول من الجهاز ده غير لما تتواصل مع المستر يعمل لك سماح.',
+            },
+            { status: 403 }
+          )
+        }
+        // أول تسجيل دخول من أي جهاز (حساب عمله الأدمن مثلاً) → الجهاز ده بيتسجل كجهاز الحساب
+        if (!student.deviceId && deviceId) {
+          try {
+            await db.student.update({ where: { id: student.id }, data: { deviceId } })
+            student = { ...student, deviceId }
+          } catch (bindErr) {
+            console.error('Device bind error:', bindErr)
+          }
         }
         return NextResponse.json({ students: [{ ...student, watchedVideoCount: 0 }], total: 1, page: 1, pageSize: 1, totalPages: 1 })
       } catch (loginErr: any) {
@@ -93,6 +120,8 @@ export async function POST(request: NextRequest) {
     var parentName = body.parentName || body.fatherName || ''
     var parentPhone = body.parentPhone || body.motherPhone || ''
     var password = body.password || ''
+    // بصمة الجهاز: الحساب بيتقيد على الجهاز اللي اتعمل بيه
+    var deviceId = typeof body.deviceId === 'string' ? body.deviceId : ''
 
     if (!name || !phone || !grade) {
       return NextResponse.json({ error: 'الاسم ورقم الهاتف والصف مطلوبين' }, { status: 400 })
@@ -107,6 +136,7 @@ export async function POST(request: NextRequest) {
         parentName: parentName,
         parentPhone: parentPhone,
         password: password,
+        deviceId: deviceId,
       },
     })
 

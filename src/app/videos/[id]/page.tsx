@@ -2,14 +2,12 @@
 
 import { useState, useEffect, use } from "react";
 import Link from "next/link";
-import { Lock, CreditCard, ArrowRight, CheckCircle2 } from "lucide-react";
+import { Lock, CreditCard, ArrowRight, CheckCircle2, Loader2 } from "lucide-react";
 import { ProtectedYouTubePlayer } from "@/components/student/ProtectedYouTubePlayer";
+import { VideoWatermark } from "@/components/student/VideoWatermark";
 
-function getYouTubeId(url: string): string | null {
-  const match = url?.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/))([\w-]{11})/);
-  return match ? match[1] : null;
-}
-
+// حماية الفيديو: السيرفر مبيرسلش اللينكات الخام — التشغيل كله
+// عن طريق /api/video-play (ytId لل يوتيوب أو توكن موقّع للملف المرفوع)
 export default function VideoDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const videoId = resolvedParams.id;
@@ -17,6 +15,7 @@ export default function VideoDetailPage({ params }: { params: Promise<{ id: stri
   const [video, setVideo] = useState<any>(null);
   const [student, setStudent] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [grant, setGrant] = useState<any>(null);
 
   useEffect(() => {
     let currentStudent: any = null;
@@ -35,6 +34,9 @@ export default function VideoDetailPage({ params }: { params: Promise<{ id: stri
         if (res.ok) {
           const data = await res.json();
           setVideo(data);
+          // بوابة التشغيل المحمية — بترجّع ytId أو توكن الملف بعد التحقق
+          const gRes = await fetch(`/api/video-play?videoId=${videoId}&studentId=${sId}`);
+          if (gRes.ok) setGrant(await gRes.json());
         }
       } catch (e) {
         console.error(e);
@@ -102,23 +104,35 @@ export default function VideoDetailPage({ params }: { params: Promise<{ id: stri
             </Link>
           </div>
         ) : (
-          <div className="aspect-video bg-black flex items-center justify-center">
-            {getYouTubeId(video.url || "") ? (
-              <ProtectedYouTubePlayer
-                ytId={getYouTubeId(video.url || "") as string}
-                poster={video.thumbnail || undefined}
-                videoId={video.id}
-              />
-            ) : video.filePath && /\.(mp4|webm|mov|avi)$/i.test(video.filePath || "") ? (
-              <video
-                src={video.filePath}
-                controls
-                playsInline
-                className="w-full h-full"
-                style={{ border: "none" }}
-              />
-            ) : (
+          <div className="aspect-video bg-black flex items-center justify-center relative">
+            {grant?.isYouTube && grant?.ytId ? (
+              <>
+                <ProtectedYouTubePlayer
+                  ytId={grant.ytId}
+                  poster={video.thumbnail || undefined}
+                  videoId={video.id}
+                />
+                <VideoWatermark name={student?.name} phone={student?.phone} />
+              </>
+            ) : grant?.isVideoFile && grant?.fileUrl ? (
+              <>
+                <video
+                  src={grant.fileUrl}
+                  controls
+                  controlsList="nodownload noremoteplayback"
+                  disablePictureInPicture
+                  disableRemotePlayback
+                  playsInline
+                  className="w-full h-full"
+                  style={{ border: "none" }}
+                  onContextMenu={(e) => e.preventDefault()}
+                />
+                <VideoWatermark name={student?.name} phone={student?.phone} />
+              </>
+            ) : grant ? (
               <div className="text-slate-500 text-sm">لا يوجد فيديو</div>
+            ) : (
+              <Loader2 className="w-8 h-8 text-slate-600 animate-spin" />
             )}
           </div>
         )}

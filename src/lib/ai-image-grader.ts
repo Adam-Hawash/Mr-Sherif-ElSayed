@@ -417,7 +417,9 @@ export async function gradeTextAnswer(params: {
   var acceptedAnswers = Array.isArray(params.acceptedAnswers) ? params.acceptedAnswers : []
   var maxPoints = typeof params.maxPoints === 'number' ? params.maxPoints : 5
 
-  if (!studentAnswer || !modelAnswer) return null
+  // modelAnswer is OPTIONAL now: when missing, the AI solves the question
+  // itself and grades against its own solution (nothing left ungraded)
+  if (!studentAnswer || (!modelAnswer && !question)) return null
   if (!hasGeminiKey()) return null
 
   var acceptedStr = acceptedAnswers.length > 0
@@ -427,7 +429,7 @@ export async function gradeTextAnswer(params: {
   var prompt = 'You are an expert, FAIR math teacher who grades by MATHEMATICAL VALUE — never by literal wording. Grade the student\'s typed answer.\n\n'
   prompt += 'THE QUESTION:\n' + repairCorruptMath(question) + '\n\n'
   prompt += 'STUDENT ANSWER:\n' + repairCorruptMath(studentAnswer) + '\n\n'
-  prompt += 'MODEL SOLUTION:\n' + repairCorruptMath(modelAnswer) + '\n'
+  prompt += 'MODEL SOLUTION:\n' + (modelAnswer ? repairCorruptMath(modelAnswer) : '(none - SOLVE the question yourself step by step, find the correct final answer, then grade the student answer against YOUR solution. Grade on the final answer AND the solution steps: correct final → full points, correct method with small slip → about half)') + '\n'
   prompt += acceptedStr + '\n\n'
   prompt += 'CORE PRINCIPLE — the student answer is CORRECT (full points) whenever its FINAL value is mathematically EQUAL to the model final value, even if written differently:\n'
   prompt += '- Different order: y^4x^6 = x^6y^4\n'

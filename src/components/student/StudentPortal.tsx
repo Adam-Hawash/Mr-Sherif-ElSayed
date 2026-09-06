@@ -19,6 +19,7 @@ import { toast } from 'sonner'
 import type { Video as VideoType, Homework, Exam, Announcement, Discussion, ExamResult } from '@/stores/app-store'
 import { MathKeyboard } from '@/components/student/MathKeyboard'
 import { ProtectedYouTubeModal } from '@/components/student/ProtectedYouTubePlayer'
+import { VideoWatermark } from '@/components/student/VideoWatermark'
 import { FractionText } from '@/components/FractionText'
 
 export function StudentPortal() {
@@ -255,7 +256,7 @@ export function StudentPortal() {
                 بص على الكل
               </Button>
             </div>
-            <VideosTab videos={initialData.videos} watchedIds={initialData.watchedIds} approvedVideoIds={initialData.approvedVideoIds} studentId={studentId} grade={grade} videoProgress={initialData.videoProgress} studentStatus={currentStudent?.status} isPaidAccess={currentStudent?.isPaidAccess} />
+            <VideosTab videos={initialData.videos} watchedIds={initialData.watchedIds} approvedVideoIds={initialData.approvedVideoIds} studentId={studentId} grade={grade} videoProgress={initialData.videoProgress} studentStatus={currentStudent?.status} isPaidAccess={currentStudent?.isPaidAccess} studentName={currentStudent?.name || ''} studentPhone={currentStudent?.phone || ''} />
           </div>
 
           {/* Guide modal */}
@@ -312,7 +313,7 @@ export function StudentPortal() {
 
       {/* Tab Content */}
       <div className="flex-1 overflow-y-auto p-4">
-        {activeTab === 'videos' && <VideosTab videos={dashboardData.videos} watchedIds={dashboardData.watchedIds} approvedVideoIds={dashboardData.approvedVideoIds} studentId={studentId} grade={grade} videoProgress={dashboardData.videoProgress} studentStatus={currentStudent?.status} isPaidAccess={currentStudent?.isPaidAccess} />}
+        {activeTab === 'videos' && <VideosTab videos={dashboardData.videos} watchedIds={dashboardData.watchedIds} approvedVideoIds={dashboardData.approvedVideoIds} studentId={studentId} grade={grade} videoProgress={dashboardData.videoProgress} studentStatus={currentStudent?.status} isPaidAccess={currentStudent?.isPaidAccess} studentName={currentStudent?.name || ''} studentPhone={currentStudent?.phone || ''} />}
         {activeTab === 'homework' && <HomeworkTab homework={dashboardData.homework} studentId={studentId} completedHwIds={completedHwIds} onHwSubmitted={(id) => setCompletedHwIds(prev => new Set([...prev, id]))} />}
         {activeTab === 'exams' && <ExamsTab exams={dashboardData.exams} results={dashboardData.examResults} completedExamIds={completedExamIds} onExamSubmitted={(id) => setCompletedExamIds(prev => new Set([...prev, id]))} studentId={studentId} />}
         {activeTab === 'announcements' && <AnnouncementsTab announcements={dashboardData.announcements} />}
@@ -322,7 +323,7 @@ export function StudentPortal() {
   )
 }
 
-function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, videoProgress, studentStatus, isPaidAccess }: { videos: VideoType[]; watchedIds: Set<string>; approvedVideoIds: Set<string>; studentId: string; grade: string; videoProgress: Record<string, number>; studentStatus?: string; isPaidAccess?: boolean }) {
+function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, videoProgress, studentStatus, isPaidAccess, studentName, studentPhone }: { videos: VideoType[]; watchedIds: Set<string>; approvedVideoIds: Set<string>; studentId: string; grade: string; videoProgress: Record<string, number>; studentStatus?: string; isPaidAccess?: boolean; studentName?: string; studentPhone?: string }) {
   const { setView, setPendingPaymentVideo } = useAppStore()
   const [localWatched, setLocalWatched] = useState(watchedIds)
   const [videoSchedules, setVideoSchedules] = useState<Record<string, any>>({})
@@ -380,6 +381,32 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
     return id ? `https://img.youtube.com/vi/${id}/mqdefault.jpg` : null
   }
 
+  // حماية الفيديو: السيرفر مبيرسلش url/filePath خلاص — بنعرف النوع من kind
+  // والتشغيل بيتم عبر /api/video-play بس (توكن موقّع للملفات المرفوعة)
+  const videoKind = (v: any): 'youtube' | 'file' | 'link' | 'none' => {
+    if (v.kind) return v.kind
+    if (getYouTubeId(v.url || '')) return 'youtube'
+    if (v.filePath && /\.(mp4|webm|mov|avi)$/i.test(v.filePath)) return 'file'
+    if (v.url) return 'link'
+    return 'none'
+  }
+
+  // فتح فيديو يوتيوب: بنجيب الـ ytId من بوابة التشغيل المحمية لحظة الفتح
+  const openPlayModal = (video: VideoType) => {
+    fetch('/api/video-play?videoId=' + video.id + '&studentId=' + encodeURIComponent(studentId || ''))
+      .then(function (r) {
+        return r.json().then(function (d) { return { ok: r.ok, d: d } })
+      })
+      .then(function (res) {
+        if (res.ok && res.d.isYouTube && res.d.ytId) {
+          setActiveLessonVideo({ ...video, playYtId: res.d.ytId } as any)
+        } else {
+          toast.error(res.d.error || 'الفيديو مش متاح — لو دفعت تواصل مع الإدارة', { duration: 6000 })
+        }
+      })
+      .catch(function () { toast.error('حصل خطأ في تشغيل الفيديو') })
+  }
+
   if (videos.length === 0) return <EmptyState message="لا توجد دروس حالياً" />
 
   return (
@@ -388,10 +415,10 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
       {videos.map((video) => {
         // Skip hidden videos entirely
         if (hiddenVideoIds.has(video.id)) return null
-        const ytId = getYouTubeId(video.url)
-        const isVideoFile = video.filePath && (video.fileType?.startsWith('video/') || video.filePath.match(/\.(mp4|webm|mov|avi)$/i))
+        const kind = videoKind(video)
+        const isVideoFile = kind === 'file'
         const isWatched = localWatched.has(video.id)
-        const thumbSrc = video.thumbnail || getYouTubeThumbnail(video.url) || null
+        const thumbSrc = video.thumbnail || (video as any).thumb || null
         const hasPrice = (video.price || 0) > 0
         const hasApprovedPayment = approvedVideoIds.has(video.id)
         // A paid account is not a purchase grant. Every priced video stays locked
@@ -453,12 +480,12 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
                     </Button>
                   </div>
                 </div>
-              ) : ytId ? (
+              ) : kind === 'youtube' ? (
                 // Protected lesson card — gallery style thumbnail (no YouTube branding)
                 // The actual video opens in a protected modal player on click
                 <div
                   className="w-full h-full relative cursor-pointer group/vid"
-                  onClick={function () { setActiveLessonVideo(video) }}
+                  onClick={function () { openPlayModal(video) }}
                   role="button"
                   aria-label={'تشغيل ' + video.title}
                 >
@@ -476,11 +503,12 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
                   </div>
                 </div>
               ) : isVideoFile ? (
-                <CustomVideoPlayer
+                <GatedVideoPlayer
                   videoId={video.id}
-                  src={video.filePath}
-                  poster={thumbSrc || undefined}
                   studentId={studentId}
+                  poster={thumbSrc || undefined}
+                  studentName={studentName}
+                  studentPhone={studentPhone}
                   onWatch={() => {
                     trackVideoWatch(video.id)
                     setLocalWatched(prev => new Set([...prev, video.id]))
@@ -538,13 +566,15 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
       </div>
 
       {/* Protected lesson video modal — gallery style, no YouTube branding */}
-      {activeLessonVideo && getYouTubeId(activeLessonVideo.url) && (
+      {activeLessonVideo && (activeLessonVideo as any).playYtId && (
         <ProtectedYouTubeModal
-          ytId={getYouTubeId(activeLessonVideo.url) as string}
+          ytId={(activeLessonVideo as any).playYtId}
           title={activeLessonVideo.title}
-          poster={activeLessonVideo.thumbnail || getYouTubeThumbnail(activeLessonVideo.url) || undefined}
+          poster={activeLessonVideo.thumbnail || (activeLessonVideo as any).thumb || undefined}
           videoId={activeLessonVideo.id}
           studentId={studentId}
+          studentName={studentName}
+          studentPhone={studentPhone}
           onWatch={function () {
             trackVideoWatch(activeLessonVideo.id)
             setLocalWatched(function (prev) { return new Set([...prev, activeLessonVideo.id]) })
@@ -597,11 +627,70 @@ function YouTubePlayer({ videoId, ytId, poster, onWatch }: { videoId: string; yt
   )
 }
 
-function CustomVideoPlayer({ videoId, src, poster, studentId, onWatch }: {
+/* ========== GATED VIDEO PLAYER — حماية الملفات المرفوعة ==========
+ * بيجيب رابط التشغيل الموقّع من /api/video-play (توكن HMAC صالح ساعتين
+ * مرتبط بالطالب والملف) — من غير توكن السيرفر بيرفضخدمة الملف خالص.
+ * ========================================================================= */
+function GatedVideoPlayer({ videoId, studentId, poster, studentName, studentPhone, onWatch }: {
+  videoId: string
+  studentId: string
+  poster?: string
+  studentName?: string
+  studentPhone?: string
+  onWatch: () => void
+}) {
+  const [src, setSrc] = useState('')
+  const [error, setError] = useState('')
+
+  useEffect(function () {
+    var alive = true
+    setSrc(''); setError('')
+    fetch('/api/video-play?videoId=' + videoId + '&studentId=' + encodeURIComponent(studentId || ''))
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d } }) })
+      .then(function (res) {
+        if (!alive) return
+        if (res.ok && res.d.isVideoFile && res.d.fileUrl) setSrc(res.d.fileUrl)
+        else setError(res.d.error || 'الفيديو مش متاح')
+      })
+      .catch(function () { if (alive) setError('حصل خطأ في تحميل الفيديو') })
+    return function () { alive = false }
+  }, [videoId, studentId])
+
+  if (error) {
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-black/70 text-white/80 text-xs p-4 text-center">
+        <Lock className="h-7 w-7 text-white/50" />
+        <span>{error}</span>
+      </div>
+    )
+  }
+  if (!src) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-black/70">
+        <Loader2 className="h-7 w-7 text-white/60 animate-spin" />
+      </div>
+    )
+  }
+  return (
+    <CustomVideoPlayer
+      videoId={videoId}
+      src={src}
+      poster={poster}
+      studentId={studentId}
+      studentName={studentName}
+      studentPhone={studentPhone}
+      onWatch={onWatch}
+    />
+  )
+}
+
+function CustomVideoPlayer({ videoId, src, poster, studentId, studentName, studentPhone, onWatch }: {
   videoId: string
   src: string
   poster?: string
   studentId: string
+  studentName?: string
+  studentPhone?: string
   onWatch: () => void
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -715,6 +804,7 @@ function CustomVideoPlayer({ videoId, src, poster, studentId, onWatch }: {
       onClick={togglePlay}
       onTouchStart={function() { setShowControls(true) }}
       onContextMenu={function(e) { e.preventDefault() }}
+      onDragStart={function(e) { e.preventDefault() }}
     >
       <video
         ref={videoRef}
@@ -725,12 +815,16 @@ function CustomVideoPlayer({ videoId, src, poster, studentId, onWatch }: {
         playsInline
         disablePictureInPicture
         disableRemotePlayback
+        controlsList="nodownload noremoteplayback noplaybackrate"
         onPlay={function() { setPlaying(true) }}
         onPause={function() { setPlaying(false) }}
         onTimeUpdate={handleTimeUpdate}
         onEnded={handleEnded}
         onLoadedMetadata={function() { if (videoRef.current) setDuration(videoRef.current.duration) }}
       />
+
+      {/* ووترمارك الطالب — أي تسجيل للشاشة يطلع فيه اسمه ورقمه */}
+      <VideoWatermark name={studentName} phone={studentPhone} />
 
       {!playing && (
         <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
@@ -1552,6 +1646,9 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
   const [submittedExamId, setSubmittedExamId] = useState<string | null>(null)
   const [checkingServer, setCheckingServer] = useState(false)
   const [blockedExamId, setBlockedExamId] = useState<string | null>(null)
+  // نتيجة آخر تسليم (الدرجة + تصحيح المقالية بالذكاء الاصطناعي)
+  const [lastResult, setLastResult] = useState<any>(null)
+  const [showGradesFor, setShowGradesFor] = useState<string | null>(null)
 
   if (exams.length === 0) return <EmptyState message="لا توجد امتحانات حالياً" />
 
@@ -1582,17 +1679,51 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
     )
   }
 
-  // EXAM SUBMITTED SUCCESS SCREEN — NO score shown
+  // EXAM SUBMITTED SUCCESS SCREEN — with the AI-graded score + writing feedback
   if (examSubmitted) {
+    var lrGrades: any[] = (lastResult && lastResult.writingGrades) || []
     return (
-      <div className="flex flex-col items-center justify-center py-16 px-6 space-y-6">
+      <div className="flex flex-col items-center justify-center py-12 px-6 space-y-5">
         <div className="h-24 w-24 rounded-full bg-emerald-500/10 flex items-center justify-center">
           <CheckCircle2 className="h-14 w-14 text-emerald-500" />
         </div>
         <div className="text-center space-y-2">
           <h2 className="text-xl font-bold text-emerald-600">تم تقديم الامتحان بنجاح</h2>
-          <p className="text-sm text-muted-foreground">انتظر نتيجتك من مستر شريف السيد</p>
+          {lastResult && typeof lastResult.score === 'number' ? (
+            <div className="mt-2 inline-flex flex-col items-center gap-1.5">
+              <div className="px-6 py-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30">
+                <p className="text-3xl font-bold text-emerald-600" dir="ltr">{lastResult.score} / {lastResult.maxScore}</p>
+                <p className="text-[10px] text-muted-foreground mt-1">درجتك في الامتحان</p>
+              </div>
+              {lrGrades.length > 0 && <p className="text-xs text-emerald-600 font-medium">✅ الأسئلة المقالية اتصححت بالذكاء الاصطناعي من الإجابة النموذجية</p>}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">المصحح الذكي بيصحح الأسئلة المقالية دلوقتي — النتيجة هتظهر في قائمة الامتحانات خلال شوية</p>
+          )}
         </div>
+        {lrGrades.length > 0 && (
+          <div className="w-full max-w-xl space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground">تفاصيل تصحيح الأسئلة المقالية:</p>
+            {lrGrades.map(function(g: any, i: number) {
+              var gOk = g.isCorrect === true
+              var gHalf = !gOk && (Number(g.awardedPoints) || 0) > 0
+              return (
+                <Card key={'wg-' + i} className={gOk ? 'border-emerald-200 dark:border-emerald-900/40' : gHalf ? 'border-amber-200 dark:border-amber-900/40' : 'border-red-200 dark:border-red-900/40'}>
+                  <CardContent className="p-3 space-y-1.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-xs font-medium min-w-0" style={{ textAlign: 'left' }}><FractionText text={g.question || ''} /></p>
+                      <Badge className={'text-[10px] shrink-0 ' + (gOk ? 'bg-emerald-500 text-white' : gHalf ? 'bg-amber-500 text-white' : 'bg-red-500 text-white')} dir="ltr">{g.awardedPoints}/{g.maxPoints}</Badge>
+                    </div>
+                    {g.feedback && <p className="text-[10px] text-muted-foreground">{g.feedback}</p>}
+                    {g.modelAnswer && (
+                      <p className="text-[10px] text-emerald-600" style={{ textAlign: 'left' }}>الإجابة النموذجية: <FractionText text={g.modelAnswer} /></p>
+                    )}
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        )}
         <Button
           onClick={() => {
             if (submittedExamId) onExamSubmitted(submittedExamId)
@@ -1604,7 +1735,7 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
             setExamQuestions([])
             setExamShuffleMap([])
           }}
-          className="mt-4"
+          className="mt-2"
         >
           العودة إلى صفحتك الرئيسية
         </Button>
@@ -1726,9 +1857,9 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
                 if (origIdx === undefined) origIdx = displayIdx
                 mappedAnswers[origIdx] = writingAnswers[di]
               })
-              // Add client-side timeout (60s - give server time to save)
+              // Add client-side timeout (120s — AI grades the writing questions during submit)
               var submitController = new AbortController()
-              var submitTimeout = setTimeout(function() { submitController.abort() }, 60000)
+              var submitTimeout = setTimeout(function() { submitController.abort() }, 120000)
               const res = await fetch('/api/exams/submit', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1738,6 +1869,10 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
               clearTimeout(submitTimeout)
               const data = await res.json()
               if (res.ok && (data.submitted || data.alreadySubmitted)) {
+                // الدرجة وتصحيح المقالية رجعوا من السيرفر (تصحيح فوري بالذكاء الاصطناعي)
+                if (typeof data.score === 'number') {
+                  setLastResult({ examId: takingExam, score: data.score, maxScore: data.maxScore, writingGrades: data.writingGrades || [] })
+                }
                 setSubmittedExamId(takingExam)
                 setExamSubmitted(true)
                 onExamSubmitted(takingExam)
@@ -1767,8 +1902,11 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
   return (
     <div className="space-y-3">
       {exams.map((exam) => {
-        const examResult = results.find(r => r.examId === exam.id)
+        const examResult: any = results.find(r => r.examId === exam.id)
         const isCompleted = examResult || completedExamIds.has(exam.id)
+        // نتيجة لحظية من آخر تسليم (لو لسه متحدثش في اللستة)
+        const liveResult = (lastResult && lastResult.examId === exam.id) ? lastResult : examResult
+        const liveGrades: any[] = (liveResult && liveResult.writingGrades) || []
         let hasQuestions = false
         let parsedQuestions: any[] = []
         try { if ((exam as any).questions) { parsedQuestions = JSON.parse((exam as any).questions); hasQuestions = parsedQuestions.length > 0 } } catch {}
@@ -1783,9 +1921,19 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
                   <div className="min-w-0 space-y-1.5">
                     <h3 className="font-semibold text-sm">{exam.title}</h3>
                     {isCompleted ? (
-                      <Badge className="text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
-                        تم تقديم الامتحان
-                      </Badge>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge className="text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                          تم تقديم الامتحان
+                        </Badge>
+                        {liveResult && typeof liveResult.score === 'number' && (
+                          <Badge className="text-xs bg-primary text-primary-foreground" dir="ltr">{liveResult.score}/{liveResult.maxScore}</Badge>
+                        )}
+                        {liveGrades.length > 0 && (
+                          <button type="button" onClick={function() { setShowGradesFor(showGradesFor === exam.id ? null : exam.id) }} className="text-[11px] font-medium text-primary hover:underline cursor-pointer">
+                            {showGradesFor === exam.id ? 'اقفل التصحيح' : 'شوف تصحيح المقالية 👁'}
+                          </button>
+                        )}
+                      </div>
                     ) : hasQuestions ? (
                       <Button size="sm" disabled={checkingServer} onClick={async () => {
                         setCheckingServer(true)
@@ -1822,6 +1970,30 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
                 </div>
                 {exam.filePath && <FileAttachment filePath={exam.filePath} fileType={exam.fileType} />}
               </div>
+              {/* تفاصيل تصحيح المقالية بالذكاء الاصطناعي */}
+              {isCompleted && showGradesFor === exam.id && liveGrades.length > 0 && (
+                <div className="mt-3 pt-3 border-t space-y-2">
+                  {liveGrades.map(function(g: any, gi: number) {
+                    var gOk = g.isCorrect === true
+                    var gHalf = !gOk && (Number(g.awardedPoints) || 0) > 0
+                    return (
+                      <div key={'g-' + gi} className={'p-2.5 rounded-lg border space-y-1 ' + (gOk ? 'border-emerald-200 bg-emerald-50/50 dark:border-emerald-900/40 dark:bg-emerald-900/10' : gHalf ? 'border-amber-200 bg-amber-50/50 dark:border-amber-900/40 dark:bg-amber-900/10' : 'border-red-200 bg-red-50/50 dark:border-red-900/40 dark:bg-red-900/10')}>
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-xs font-medium min-w-0" style={{ textAlign: 'left' }}><FractionText text={g.question || ''} /></p>
+                          <Badge className={'text-[10px] shrink-0 ' + (gOk ? 'bg-emerald-500 text-white' : gHalf ? 'bg-amber-500 text-white' : 'bg-red-500 text-white')} dir="ltr">{g.awardedPoints}/{g.maxPoints}</Badge>
+                        </div>
+                        {g.answer && (
+                          <p className="text-[10px] text-muted-foreground" style={{ textAlign: 'left' }}>إجابتك: <FractionText text={g.answer} /></p>
+                        )}
+                        {g.modelAnswer && (
+                          <p className="text-[10px] text-emerald-600" style={{ textAlign: 'left' }}>الإجابة النموذجية: <FractionText text={g.modelAnswer} /></p>
+                        )}
+                        {g.feedback && <p className="text-[10px] text-muted-foreground">🤖 {g.feedback}</p>}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </CardContent>
           </Card>
         )
