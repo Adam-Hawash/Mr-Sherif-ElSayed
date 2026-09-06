@@ -24,7 +24,7 @@ export async function POST(request) {
   }
 
   var cleanEmail = email.trim().toLowerCase()
-  var cleanPassword = password
+  var cleanPassword = String(password || '').trim()
 
   try {
     var admin = await db.admin.findFirst()
