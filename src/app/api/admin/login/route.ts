@@ -4,8 +4,8 @@ import { db, safeWrite } from '@/lib/db'
 
 export var maxDuration = 10
 
-var DEFAULT_EMAIL = 'sherif math@2026'
-var DEFAULT_PASSWORD = 'mr sherif2026#'
+var DEFAULT_EMAIL = 'sherifmath@2026'
+var DEFAULT_PASSWORD = 'mrsherif2026#'
 var ADMIN_NAME = 'Mr Sherif Elsayed'
 
 export async function POST(request) {
@@ -23,8 +23,11 @@ export async function POST(request) {
     return NextResponse.json({ error: 'البريد وكلمة المرور مطلوبين' }, { status: 400 })
   }
 
-  var cleanEmail = email.trim().toLowerCase()
-  var cleanPassword = String(password || '').trim()
+  // strip ALL whitespace — 'sherif math@2026' and 'sherifmath@2026' both work,
+  // so pasted credentials with stray spaces can never lock the teacher out
+  var squash = function (v: any) { return String(v || '').replace(/\s+/g, '').toLowerCase() }
+  var cleanEmail = squash(email)
+  var cleanPassword = squash(password)
 
   try {
     var admin = await db.admin.findFirst()
@@ -39,7 +42,7 @@ export async function POST(request) {
         })
       })
     } else {
-      if (cleanEmail !== admin.email || cleanPassword !== admin.password) {
+      if (cleanEmail !== squash(admin.email) || cleanPassword !== squash(admin.password)) {
         return NextResponse.json({ error: 'البريد أو كلمة المرور غلط' }, { status: 401 })
       }
     }

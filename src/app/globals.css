@@ -375,3 +375,11 @@ img {
     animation: none !important;
   }
 }
+
+/* ---- KaTeX math sizing (FractionText) ----
+   KaTeX defaults to 1.21em which looks oversized inline with Arabic text.
+   1em keeps math the same size as the surrounding sentence. */
+.mathx .katex { font-size: 1.05em; }
+.mathx .katex-display { margin: 0; }
+.mathx .katex .mfrac .delim-center { border: 0; }
+.mathx .katex .vlist-t { margin-top: 1px; margin-bottom: 1px; }

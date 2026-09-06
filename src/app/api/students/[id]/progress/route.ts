@@ -1,7 +1,30 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { gradeImageAnswer, gradeTextAnswer, extractImageMediaIds } from '@/lib/ai-image-grader'
+
+/* Parse a JSON column that may be a string or already-parsed */
+function parseJsonCol(col: any): any {
+  try {
+    if (!col) return null
+    if (typeof col === 'string') return JSON.parse(col)
+    return col
+  } catch (e) { return null }
+}
+
+/* Apply manual admin overrides ({ "<origIdx>": true|false }) to a review item */
+function applyOverride(item: any, overrides: any): void {
+  if (!overrides || typeof overrides !== 'object') return
+  var key = String(item.origIdx)
+  if (overrides[key] === true || overrides[key] === false) {
+    item.isCorrect = overrides[key] === true
+    item.overridden = true
+    if (item.type === 'writing') {
+      item.aiIsCorrect = overrides[key] === true
+      item.needsGrading = false
+      item.awardedPoints = overrides[key] === true ? (item.points || item.aiAwardedPoints || 0) : 0
+    }
+  }
+}
 
 // Ensure tables exist before querying
 async function ensureTables() {
@@ -144,11 +167,16 @@ export async function GET(
       videoGrade: videoMap[vp.videoId]?.grade || '',
     }))
 
+    // Columns may not exist on older DBs — add before querying (guarded)
+    try { await db.$executeRawUnsafe("ALTER TABLE ExamResult ADD COLUMN writingResults TEXT DEFAULT ''") } catch (e) {}
+    try { await db.$executeRawUnsafe("ALTER TABLE ExamResult ADD COLUMN gradeOverrides TEXT DEFAULT ''") } catch (e) {}
+    try { await db.$executeRawUnsafe("ALTER TABLE HomeworkResult ADD COLUMN gradeOverrides TEXT DEFAULT ''") } catch (e) {}
+
     // Get exam results with wrong questions using RAW SQL
     var examResultsEnriched: any[] = []
     try {
       var examRows = await db.$queryRawUnsafe(
-        'SELECT er.id, er.examId, er.score, er.maxScore, er.submittedAt, er.answers, e.title, e.questions, e.passScore FROM ExamResult er LEFT JOIN Exam e ON er.examId = e.id WHERE er.studentId = ? ORDER BY er.submittedAt DESC',
+        'SELECT er.id, er.examId, er.score, er.maxScore, er.submittedAt, er.answers, er.writingResults, er.gradeOverrides, e.title, e.questions, e.passScore FROM ExamResult er LEFT JOIN Exam e ON er.examId = e.id WHERE er.studentId = ? ORDER BY er.submittedAt DESC',
         id
       )
 
@@ -240,6 +268,13 @@ export async function GET(
             } catch (e) {}
             return undefined
           }
+          var storedExamVerdicts: any[] = []
+          try {
+            var parsedExam = parseJsonCol(row.writingResults)
+            if (Array.isArray(parsedExam)) storedExamVerdicts = parsedExam
+          } catch (e) {}
+          var examOverrides: any = parseJsonCol(row.gradeOverrides)
+
           // MCQ all questions - lookup by origIdx
           mcqAll.forEach(function(item) {
             var q = item.q
@@ -257,15 +292,22 @@ export async function GET(
             var correctAnswerText = opts[correctIdx] && opts[correctIdx] !== 'N/A'
               ? String.fromCharCode(65 + correctIdx) + ') ' + opts[correctIdx]
               : (q.modelAnswer || 'No correct answer stored')
-            allExamQuestions.push({
+            var mcqItem: any = {
               type: 'mcq',
+              origIdx: origIdx,
+              points: (typeof q.points === 'number' && q.points > 0) ? q.points : 1,
               question: qText,
               studentAnswer: studentAnswerText,
               correctAnswer: correctAnswerText,
               isCorrect: isCorrect,
-            })
+            }
+            applyOverride(mcqItem, examOverrides)
+            allExamQuestions.push(mcqItem)
           })
           // Writing all questions - lookup by origIdx
+          // Stored exam writing verdicts (written by /api/exams/regrade) —
+          // NEVER run live AI grading inside this view route: it blocked the
+          // response >30s for students with photo answers (تعذر تحميل البيانات).
           for (var ewi = 0; ewi < writingAllExam.length; ewi++) {
             var eItem = writingAllExam[ewi]
             var ewq = eItem.q
@@ -276,41 +318,47 @@ export async function GET(
             estudentText = lookedUp !== undefined && lookedUp !== null ? String(lookedUp) : ''
             estudentText = typeof estudentText === 'string' ? estudentText : String(estudentText || '')
 
-            // AI image grading for exam writing answer
             var eaiExtracted = ''
             var eaiIsCorrect = false
             var eaiFeedback = ''
             var eImageGraded = false
-            var emediaIds = extractImageMediaIds(estudentText)
-            if (emediaIds.length > 0) {
-              try {
-                var egrade = await gradeImageAnswer({
-                  mediaId: emediaIds[0],
-                  question: eqText,
-                  modelAnswer: ewq.modelAnswer || ewq.answer || '',
-                  acceptedAnswers: Array.isArray(ewq.acceptedAnswers) ? ewq.acceptedAnswers : [],
-                  maxPoints: (typeof ewq.points === 'number' && ewq.points > 0) ? ewq.points : 5,
-                })
-                if (egrade.error === undefined || egrade.extractedAnswer) {
-                  eaiExtracted = egrade.extractedAnswer
-                  eaiIsCorrect = egrade.isCorrect === true
-                  eaiFeedback = egrade.feedback || ''
-                  eImageGraded = true
-                }
-              } catch (e) {}
+            var eawarded = 0
+            var epoints = (typeof ewq.points === 'number' && ewq.points > 0) ? ewq.points : 5
+            var eneedsGrading = false
+
+            var storedExam = storedExamVerdicts.find(function (sv: any) { return sv && (sv.origIdx === eOrigIdx || (sv.question || '') === eqText) }) || storedExamVerdicts[ewi] || null
+            if (storedExam) {
+              eaiExtracted = storedExam.aiExtractedAnswer || storedExam.extractedAnswer || ''
+              eaiIsCorrect = storedExam.aiIsCorrect === true || storedExam.isCorrect === true
+              eaiFeedback = storedExam.aiFeedback || storedExam.feedback || ''
+              eawarded = storedExam.awardedPoints || 0
+              eImageGraded = eaiExtracted !== '' || storedExam.gradingStatus === 'graded'
+              eneedsGrading = storedExam.needsGrading === true || storedExam.gradingStatus === 'pending'
+              if (eneedsGrading) eaiFeedback = eaiFeedback || 'جاري التصحيح بالذكاء الاصطناعي...'
+            } else if (estudentText && estudentText !== '[📷 صورة مرفقة]') {
+              // submitted before verdicts were stored → teacher presses the
+              // existing "إعادة تصحيح بالذكاء" button once and it's saved.
+              eneedsGrading = true
+              eaiFeedback = 'محتاج تصحيح — اضغط زر (إعادة تصحيح بالذكاء)'
             }
 
-            allExamQuestions.push({
+            var examQItem: any = {
               type: 'writing',
+              origIdx: eOrigIdx,
+              points: epoints,
               question: eqText,
               studentAnswer: estudentText,
               correctAnswer: ewq.modelAnswer || ewq.answer || 'No model answer',
-              isCorrect: eImageGraded ? eaiIsCorrect : false,
+              isCorrect: eaiIsCorrect,
               aiExtractedAnswer: eaiExtracted,
               aiIsCorrect: eaiIsCorrect,
               aiFeedback: eaiFeedback,
+              awardedPoints: eawarded,
               imageGraded: eImageGraded,
-            })
+              needsGrading: eneedsGrading,
+            }
+            applyOverride(examQItem, examOverrides)
+            allExamQuestions.push(examQItem)
           }
         } catch(e) {}
 
@@ -383,7 +431,7 @@ export async function GET(
     try {
       try { await db.$executeRawUnsafe("ALTER TABLE HomeworkResult ADD COLUMN writingResults TEXT DEFAULT ''") } catch (e) {}
       var hwRows = await db.$queryRawUnsafe(
-        'SELECT hr.id, hr.homeworkId, hr.score, hr.maxScore, hr.submittedAt, hr.answers, hr.writingResults, h.title, h.questions FROM HomeworkResult hr LEFT JOIN Homework h ON hr.homeworkId = h.id WHERE hr.studentId = ? ORDER BY hr.submittedAt DESC',
+        'SELECT hr.id, hr.homeworkId, hr.score, hr.maxScore, hr.submittedAt, hr.answers, hr.writingResults, hr.gradeOverrides, h.title, h.questions FROM HomeworkResult hr LEFT JOIN Homework h ON hr.homeworkId = h.id WHERE hr.studentId = ? ORDER BY hr.submittedAt DESC',
         id
       )
 
@@ -559,10 +607,12 @@ export async function GET(
         try {
           var mcqAll2 = []
           var writingAll2 = []
+          var hwOverrides: any = parseJsonCol(row.gradeOverrides)
           if (row.questions) {
             var rawAll2 = typeof row.questions === 'string' ? JSON.parse(row.questions) : row.questions
             if (Array.isArray(rawAll2)) {
-              rawAll2.forEach(function(q) {
+              rawAll2.forEach(function(q, qOrigIdx) {
+                q.__origIdx = qOrigIdx
                 var isW = q.type === 'writing' || q.type === 'essay'
                 if (!isW && Array.isArray(q.options)) {
                   var allNA2 = q.options.length > 0 && q.options.every(function(o) { return !o || o === 'N/A' || o === 'لا يوجد' || String(o).trim() === '' })
@@ -597,13 +647,17 @@ export async function GET(
             var correctAnswerText = opts[correctIdx]
               ? String.fromCharCode(65 + correctIdx) + ') ' + opts[correctIdx]
               : ''
-            allHwQuestions.push({
+            var hwMcqItem: any = {
               type: 'mcq',
+              origIdx: q.__origIdx,
+              points: (typeof q.points === 'number' && q.points > 0) ? q.points : 1,
               question: qText,
               studentAnswer: studentAnswerText,
               correctAnswer: correctAnswerText,
               isCorrect: isCorrect,
-            })
+            }
+            applyOverride(hwMcqItem, hwOverrides)
+            allHwQuestions.push(hwMcqItem)
           })
           // Writing all questions
           writingAll2.forEach(function(q, wi) {
@@ -617,18 +671,25 @@ export async function GET(
                 studentText = studentAnsAll2[offset + wi] || studentAnsAll2[String(offset + wi)] || ''
               }
             } catch (e) {}
-            allHwQuestions.push({
+            var hwWrItem: any = {
               type: 'writing',
+              origIdx: q.__origIdx,
+              points: (typeof q.points === 'number' && q.points > 0) ? q.points : 5,
               question: qText,
               studentAnswer: typeof studentText === 'string' ? studentText : String(studentText || ''),
               correctAnswer: q.modelAnswer || q.answer || '',
               isCorrect: false,
-              // Augment with AI image grading result (if image was attached)
+              // Augment with stored AI grading verdict (if any)
               aiExtractedAnswer: writingAnswers[wai] && writingAnswers[wai].aiExtractedAnswer,
               aiIsCorrect: writingAnswers[wai] && writingAnswers[wai].aiIsCorrect === true,
               aiFeedback: writingAnswers[wai] && writingAnswers[wai].aiFeedback,
+              awardedPoints: writingAnswers[wai] && writingAnswers[wai].aiAwardedPoints || 0,
               imageGraded: !!(writingAnswers[wai] && writingAnswers[wai].aiExtractedAnswer !== undefined),
-            })
+              needsGrading: !!(writingAnswers[wai] && writingAnswers[wai].needsGrading),
+            }
+            if (hwWrItem.aiIsCorrect === true) hwWrItem.isCorrect = true
+            applyOverride(hwWrItem, hwOverrides)
+            allHwQuestions.push(hwWrItem)
           })
         } catch(e) {}
 
@@ -653,9 +714,11 @@ export async function GET(
     if (homeworkResults.length === 0) {
       try {
         var simpleHwRows = await db.$queryRawUnsafe(
-          'SELECT id, homeworkId, score, maxScore, submittedAt, answers FROM HomeworkResult WHERE studentId = ? ORDER BY submittedAt DESC',
+          'SELECT id, homeworkId, score, maxScore, submittedAt, answers, gradeOverrides FROM HomeworkResult WHERE studentId = ? ORDER BY submittedAt DESC',
           id
         )
+        var simpleOverrides: any = {}
+        try { simpleOverrides = parseJsonCol(simpleHwRows && simpleHwRows[0] ? (simpleHwRows[0].gradeOverrides || '') : '') || {} } catch (e) { simpleOverrides = {} }
         for (var shi = 0; shi < (simpleHwRows || []).length; shi++) {
           var shr = simpleHwRows[shi]
           var hwTitle2 = 'واجب'
@@ -688,13 +751,17 @@ export async function GET(
                       studentText2 = studentAnsSimple[qi] || studentAnsSimple[String(qi)] || ''
                     }
                   } catch (e6) {}
-                  simpleAllQs.push({
+                  var sWrItem: any = {
                     type: 'writing',
+                    origIdx: qi,
+                    points: (typeof q.points === 'number' && q.points > 0) ? q.points : 5,
                     question: q.question || q.q || '',
                     studentAnswer: typeof studentText2 === 'string' ? studentText2 : String(studentText2 || ''),
                     correctAnswer: q.modelAnswer || q.answer || '',
                     isCorrect: false,
-                  })
+                  }
+                  applyOverride(sWrItem, simpleOverrides)
+                  simpleAllQs.push(sWrItem)
                 } else {
                   var opts2 = Array.isArray(q.options) ? q.options : []
                   var correctIdx2 = typeof q.correct === 'number' ? q.correct : 0
@@ -708,13 +775,17 @@ export async function GET(
                     }
                   } catch (e7) {}
                   var isCorrect2 = ans2 !== undefined && ans2 !== null && Number(ans2) === correctIdx2
-                  simpleAllQs.push({
+                  var sMcqItem: any = {
                     type: 'mcq',
+                    origIdx: qi,
+                    points: (typeof q.points === 'number' && q.points > 0) ? q.points : 1,
                     question: q.question || q.q || '',
                     studentAnswer: (typeof ans2 === 'number' && opts2[ans2]) ? String.fromCharCode(65 + ans2) + ') ' + opts2[ans2] : 'Not answered',
                     correctAnswer: opts2[correctIdx2] ? String.fromCharCode(65 + correctIdx2) + ') ' + opts2[correctIdx2] : '',
                     isCorrect: isCorrect2,
-                  })
+                  }
+                  applyOverride(sMcqItem, simpleOverrides)
+                  simpleAllQs.push(sMcqItem)
                 }
               })
             }

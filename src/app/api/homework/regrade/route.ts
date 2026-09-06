@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     try { await db.$executeRawUnsafe('ALTER TABLE HomeworkResult ADD COLUMN answers TEXT DEFAULT \'\'') } catch (e) {}
 
     var rows = await db.$queryRawUnsafe(
-      'SELECT id, homeworkId, studentId, score, maxScore, answers, writingResults FROM HomeworkResult WHERE id = ? LIMIT 1',
+      'SELECT id, homeworkId, studentId, score, maxScore, answers, writingResults, gradeOverrides FROM HomeworkResult WHERE id = ? LIMIT 1',
       resultId
     )
     if (!rows || rows.length === 0) {
@@ -48,18 +48,20 @@ export async function POST(request: NextRequest) {
     // Parse questions (same split logic as submit route)
     var mcq = []
     var writingQuestions = []
+    var mcqOrigIdx = []
+    var writingOrigIdx = []
     try {
       var rawQ = typeof hwRows[0].questions === 'string' ? JSON.parse(hwRows[0].questions) : hwRows[0].questions
       if (Array.isArray(rawQ)) {
-        rawQ.forEach(function (q) {
+        rawQ.forEach(function (q, qIdx) {
           var isWriting = q.type === 'writing' || q.type === 'essay'
           if (!isWriting && Array.isArray(q.options)) {
             var allNA = q.options.length > 0 && q.options.every(function (o) { return !o || o === 'N/A' || o === 'لا يوجد' || String(o).trim() === '' })
             if (allNA) isWriting = true
           }
           if (!isWriting && (!q.options || q.options.length === 0)) isWriting = true
-          if (isWriting) writingQuestions.push(q)
-          else mcq.push(q)
+          if (isWriting) { writingQuestions.push(q); writingOrigIdx.push(qIdx) }
+          else { mcq.push(q); mcqOrigIdx.push(qIdx) }
         })
       }
     } catch (e) {
@@ -123,7 +125,36 @@ export async function POST(request: NextRequest) {
       graded.forEach(function (g) { writingScore += g.awardedPoints || 0 })
     }
 
-    var finalScore = mcqScore + writingScore
+    // honor manual teacher overrides (keys = full questions-array indices)
+    var overrides = {}
+    try { overrides = JSON.parse(res.gradeOverrides || '{}') || {} } catch (e) { overrides = {} }
+    if (typeof overrides !== 'object' || Array.isArray(overrides)) overrides = {}
+
+    var contrib = {}
+    mcq.forEach(function (q, i) {
+      var pts = (typeof q.points === 'number' && q.points > 0) ? q.points : 1
+      var opts = Array.isArray(q.options) ? q.options : []
+      var correctIdx = typeof q.correct === 'number' ? q.correct : 0
+      if (correctIdx < 0 || correctIdx >= opts.length) correctIdx = 0
+      var studentAnswer = lookupAnswer(answers, i)
+      contrib[String(mcqOrigIdx[i])] = (studentAnswer !== undefined && studentAnswer !== null && Number(studentAnswer) === correctIdx) ? pts : 0
+    })
+    graded.forEach(function (g, gi) {
+      var fullIdx = writingOrigIdx[gi]
+      if (fullIdx === undefined) return
+      contrib[String(fullIdx)] = (g.awardedPoints || 0)
+    })
+    Object.keys(overrides).forEach(function (k) {
+      var ov = overrides[k]
+      var q = null
+      for (var zi = 0; zi < rawQ.length; zi++) { if (String(zi) === String(k)) { q = rawQ[zi]; break } }
+      if (!q) return
+      var pts = (typeof q.points === 'number' && q.points > 0) ? q.points : ((q.type === 'writing' || q.type === 'essay') ? 5 : 1)
+      contrib[String(k)] = ov === true ? pts : 0
+    })
+
+    var finalScore = 0
+    Object.keys(contrib).forEach(function (k) { finalScore += contrib[k] || 0 })
     if (maxScore === 0) maxScore = res.maxScore || 1
 
     await db.$executeRawUnsafe(

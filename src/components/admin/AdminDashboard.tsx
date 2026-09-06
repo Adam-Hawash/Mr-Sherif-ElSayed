@@ -2,7 +2,7 @@
 
 import { useAppStore, GRADES, type Student, type Video, type Homework, type Exam, type Announcement, type ExamResult, type GalleryImage, type Stats } from '@/stores/app-store'
 import { chunkedUpload } from '@/lib/chunked-upload'
-import { QuestionsEditorDialog, EditQuestionsButton, RegradeButton } from '@/components/admin/QuestionsEditor'
+import { QuestionsEditorDialog, EditQuestionsButton, RegradeButton, OverrideButton } from '@/components/admin/QuestionsEditor'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -2021,21 +2021,32 @@ function MyStudentsPanel({ onViewImage }: { onViewImage?: (src: string) => void 
                                 <div key={qi} className="text-[10px] p-1.5 rounded border" dir="ltr">
                                   <div className="flex items-start gap-1.5">
                                     <span className={`shrink-0 font-bold px-1.5 py-0.5 rounded-full text-[9px] ${
-                                      aq.type === 'writing'
-                                        ? (aq.needsGrading
-                                            ? 'bg-gray-500/10 text-gray-600'
-                                            : (aq.isGraded
-                                                ? (aq.aiIsCorrect ? 'bg-emerald-500/10 text-emerald-600' : 'bg-red-500/10 text-red-600')
-                                                : (aq.aiIsCorrect ? 'bg-emerald-500/10 text-emerald-600' : 'bg-red-500/10 text-red-600')))
-                                        : aq.isCorrect
-                                          ? 'bg-emerald-500/10 text-emerald-600'
-                                          : 'bg-red-500/10 text-red-600'
+                                      aq.overridden
+                                        ? 'bg-purple-500/10 text-purple-600'
+                                        : aq.type === 'writing'
+                                          ? (aq.needsGrading
+                                              ? 'bg-gray-500/10 text-gray-600'
+                                              : (aq.aiIsCorrect ? 'bg-emerald-500/10 text-emerald-600' : 'bg-red-500/10 text-red-600'))
+                                          : aq.isCorrect
+                                            ? 'bg-emerald-500/10 text-emerald-600'
+                                            : 'bg-red-500/10 text-red-600'
                                     }`}>
-                                      {aq.type === 'writing'
-                                        ? (aq.needsGrading
-                                            ? 'يحتاج تصحيح يدوي'
-                                            : (aq.aiIsCorrect === true ? 'AI: صح' : 'AI: غلط'))
-                                        : aq.isCorrect ? 'Correct' : 'Wrong'}
+                                      {aq.overridden
+                                        ? (aq.isCorrect ? 'صح (يدوي ✓)' : 'غلط (يدوي ✗)')
+                                        : aq.type === 'writing'
+                                          ? (aq.needsGrading
+                                              ? 'يحتاج تصحيح يدوي'
+                                              : (aq.aiIsCorrect === true ? 'AI: صح' : 'AI: غلط'))
+                                          : aq.isCorrect ? 'Correct' : 'Wrong'}
+                                    </span>
+                                    <span onClick={function (e) { e.stopPropagation() }} className="shrink-0">
+                                      <OverrideButton
+                                        kind="exam"
+                                        resultId={er.id}
+                                        qIndex={typeof aq.origIdx === 'number' ? aq.origIdx : qi}
+                                        isCorrect={!!aq.isCorrect}
+                                        onDone={function () { if (selectedStudent && selectedStudent.id) loadDetail(selectedStudent.id) }}
+                                      />
                                     </span>
                                     <p className="font-medium flex-1" style={{ textAlign: 'left' }}>{qi + 1}. <FractionText text={aq.question} /></p>
                                   </div>
@@ -2142,21 +2153,32 @@ function MyStudentsPanel({ onViewImage }: { onViewImage?: (src: string) => void 
                                 <div key={qi} className="text-[10px] p-1.5 rounded border" dir="ltr">
                                   <div className="flex items-start gap-1.5">
                                     <span className={`shrink-0 font-bold px-1.5 py-0.5 rounded-full text-[9px] ${
-                                      aq.type === 'writing'
-                                        ? (aq.needsGrading
-                                            ? 'bg-gray-500/10 text-gray-600'
-                                            : (aq.isGraded
-                                                ? (aq.aiIsCorrect ? 'bg-emerald-500/10 text-emerald-600' : 'bg-red-500/10 text-red-600')
-                                                : (aq.aiIsCorrect ? 'bg-emerald-500/10 text-emerald-600' : 'bg-red-500/10 text-red-600')))
-                                        : aq.isCorrect
-                                          ? 'bg-emerald-500/10 text-emerald-600'
-                                          : 'bg-red-500/10 text-red-600'
+                                      aq.overridden
+                                        ? 'bg-purple-500/10 text-purple-600'
+                                        : aq.type === 'writing'
+                                          ? (aq.needsGrading
+                                              ? 'bg-gray-500/10 text-gray-600'
+                                              : (aq.aiIsCorrect ? 'bg-emerald-500/10 text-emerald-600' : 'bg-red-500/10 text-red-600'))
+                                          : aq.isCorrect
+                                            ? 'bg-emerald-500/10 text-emerald-600'
+                                            : 'bg-red-500/10 text-red-600'
                                     }`}>
-                                      {aq.type === 'writing'
-                                        ? (aq.needsGrading
-                                            ? 'يحتاج تصحيح يدوي'
-                                            : (aq.aiIsCorrect === true ? 'AI: صح' : 'AI: غلط'))
-                                        : aq.isCorrect ? 'Correct' : 'Wrong'}
+                                      {aq.overridden
+                                        ? (aq.isCorrect ? 'صح (يدوي ✓)' : 'غلط (يدوي ✗)')
+                                        : aq.type === 'writing'
+                                          ? (aq.needsGrading
+                                              ? 'يحتاج تصحيح يدوي'
+                                              : (aq.aiIsCorrect === true ? 'AI: صح' : 'AI: غلط'))
+                                          : aq.isCorrect ? 'Correct' : 'Wrong'}
+                                    </span>
+                                    <span onClick={function (e) { e.stopPropagation() }} className="shrink-0">
+                                      <OverrideButton
+                                        kind="homework"
+                                        resultId={hr.id}
+                                        qIndex={typeof aq.origIdx === 'number' ? aq.origIdx : qi}
+                                        isCorrect={!!aq.isCorrect}
+                                        onDone={function () { if (selectedStudent && selectedStudent.id) loadDetail(selectedStudent.id) }}
+                                      />
                                     </span>
                                     <p className="font-medium flex-1" style={{ textAlign: 'left' }}>{qi + 1}. <FractionText text={aq.question} /></p>
                                   </div>
