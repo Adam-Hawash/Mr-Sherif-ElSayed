@@ -292,6 +292,27 @@ export async function gradeWritingSmart(writingAnswers: WritingAnswer[]): Promis
 }
 
 /*
+ * gradeFallbackDecisive — public wrapper around the last-resort deterministic
+ * grader. Used by /api/homework/submit whenever the AI call fails, so a
+ * submission NEVER sits on "manual" status: there is always a definite
+ * grade (final-answer equivalence → full, similarity → half, else 0).
+ * The teacher can still override any verdict from the admin panel.
+ */
+export function gradeFallbackDecisive(wa: WritingAnswer): GradedAnswer {
+  var slot: GradedAnswer = {
+    question: wa.question,
+    answer: wa.answer || '',
+    modelAnswer: wa.modelAnswer || '',
+    awardedPoints: 0,
+    maxPoints: wa.points || 1,
+    isCorrect: false,
+    feedback: '',
+    gradingStatus: 'graded',
+  }
+  return heuristicFallback(slot, wa)
+}
+
+/*
  * heuristicFallback — last-resort deterministic grading (no AI).
  * Compares the normalized FINAL segments (and overall text similarity) of the
  * student answer vs the model answer. Guarantees a definite grade so the

@@ -18,7 +18,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, Plus, Trash2, Save, Eye, EyeOff } from 'lucide-react'
+import { Loader2, Plus, Trash2, Save } from 'lucide-react'
 import { FractionText } from '@/components/FractionText'
 import { repairCorruptMath } from '@/lib/math-text'
 
@@ -72,13 +72,11 @@ interface Props {
 export function QuestionsEditorDialog({ open, onOpenChange, title, apiPath, itemId, initialQuestionsRaw, onSaved }: Props) {
   const initial = useMemo(() => parseQuestionsRaw(initialQuestionsRaw), [initialQuestionsRaw, open])
   const [questions, setQuestions] = useState<EditableQuestion[]>(initial)
-  const [previewIdx, setPreviewIdx] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
 
   useEffect(function () {
     if (open) {
       setQuestions(parseQuestionsRaw(initialQuestionsRaw))
-      setPreviewIdx(null)
     }
   }, [open, initialQuestionsRaw])
 
@@ -177,11 +175,6 @@ export function QuestionsEditorDialog({ open, onOpenChange, title, apiPath, item
                     <span className="text-xs font-semibold text-muted-foreground">سؤال {qi + 1}</span>
                   </div>
                   <div className="flex items-center gap-1">
-                    <Button type="button" size="icon" variant="ghost" className="h-7 w-7"
-                      title={previewIdx === qi ? 'إخفاء المعاينة' : 'معاينة زي ما الطالب يشوف'}
-                      onClick={function () { setPreviewIdx(previewIdx === qi ? null : qi) }}>
-                      {previewIdx === qi ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                    </Button>
                     <Button type="button" size="icon" variant="ghost" className="h-7 w-7 text-destructive"
                       title="حذف السؤال"
                       onClick={function () { removeQuestion(qi) }}>
@@ -198,8 +191,10 @@ export function QuestionsEditorDialog({ open, onOpenChange, title, apiPath, item
                   placeholder="نص السؤال… (يدعم الكسور \\frac{أ}{ب} والأسوس x^2)"
                 />
 
-                {previewIdx === qi && (
-                  <div className="rounded-md border bg-muted/30 p-2.5 text-sm" dir="ltr" style={{ textAlign: 'left' }}>
+                {/* المعاينة الحية — ظاهرة على طول (زي ما الطالب هيشوفها بالظبط) */}
+                {q.question.trim() && (
+                  <div className="rounded-md border border-primary/25 bg-primary/5 p-2.5 text-sm" dir="ltr" style={{ textAlign: 'left' }}>
+                    <p className="text-[9px] font-bold text-muted-foreground mb-1" dir="rtl" style={{ textAlign: 'right' }}>👁️ المعاينة (زي ما الطالب هيشوفها):</p>
                     <FractionText text={q.question} />
                     {!isWriting && q.options.some(function (o) { return o.trim() }) && (
                       <div className="mt-2 space-y-1">
@@ -207,7 +202,7 @@ export function QuestionsEditorDialog({ open, onOpenChange, title, apiPath, item
                           if (!o.trim()) return null
                           return (
                             <p key={oi} className={'text-xs ' + (oi === q.correct ? 'text-emerald-600 font-bold' : '')}>
-                              {String.fromCharCode(65 + oi)}. <FractionText text={o} />
+                              {String.fromCharCode(65 + oi)}. <FractionText text={o} /> {oi === q.correct ? '✓' : ''}
                             </p>
                           )
                         })}
@@ -272,6 +267,13 @@ export function QuestionsEditorDialog({ open, onOpenChange, title, apiPath, item
                     className="text-xs"
                     placeholder="خطوات الحل والإجابة النهائية… (الذكاء يقبل أي صيغة مساوية رياضياً)"
                   />
+                  {/* معاينة الإجابة النموذجية — منسّقة زي ما بتتعرض للطالب */}
+                  {q.modelAnswer.trim() && (
+                    <div className="rounded-md border border-emerald-500/25 bg-emerald-500/5 p-2" dir="ltr" style={{ textAlign: 'left' }}>
+                      <p className="text-[9px] font-bold text-muted-foreground mb-1" dir="rtl" style={{ textAlign: 'right' }}>👁️ معاينة الإجابة النموذجية:</p>
+                      <FractionText text={q.modelAnswer} />
+                    </div>
+                  )}
                 </div>
 
                 {isWriting && (

@@ -81,6 +81,8 @@ export function ProtectedYouTubePlayer({
   poster,
   videoId,
   studentId,
+  studentName,
+  studentPhone,
   onWatch,
   autoplay,
 }: {
@@ -88,6 +90,8 @@ export function ProtectedYouTubePlayer({
   poster?: string
   videoId?: string
   studentId?: string
+  studentName?: string
+  studentPhone?: string
   onWatch?: () => void
   autoplay?: boolean
 }) {
@@ -658,6 +662,10 @@ export function ProtectedYouTubePlayer({
           </div>
         </div>
       </div>
+
+      {/* ووترمارك الطالب — جوه عنصر الـ fullscreen نفسه عشان تفضل ظاهرة
+          في ملء الشاشة (دي كانت المشكلة: كانت بره الكونتينر فبتختفي) */}
+      <VideoWatermark name={studentName} phone={studentPhone} />
     </div>
   )
 }
@@ -720,11 +728,11 @@ export function ProtectedYouTubeModal({
           poster={poster}
           videoId={videoId}
           studentId={studentId}
+          studentName={studentName}
+          studentPhone={studentPhone}
           onWatch={onWatch}
           autoplay
         />
-        {/* ووترمارك الطالب — أي تسجيل للشاشة يطلع فيه اسمه ورقمه */}
-        <VideoWatermark name={studentName} phone={studentPhone} />
         {title && (
           <div className="absolute -bottom-8 left-0 right-0 text-center pointer-events-none">
             <p className="text-white/80 text-xs truncate px-4">{title}</p>

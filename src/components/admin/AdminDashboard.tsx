@@ -1301,6 +1301,22 @@ function ExamTrackingPanel({ onViewImage }: { onViewImage?: (src: string) => voi
                         <Input value={q.q} onChange={(e) => { const n = [...formQuestions]; n[qi] = { ...n[qi], q: e.target.value }; setFormQuestions(n) }} placeholder="نص السؤال" className="text-sm" />
                         <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-destructive" onClick={() => setFormQuestions(formQuestions.filter((_, i) => i !== qi))}><Trash2 className="h-3.5 w-3.5" /></Button>
                       </div>
+                      {/* المعاينة الحية — زي ما الطالب هيشوف بالظبط (كسور وأسوس مُنسّقة) */}
+                      {q.q.trim() && (
+                        <div className="mr-6 rounded-md border bg-background p-2">
+                          <p className="text-[9px] font-bold text-muted-foreground mb-1">👁️ المعاينة (زي ما الطالب هيشوفها):</p>
+                          <p className="text-sm" dir="ltr" style={{ textAlign: 'left' }}><FractionText text={q.q} /></p>
+                          {q.options.some((o) => o.trim()) && (
+                            <div className="mt-1.5 space-y-0.5">
+                              {q.options.map((o, oi2) => o.trim() ? (
+                                <p key={oi2} className={'text-xs ' + (q.correct === oi2 ? 'text-emerald-600 font-bold' : 'text-foreground/80')} dir="ltr" style={{ textAlign: 'left' }}>
+                                  {String.fromCharCode(65 + oi2)}. <FractionText text={o} /> {q.correct === oi2 ? '✓' : ''}
+                                </p>
+                              ) : null)}
+                            </div>
+                          )}
+                        </div>
+                      )}
                       {q.options.map((opt, oi) => (
                         <div key={oi} className="flex items-center gap-2 mr-6">
                           <button type="button" className={`w-5 h-5 rounded-full border-2 flex items-center justify-center text-[10px] transition-colors ${q.correct === oi ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/30'}`}
@@ -2644,6 +2660,22 @@ function ContentManager<T extends { id: string; grade: string; createdAt: string
                         <Button type="button" size="sm" variant="ghost" className="h-6 w-6 p-0 text-destructive" onClick={function() { setMcqQuestions(mcqQuestions.filter(function(_, i) { return i !== qi })) }}><X className="h-3 w-3" /></Button>
                       </div>
                       <Input placeholder="اكتب السؤال هنا..." value={q.question} onChange={function(e) { var updated = [...mcqQuestions]; updated[qi] = { ...updated[qi], question: e.target.value }; setMcqQuestions(updated) }} className="text-sm" />
+                      {/* المعاينة الحية — زي ما الطالب هيشوف بالظبط (كسور وأسوس مُنسّقة) */}
+                      {q.question.trim() && (
+                        <div className="rounded-md border bg-muted/30 p-2">
+                          <p className="text-[9px] font-bold text-muted-foreground mb-1">👁️ المعاينة (زي ما الطالب هيشوفها):</p>
+                          <p className="text-sm" dir="ltr" style={{ textAlign: 'left' }}><FractionText text={q.question} /></p>
+                          {q.options.some(function(o) { return o.trim() }) && (
+                            <div className="mt-1.5 space-y-0.5">
+                              {q.options.map(function(o, oi2) { return o.trim() ? (
+                                <p key={oi2} className={'text-xs ' + (q.correct === oi2 ? 'text-emerald-600 font-bold' : 'text-foreground/80')} dir="ltr" style={{ textAlign: 'left' }}>
+                                  {String.fromCharCode(65 + oi2)}. <FractionText text={o} /> {q.correct === oi2 ? '✓' : ''}
+                                </p>
+                              ) : null })}
+                            </div>
+                          )}
+                        </div>
+                      )}
                       <div className="grid grid-cols-2 gap-2">
                         {q.options.map(function(opt, oi) {
                           return (

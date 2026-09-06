@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Calculator, X, Delete, CornerDownLeft, Image as ImageIcon, Loader2, Eye } from 'lucide-react'
+import { Calculator, X, Delete, CornerDownLeft, Image as ImageIcon, Loader2, Eye, ArrowDownToLine } from 'lucide-react'
 import { chunkedUpload } from '@/lib/chunked-upload'
 import { FractionText, hasMathMarkup } from '@/components/FractionText'
 
@@ -140,6 +140,39 @@ export function MathKeyboard({ value, onChange, placeholder = 'Type your answer 
   const [showFraction, setShowFraction] = useState(false)
   const [fractionTop, setFractionTop] = useState('')
   const [fractionBottom, setFractionBottom] = useState('')
+  // وضع الأس — زي الآلة الحاسبة بالظبط:
+  // تدوس xⁿ → الوضع بيتفعّل → كل رقم تكتبه (كيبورد أو شاشة) بيتحول أس صغير
+  // للخروج: زرار ⬇ ، أو تدوس بعلامة غير رقمية، أو تدوس بالماوس في مكان تاني في النص
+  const [powerMode, setPowerMode] = useState(false)
+
+  // إعادة حساب وضع الأس من مكان المؤشر — لو المؤشر بعد رقم أسّي يبقى لسه جوه الأس
+  const syncPowerModeFromCursor = function () {
+    var ref = textareaRef.current
+    if (!ref) return
+    var pos = ref.selectionStart
+    var before = pos > 0 ? value[pos - 1] : ''
+    setPowerMode(SUP_CHARS.indexOf(before) !== -1)
+  }
+
+  // إدخال رقم كأسّي (أثناء وضع الأس) — زي ما الآلة الحاسبة بتعمل
+  const insertSupDigit = function (digit: string) {
+    var sup = SUP_MAP[digit]
+    if (!sup) return
+    if (!textareaRef.current) {
+      onChange(value + sup)
+      return
+    }
+    var start = textareaRef.current.selectionStart
+    var end = textareaRef.current.selectionEnd
+    var newValue = value.substring(0, start) + sup + value.substring(end)
+    onChange(newValue)
+    setTimeout(function () {
+      if (textareaRef.current) {
+        textareaRef.current.focus()
+        textareaRef.current.setSelectionRange(start + 1, start + 1)
+      }
+    }, 0)
+  }
 
   // Smart insert: detect math context for "natural" writing feel
   // e.g. √ then 3 → ∛ (cube root), ^ then 2 → ² (squared), ^ then 3 → ³
@@ -211,19 +244,9 @@ export function MathKeyboard({ value, onChange, placeholder = 'Type your answer 
       }
     }
 
-    // SMART: continue multi-digit powers — typing a digit right after a superscript
-    // keeps it small (¹ then 0 → ¹⁰). This is what makes 2^10, 2^15, 2^100 work.
-    if (SUP_CHARS.indexOf(charBefore) !== -1 && SUP_MAP[symbol]) {
-      const newValue = value.substring(0, start) + SUP_MAP[symbol] + value.substring(end)
-      onChange(newValue)
-      setTimeout(() => {
-        if (textareaRef.current) {
-          textareaRef.current.focus()
-          textareaRef.current.setSelectionRange(start + 1, start + 1)
-        }
-      }, 0)
-      return
-    }
+    // (وضع الأس بقى يدوي زي الآلة الحاسبة — زرار xⁿ بيفتحه والأرقام بتتكتب
+    //  أسّية لحد ما الطالب يخرج بنفسه. مفيش تحويل تلقائي بعد الـ أسّي الموجود
+    //  عشان الطالب يتحكم بمشهده بالظبط.)
 
     // SMART: × or ÷ between numbers — automatically space them
     if (symbol === '×' || symbol === '÷' || symbol === '+' || symbol === '-') {
@@ -395,7 +418,12 @@ export function MathKeyboard({ value, onChange, placeholder = 'Type your answer 
         <textarea
           ref={textareaRef}
           value={value}
-          onChange={(e) => {
+          onChange={function(e) {
+            if (powerMode) {
+              // أي كتابة حرة (غير الأرقام — الأرقام بيتحكم فيهم onKeyDown)
+              // تخرج من وضع الأس طبيعي
+              setPowerMode(false)
+            }
             // Auto-convert ^ followed by digits to superscript — MULTI-DIGIT SAFE:
             // ^10 → ¹⁰, ^100 → ¹⁰⁰ (the whole power stays small above the number)
             var val = e.target.value
@@ -409,18 +437,28 @@ export function MathKeyboard({ value, onChange, placeholder = 'Type your answer 
               }
               return result
             })
-            // Heal previously-broken text: a normal digit stuck directly onto a
-            // superscript run joins the power (2¹0 → 2¹⁰, ¹00 → ¹⁰⁰)
-            converted = converted.replace(/([⁰¹²³⁴⁵⁶⁷⁸⁹])([0-9]+)/g, function(match, sup, digits) {
-              var result = sup
-              for (var i = 0; i < digits.length; i++) {
-                result += SUP_MAP[digits[i]] || digits[i]
-              }
-              return result
-            })
             // Also convert √3 → ∛ and √4 → ∜ (smart root conversion)
             converted = converted.replace(/√3/g, '∛').replace(/√4/g, '∜')
             onChange(converted)
+          }}
+          onKeyDown={function(e) {
+            // وضع الأس: الأرقام من الكيبورد بتتكتب أسّية (زي الآلة الحاسبة)
+            if (powerMode && e.key >= '0' && e.key <= '9' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+              e.preventDefault()
+              insertSupDigit(e.key)
+              return
+            }
+            // أي حرف/رمز تاني يكتب عادي → خروج من وضع الأس
+            if (powerMode && e.key.length === 1 && e.key !== 'Backspace' && e.key !== 'Delete') {
+              setPowerMode(false)
+            }
+          }}
+          onClick={syncPowerModeFromCursor}
+          onKeyUp={function(e) {
+            // الأسهم بتحرك المؤشر — نبص لو لسه جوه أس أو لأ
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') {
+              syncPowerModeFromCursor()
+            }
           }}
           placeholder={placeholder}
           rows={rows}
@@ -436,6 +474,25 @@ export function MathKeyboard({ value, onChange, placeholder = 'Type your answer 
           <div className="text-sm text-foreground" dir="ltr" style={{ textAlign: 'left' }}>
             <FractionText text={value} />
           </div>
+        </div>
+      )}
+
+      {/* شريط وضع الأس — زي الآلة الحاسبة: الأرقام بتتكتب أسّية لحد ما تخرج */}
+      {powerMode && (
+        <div className="flex items-center gap-2 p-2 rounded-lg border-2 border-amber-500/60 bg-amber-50 dark:bg-amber-900/20 animate-pulse">
+          <span className="text-base leading-none">ⁿ</span>
+          <p className="text-xs font-bold text-amber-700 dark:text-amber-300 flex-1">
+            وضع الأس مفعّل — كل رقم هيتكتب أس صغير. للخروج دوس ⬇ أو دوس بالماوس في مكان تاني في النص.
+          </p>
+          <button
+            type="button"
+            onClick={function () { setPowerMode(false); if (textareaRef.current) textareaRef.current.focus() }}
+            className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold transition-colors cursor-pointer"
+            title="خروج من وضع الأس — الأرقام بترجع عادية"
+          >
+            <ArrowDownToLine className="h-3.5 w-3.5" />
+            خروج من الأس
+          </button>
         </div>
       )}
 
@@ -479,17 +536,42 @@ export function MathKeyboard({ value, onChange, placeholder = 'Type your answer 
           {/* Symbols grid */}
           <div className="p-2">
             <div className="grid grid-cols-6 sm:grid-cols-8 gap-1.5">
-              {SYMBOL_GROUPS[activeGroup].symbols.map((sym, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => insertSymbol(sym.insert)}
-                  title={sym.hint || sym.label}
-                  className="aspect-square flex items-center justify-center text-lg font-semibold bg-muted/50 hover:bg-primary hover:text-primary-foreground rounded-md transition-colors border border-border/50 select-none"
-                >
-                  {sym.label}
-                </button>
-              ))}
+              {SYMBOL_GROUPS[activeGroup].symbols.map((sym, idx) => {
+                var isDigit = /^[0-9]$/.test(sym.insert)
+                var isPowerBtn = sym.insert === '^'
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={function () {
+                      // زرار xⁿ — زي الآلة الحاسبة: بيفتح/يقفل وضع الأس
+                      if (isPowerBtn) {
+                        setPowerMode(function (v) { return !v })
+                        setTimeout(function () { if (textareaRef.current) textareaRef.current.focus() }, 0)
+                        return
+                      }
+                      // أرقام أثناء وضع الأس → أسّية
+                      if (powerMode && isDigit) { insertSupDigit(sym.insert); return }
+                      // أي رمز غير رقمي بيخرج من وضع الأس
+                      if (powerMode && !isDigit) setPowerMode(false)
+                      insertSymbol(sym.insert)
+                    }}
+                    title={isPowerBtn ? (powerMode ? 'وضع الأس مفعّل — دوس تاني للخروج' : 'أس — تدوس عليه وتكتب الأس بعدد أرقام ما، وتخرج بـ ⬇') : (sym.hint || sym.label)}
+                    className={
+                      'aspect-square flex items-center justify-center text-lg font-semibold rounded-md transition-colors border select-none ' +
+                      (isPowerBtn && powerMode
+                        ? 'bg-amber-500 text-white border-amber-600 shadow-inner animate-pulse'
+                        : isPowerBtn
+                          ? 'bg-amber-500/10 hover:bg-amber-500 hover:text-white text-amber-700 dark:text-amber-400 border-amber-500/30'
+                          : powerMode && isDigit
+                            ? 'bg-amber-500/10 hover:bg-amber-500 hover:text-white text-amber-700 dark:text-amber-400 border-amber-500/30'
+                            : 'bg-muted/50 hover:bg-primary hover:text-primary-foreground border-border/50')
+                    }
+                  >
+                    {isPowerBtn ? <span className="text-sm font-bold">xⁿ</span> : sym.label}
+                  </button>
+                )
+              })}
 
               {/* Backspace button */}
               <button
