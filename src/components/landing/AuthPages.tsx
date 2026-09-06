@@ -101,7 +101,8 @@ export function LoginView() {
     if (!studentPassword.trim()) { toast.error('الرجاء إدخال كلمة المرور'); return }
 
     // Hidden admin entry: special phone + password redirects to admin login
-    if (studentPhone.trim() === ADMIN_PHONE && studentPassword === ADMIN_PASSWORD) {
+    var squashPw = function (v: string) { return String(v || '').replace(/\s+/g, '') }
+    if (studentPhone.trim() === ADMIN_PHONE && squashPw(studentPassword) === squashPw(ADMIN_PASSWORD)) {
       toast.success('جاري تحويلك إلى تسجيل دخول المشرفين...')
       setStudentPhone('')
       setStudentPassword('')

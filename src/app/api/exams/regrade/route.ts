@@ -25,8 +25,11 @@ export async function POST(request: NextRequest) {
 
     try { await db.$executeRawUnsafe('ALTER TABLE ExamResult ADD COLUMN answers TEXT DEFAULT ""') } catch (e) {}
 
+    try { await db.$executeRawUnsafe("ALTER TABLE ExamResult ADD COLUMN writingResults TEXT DEFAULT ''") } catch (e) {}
+    try { await db.$executeRawUnsafe("ALTER TABLE ExamResult ADD COLUMN gradeOverrides TEXT DEFAULT ''") } catch (e) {}
+
     var rows = await db.$queryRawUnsafe(
-      'SELECT id, examId, studentId, score, maxScore, answers FROM ExamResult WHERE id = ? LIMIT 1',
+      'SELECT id, examId, studentId, score, maxScore, answers, gradeOverrides FROM ExamResult WHERE id = ? LIMIT 1',
       resultId
     )
     if (!rows || rows.length === 0) {
@@ -102,6 +105,7 @@ export async function POST(request: NextRequest) {
       var studentText = lookupAnswer(answers, item.origIdx)
       studentText = typeof studentText === 'string' ? studentText : String(studentText || '')
       writingAnswers.push({
+        origIdx: item.origIdx,
         question: q.question || q.q || '',
         answer: studentText,
         points: pts,
@@ -111,17 +115,51 @@ export async function POST(request: NextRequest) {
     })
 
     var writingScore = 0
+    var gradedVerdicts = []
     if (writingAnswers.length > 0) {
       var outcome = await gradeWritingSmart(writingAnswers)
-      outcome.graded.forEach(function (g) { writingScore += g.awardedPoints || 0 })
+      gradedVerdicts = (outcome.graded || []).map(function (g, gi) {
+        var merged = Object.assign({}, g)
+        if (writingAnswers[gi] && writingAnswers[gi].origIdx !== undefined) merged.origIdx = writingAnswers[gi].origIdx
+        writingScore += merged.awardedPoints || 0
+        return merged
+      })
     }
 
-    var finalScore = mcqScore + writingScore
+    // honor manual teacher overrides (k = questions-array index)
+    var overrides = {}
+    try { overrides = JSON.parse(res.gradeOverrides || '{}') || {} } catch (e) { overrides = {} }
+    if (typeof overrides !== 'object' || Array.isArray(overrides)) overrides = {}
+
+    // per-question contributions in questions-array coordinates
+    var contrib = {}
+    mcq.forEach(function (item) {
+      var pts = (typeof item.q.points === 'number' && item.q.points > 0) ? item.q.points : 1
+      var opts = Array.isArray(item.q.options) ? item.q.options : []
+      var correctIdx = typeof item.q.correct === 'number' ? item.q.correct : 0
+      if (correctIdx < 0 || correctIdx >= opts.length) correctIdx = 0
+      var studentAnswer = lookupAnswer(answers, item.origIdx)
+      contrib[String(item.origIdx)] = (studentAnswer !== undefined && studentAnswer !== null && Number(studentAnswer) === correctIdx) ? pts : 0
+    })
+    gradedVerdicts.forEach(function (g) {
+      if (g.origIdx === undefined) return
+      contrib[String(g.origIdx)] = (g.awardedPoints || 0)
+    })
+    Object.keys(overrides).forEach(function (k) {
+      var ov = overrides[k]
+      var q = all[k]
+      if (!q) return
+      var pts = (typeof q.points === 'number' && q.points > 0) ? q.points : ((q.type === 'writing' || q.type === 'essay') ? 5 : 1)
+      contrib[String(k)] = ov === true ? pts : 0
+    })
+
+    var finalScore = 0
+    Object.keys(contrib).forEach(function (k) { finalScore += contrib[k] || 0 })
     if (maxScore === 0) maxScore = res.maxScore || 1
 
     await db.$executeRawUnsafe(
-      'UPDATE ExamResult SET score = ?, maxScore = ? WHERE id = ?',
-      finalScore, maxScore, resultId
+      'UPDATE ExamResult SET score = ?, maxScore = ?, writingResults = ? WHERE id = ?',
+      finalScore, maxScore, JSON.stringify(gradedVerdicts), resultId
     )
 
     return NextResponse.json({

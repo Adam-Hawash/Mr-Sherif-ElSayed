@@ -336,6 +336,56 @@ export function EditQuestionsButton({ onClick, label }: { onClick: () => void; l
  * Re-grades writing answers with the smart grader + re-scores MCQ against the
  * CURRENT questions, then calls onDone() so the parent reloads fresh numbers.
  */
+export function OverrideButton({ kind, resultId, qIndex, isCorrect, onDone }: {
+  kind: 'homework' | 'exam'
+  resultId: string
+  qIndex: number
+  isCorrect: boolean
+  onDone?: () => void
+}) {
+  const [busy, setBusy] = useState(false)
+
+  const flip = async function () {
+    if (busy) return
+    setBusy(true)
+    try {
+      var res = await fetch('/api/grading/override', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: kind, resultId: resultId, qIndex: qIndex, isCorrect: !isCorrect }),
+      })
+      var d: any = {}
+      try { d = await res.json() } catch (e) {}
+      if (res.ok && d.success) {
+        toast.success('حالة السؤال بقت: ' + (!isCorrect ? 'صح ✓' : 'غلط ✗') + ' — الدرجة: ' + d.score + ' / ' + d.maxScore, { duration: 5000 })
+        if (onDone) onDone()
+      } else {
+        toast.error(d.error || 'فشل تغيير الحالة — جرب تاني', { duration: 8000 })
+      }
+    } catch (err: any) {
+      toast.error('خطأ في الاتصال: ' + (err.message || ''), { duration: 8000 })
+    }
+    setBusy(false)
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={flip}
+      disabled={busy}
+      title="غيّر حالة السؤال ده يدوياً (صح ↔ غلط) — درجة الطالب بتتحدث فوراً وكلمة المستر هي اللي بتتحسب"
+      className={
+        'shrink-0 inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[9px] font-bold border transition-colors disabled:opacity-50 ' +
+        (isCorrect
+          ? 'border-red-400/60 text-red-600 hover:bg-red-500/10 dark:text-red-400'
+          : 'border-emerald-400/60 text-emerald-600 hover:bg-emerald-500/10 dark:text-emerald-400')
+      }
+    >
+      {busy ? '…' : !isCorrect ? '✔ خلّيه صح' : '✖ خلّيه غلط'}
+    </button>
+  )
+}
+
 export function RegradeButton({ kind, resultId, onDone }: { kind: 'homework' | 'exam'; resultId: string; onDone?: () => void }) {
   const [busy, setBusy] = useState(false)
 
