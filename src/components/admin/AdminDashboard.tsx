@@ -17,7 +17,7 @@ import {
   BarChart3, RefreshCw, Settings, Upload, MessageSquare,
   Link2, Activity, Eye, ImagePlus, Trophy, UserX, Camera,
   PlayCircle, Pause, Film, Search, FileDown, PictureInPicture2, Save, Sparkles, Wallet,
-  ChevronLeft, CheckCircle2
+  ChevronLeft, CheckCircle2, Smartphone, RotateCcw, ShieldCheck
 } from 'lucide-react'
 import { CMSPanel } from './CMSPanel'
 import { FractionText, hasMathMarkup } from '@/components/FractionText'
@@ -414,6 +414,21 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
     catch { toast.error('خطأ في حذف الطالب') }
   }
 
+  // ===== ربط الجهاز: تحكم المستر =====
+  const handleDeviceAction = async (id: string, action: 'allowAll' | 'bindOnly', currentValue: { allowAllDevices?: boolean; deviceId?: string }) => {
+    try {
+      var body: any = {}
+      if (action === 'allowAll') body.allowAllDevices = !(currentValue.allowAllDevices === true)
+      else body.resetDevice = true
+      const res = await fetch(`/api/students/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      if (!res.ok) throw new Error()
+      toast.success(action === 'allowAll'
+        ? (body.allowAllDevices ? 'تم السماح بالدخول من كل الأجهزة ✅' : 'تم قفل الحساب على جهازه الأصلي 🔒')
+        : 'تم فك ربط الجهاز — أول جهاز يسجل دخول بعد كده هيبقى هو جهاز الحساب')
+      loadStudents(false)
+    } catch { toast.error('خطأ في تحديث إعدادات الجهاز') }
+  }
+
   const statusColors: Record<string, string> = { pending: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400', approved: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400', paid: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400', rejected: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400', refused: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' }
   const statusLabels: Record<string, string> = { pending: 'قيد المراجعة', approved: 'مقبول (مجاني)', paid: 'بفلوس', rejected: 'مرفوض', refused: 'مرفوض' }
 
@@ -528,6 +543,13 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-semibold text-sm">{s.name}</span>
                     <Badge variant="secondary" className={`text-[10px] ${statusColors[s.status]}`}>{statusLabels[s.status]}</Badge>
+                    {(s as any).allowAllDevices === true ? (
+                      <Badge className="text-[9px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 flex items-center gap-0.5"><ShieldCheck className="h-2.5 w-2.5" />سماح كل الأجهزة</Badge>
+                    ) : (s as any).deviceId ? (
+                      <Badge variant="outline" className="text-[9px] border-primary/40 text-primary flex items-center gap-0.5"><Smartphone className="h-2.5 w-2.5" />مربوط بجهازه</Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-[9px] text-muted-foreground">هيتربط بأول جهاز يدخل بيه</Badge>
+                    )}
                     {s.loginCount > 0 && <span className="text-[10px] text-muted-foreground flex items-center gap-0.5"><Eye className="h-3 w-3" />{s.loginCount} دخول</span>}
                     {(s as any).watchedVideoCount > 0 && <span className="text-[10px] text-purple-600 dark:text-purple-400 flex items-center gap-0.5"><Video className="h-3 w-3" />{(s as any).watchedVideoCount} فيديو</span>}
                   </div>
@@ -540,6 +562,10 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <Button size="icon" variant="ghost" className="h-8 w-8 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20" onClick={() => loadStudentProgress(s.id)} title="تفاصيل"><BarChart3 className="h-4 w-4" /></Button>
+                  <Button size="icon" variant="ghost" className={(s as any).allowAllDevices === true ? 'h-8 w-8 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20' : 'h-8 w-8 text-muted-foreground hover:bg-muted'} onClick={() => handleDeviceAction(s.id, 'allowAll', { allowAllDevices: (s as any).allowAllDevices })} title={(s as any).allowAllDevices === true ? 'إلغاء السماح — رجّع الحساب على جهازه الأصلي بس' : 'سماح الطالب يدخل من كل الأجهزة'}><Smartphone className={'h-4 w-4 ' + ((s as any).allowAllDevices === true ? 'text-emerald-600' : '')} /></Button>
+                  {(s as any).deviceId && (s as any).allowAllDevices !== true && (
+                    <Button size="icon" variant="ghost" className="h-8 w-8 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20" onClick={() => handleDeviceAction(s.id, 'bindOnly', {})} title="فك ربط الجهاز — الطالب يقدر يسجل من جهاز جديد وهيتربط بيه"><RotateCcw className="h-4 w-4" /></Button>
+                  )}
                   {s.status === 'pending' && (<>
                     <Button size="icon" variant="ghost" className="h-8 w-8 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20" onClick={() => handleAction(s.id, 'approved')} title="مقبول - مجاني"><Check className="h-4 w-4" /></Button>
                     <Button size="icon" variant="ghost" className="h-8 w-8 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20" onClick={() => handleAction(s.id, 'paid')} title="بفلوس"><span className="text-sm font-bold">$</span></Button>
@@ -573,6 +599,7 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
 
 /* ========== VIDEO MANAGER (with REAL XHR upload progress) ========== */
 function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
+  const currentAdminId = useAppStore(function (s) { return s.currentAdmin?.id || '' })
   const [videos, setVideos] = useState<Video[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -602,6 +629,7 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
     if (showLoader) setLoading(true)
     try {
       const params = new URLSearchParams({ pageSize: '100' })
+      if (currentAdminId) params.set('adminId', currentAdminId)
       if (filterGrade) params.set('grade', filterGrade)
       const res = await fetch(`/api/videos?${params}`)
       if (!res.ok) {
@@ -654,6 +682,7 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
       if (videoPath) { body.filePath = videoPath; body.fileType = videoType }
       if (thumbnailPath) { body.thumbnail = thumbnailPath }
       else if (formThumbnailUrl.trim()) { body.thumbnail = formThumbnailUrl.trim() }
+      body.adminId = currentAdminId
 
       const res = await fetch('/api/videos', {
         method: 'POST',
@@ -682,7 +711,7 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
 
   const handleDelete = async (id: string) => {
     try {
-      await fetch(`/api/videos/${id}`, { method: 'DELETE' })
+      await fetch(`/api/videos/${id}?adminId=${encodeURIComponent(currentAdminId)}`, { method: 'DELETE' })
       toast.success('تم حذف الفيديو')
       loadVideos(false)
       onStatsRefresh()

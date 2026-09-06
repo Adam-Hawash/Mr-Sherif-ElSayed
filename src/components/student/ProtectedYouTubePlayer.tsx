@@ -35,6 +35,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { Maximize, Minimize, X, Settings, Check } from 'lucide-react'
+import { VideoWatermark } from '@/components/student/VideoWatermark'
 
 /* ---------- YouTube IFrame API loader (cached) ---------- */
 var ytApiPromise: Promise<any> | null = null
@@ -670,6 +671,8 @@ export function ProtectedYouTubeModal({
   poster,
   videoId,
   studentId,
+  studentName,
+  studentPhone,
   onWatch,
   onClose,
 }: {
@@ -678,6 +681,8 @@ export function ProtectedYouTubeModal({
   poster?: string
   videoId?: string
   studentId?: string
+  studentName?: string
+  studentPhone?: string
   onWatch?: () => void
   onClose: () => void
 }) {
@@ -718,6 +723,8 @@ export function ProtectedYouTubeModal({
           onWatch={onWatch}
           autoplay
         />
+        {/* ووترمارك الطالب — أي تسجيل للشاشة يطلع فيه اسمه ورقمه */}
+        <VideoWatermark name={studentName} phone={studentPhone} />
         {title && (
           <div className="absolute -bottom-8 left-0 right-0 text-center pointer-events-none">
             <p className="text-white/80 text-xs truncate px-4">{title}</p>

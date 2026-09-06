@@ -52,6 +52,13 @@ export async function PUT(
     if (grade) updateData.grade = grade
     if (status) updateData.status = status
     if (typeof isPaidAccess === 'boolean') updateData.isPaidAccess = isPaidAccess
+    // ===== ربط الجهاز: تحكم المستر =====
+    // allowAllDevices: سماح الطالب يدخل من أي جهاز (بدون ربط)
+    if (typeof body.allowAllDevices === 'boolean') updateData.allowAllDevices = body.allowAllDevices
+    // resetDevice: فك الربط — أول جهاز يسجل دخول بعد كده بيبقى هو جهاز الحساب الجديد
+    if (body.resetDevice === true) updateData.deviceId = ''
+    // bindDevice: ربط الحساب بجهاز الطالب الحالي (لو المستر عايز يرجّع الربط يدوي)
+    if (typeof body.bindDevice === 'string' && body.bindDevice) updateData.deviceId = body.bindDevice
 
     const student = await db.student.update({
       where: { id },

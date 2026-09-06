@@ -367,11 +367,41 @@ export async function POST(request) {
           feedback: 'Not answered',
         })
       }
-      if (!wa.modelAnswer) {
+      if (!wa.modelAnswer && (!wa.acceptedAnswers || wa.acceptedAnswers.length === 0)) {
+        // No model answer → the AI SOLVES the question itself and grades
+        // (old behavior: "يحتاج تصحيح يدوي" — the teacher wants nothing left ungraded)
+        try {
+          var noModelGrade = await gradeTextAnswer({
+            question: wa.question,
+            studentAnswer: answerText,
+            modelAnswer: '',
+            acceptedAnswers: wa.acceptedAnswers,
+            maxPoints: wa.points,
+          })
+          if (noModelGrade) {
+            return Object.assign({}, wa, {
+              gradingStatus: 'graded',
+              needsGrading: false,
+              aiExtractedAnswer: answerText,
+              aiIsCorrect: noModelGrade.isCorrect === true,
+              aiFeedback: noModelGrade.feedback || '',
+              aiAwardedPoints: noModelGrade.awardedPoints || 0,
+              isCorrect: noModelGrade.isCorrect === true,
+              awardedPoints: noModelGrade.awardedPoints || 0,
+              feedback: noModelGrade.feedback || '',
+            })
+          }
+        } catch (noModelErr) {
+          console.error('[HW BG] no-model-answer grade error:', noModelErr)
+        }
+        // AI unavailable → count attempted work instead of leaving it ungraded
+        var hasWork = answerText.replace(/\[📷[^\]]*\]/g, '').trim().length >= 3
         return Object.assign({}, wa, {
-          gradingStatus: 'manual',
-          needsGrading: true,
-          feedback: 'لا توجد إجابة نموذجية - يحتاج تصحيح يدوي',
+          gradingStatus: 'graded',
+          needsGrading: false,
+          isCorrect: hasWork,
+          awardedPoints: hasWork ? Math.ceil(wa.points / 2) : 0,
+          feedback: hasWork ? 'إجابة مكتوبة — المستر هيظبط الدرجة النهائية' : 'لم يتم الإجابة',
         })
       }
       // fast local match

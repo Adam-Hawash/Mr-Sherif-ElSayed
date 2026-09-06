@@ -1,5 +1,23 @@
+// ============================================================
+// /api/videos — قوائم الفيديوهات
+// ============================================================
+// حماية اللينكات:
+//  - الأدمن (adminId صالح) → بيشوف كل البيانات بما فيها url/filePath
+//  - أي حد تاني → url و filePath بيترجعوا فاضيين + thumb عن طريق
+//    بروكسي /api/video-thumb/[id] (معرف اليوتيوب مش بيظهر)
+//  - الزوار غير المسجلين بيشوفوا الفيديوهات المجانية بس
+// عمليات الكتابة (POST) للأدمن بس.
+// ============================================================
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { isAdmin, getStudentAnyStatus, safeThumb, getYouTubeId, mediaIdFromPath } from '@/lib/video-guard'
+
+export const dynamic = 'force-dynamic'
+
+function stripVideo(v: { id: string; thumbnail: string; url: string; filePath: string; [k: string]: unknown }) {
+  const kind = getYouTubeId(v.url || '') ? 'youtube' : mediaIdFromPath(v.filePath || '') ? 'file' : v.url ? 'link' : 'none'
+  return { ...v, url: '', filePath: '', kind, thumb: safeThumb(v) }
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -8,6 +26,11 @@ export async function GET(request: NextRequest) {
     const keyword = searchParams.get('keyword')
     const page = parseInt(searchParams.get('page') || '1')
     const pageSize = parseInt(searchParams.get('pageSize') || '20')
+    const adminId = searchParams.get('adminId')
+    const studentId = searchParams.get('studentId')
+
+    const admin = await isAdmin(adminId)
+    const student = admin ? null : await getStudentAnyStatus(studentId)
 
     const where: Record<string, unknown> = {}
     if (grade) where.grade = grade
@@ -16,6 +39,8 @@ export async function GET(request: NextRequest) {
         { title: { contains: keyword } },
       ]
     }
+    // زائر بدون حساب → الفيديوهات المجانية بس (ومن غير أي لينكات)
+    if (!admin && !student) where.price = 0
 
     const [videos, total] = await Promise.all([
       db.video.findMany({
@@ -27,8 +52,10 @@ export async function GET(request: NextRequest) {
       db.video.count({ where }),
     ])
 
+    const safeVideos = admin ? videos : videos.map(stripVideo)
+
     return NextResponse.json({
-      videos,
+      videos: safeVideos,
       total,
       page,
       pageSize,
@@ -43,7 +70,12 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { title, url, grade, filePath, fileType, thumbnail, price } = body
+    const { title, url, grade, filePath, fileType, thumbnail, price, adminId } = body
+
+    // الكتابة للأدمن بس
+    if (!(await isAdmin(adminId))) {
+      return NextResponse.json({ error: 'غير مسموح' }, { status: 401 })
+    }
 
     if (!title || !grade) {
       return NextResponse.json({ error: 'Title and grade are required' }, { status: 400 })
