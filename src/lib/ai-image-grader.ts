@@ -21,15 +21,22 @@ import { callGemini as callGeminiCentral, hasGeminiKey } from '@/lib/gemini'
 import { repairModelJson, repairCorruptMath } from '@/lib/math-text'
 
 // Grading calls: low thinking = much faster, output is small structured JSON.
+// One automatic retry — a transient failure should NEVER leave a submission
+// stuck on "needs manual correction" (teacher request: AI finishes the job).
 async function callGrader(parts: any[]): Promise<{ ok: boolean; text?: string; error?: string }> {
-  var result = await callGeminiCentral({
-    parts: parts,
-    generationConfig: { temperature: 0.1, maxOutputTokens: 2048 },
-    timeoutMs: 25000,
-    thinking: 'low',
-  })
-  if (result.ok) return { ok: true, text: result.text }
-  return { ok: false, error: result.error || 'unknown' }
+  var lastErr = ''
+  for (var attempt = 0; attempt < 2; attempt++) {
+    var result = await callGeminiCentral({
+      parts: parts,
+      generationConfig: { temperature: 0.1, maxOutputTokens: 2048 },
+      timeoutMs: 35000,
+      thinking: 'low',
+    })
+    if (result.ok) return { ok: true, text: result.text }
+    lastErr = result.error || 'unknown'
+    if (attempt === 0) await new Promise(function (r) { setTimeout(r, 1200) })
+  }
+  return { ok: false, error: lastErr }
 }
 
 function parseAIJson(text: string): any | null {
@@ -234,11 +241,11 @@ export async function gradeImageAnswer(params: {
   prompt += 'Follow these steps EXACTLY:\n'
   prompt += 'STEP 1 — Look at the photo. Identify the STUDENT\'S OWN work: handwriting/typing produced by the student (solution steps, calculations, a final answer).\n'
   prompt += 'STEP 2 — IGNORE all pre-printed content: the question text itself, choice lists like (A) B) C) D)), headers, logos, other questions on the page. The student did not write those, and they are NOT their answer.\n'
-  prompt += 'STEP 3 — TOPIC CHECK (onTopic): does the photo actually contain the student\'s OWN solution attempt to THIS exact question? If it only shows the printed question, or a different question, or nothing readable → onTopic=false.\n'
-  prompt += 'STEP 4 — If onTopic: extract the student\'s FINAL answer (the last result — usually after the last "=", or the last written expression/number).\n'
-  prompt += 'STEP 5 — Compare the student\'s final answer with the model final answer and accepted answers. Equivalent forms are CORRECT: 1024 = 2^10, 0.5 = 1/2, n=5 = n = 5, x^4y^3 = y^3x^4, a^6b^5 = a^5b^6 (no!). Only TRUE mathematical equivalence counts.\n'
-  prompt += 'STEP 6 — A correct final answer with wrong/missing steps is still CORRECT (we grade the final answer). A different final answer is WRONG even if the steps look nice.\n'
-  prompt += 'STEP 7 — Be fair but strict. If you cannot read a clear final answer from the student\'s own work → isCorrect=false and confidence="low". Never guess and never give benefit of the doubt.\n\n'
+  prompt += 'STEP 3 — TOPIC CHECK (onTopic): does the photo actually contain the student\'s OWN solution attempt to THIS exact question? If it only shows the printed question, or a different question, or nothing at all → onTopic=false.\n'
+  prompt += 'STEP 4 — Find the student\'s FINAL ANSWER. It is usually the LAST thing they wrote: after the last "=", or a boxed/circled/underlined value, or after the word ANSWER. Read it UNDERSTANDING the math — messy handwriting, crossed-out attempts and unreadable middle steps DO NOT matter. Only the final answer matters.\n'
+  prompt += 'STEP 5 — Compare the student\'s final answer VALUE with the model final answer and accepted answers. You are comparing MATHEMATICAL VALUES, not strings. All of these are the SAME answer: 2^7 = 128, 1/2 = 0.5 = ½, n=6 = n = 6 = 6, x^4y^3 = y^3x^4, √50 = 5√2, 2^{n+2} = 2^n·4. Simplify BOTH sides mentally before deciding.\n'
+  prompt += 'STEP 6 — A correct final answer with wrong/missing/unreadable steps is still CORRECT (full points). A genuinely DIFFERENT final value is WRONG even if the steps look nice. Never mark an answer wrong just because the handwriting is hard to read or the steps are messy — judge the final value.\n'
+  prompt += 'STEP 7 — ALWAYS give a definite verdict (isCorrect true or false). Only say onTopic=false when the photo truly contains NO student work at all.\n\n'
   prompt += 'awardedPoints: an integer from 0 to ' + maxPoints + ' (' + maxPoints + ' only when isCorrect=true).\n\n'
   prompt += 'Respond with ONLY this JSON — no markdown, no extra text:\n'
   prompt += '{"onTopic": true, "extractedAnswer": "the student\'s own work, max 3 short lines", "finalAnswer": "only the final answer", "isCorrect": true, "awardedPoints": ' + maxPoints + ', "confidence": "high", "feedback": "تعليق قصير بالعامية المصرية"}\n'
@@ -270,7 +277,9 @@ export async function gradeImageAnswer(params: {
   var feedback = String(parsed.feedback || '').trim()
   var needsGrading = false
 
-  // ---- GUARD 1: photo is not actually the student's solution to THIS question
+  // ---- GUARD 1: photo is not actually the student's solution to THIS question.
+  // Decisive verdict (0 points + clear feedback) instead of stalling on manual
+  // review — the teacher can override from the admin panel if needed.
   if (!onTopic) {
     return {
       extractedAnswer: extractedAnswer,
@@ -278,24 +287,25 @@ export async function gradeImageAnswer(params: {
       isCorrect: false,
       awardedPoints: 0,
       maxPoints: maxPoints,
-      feedback: feedback || 'الصورة مفيهاش حل واضح للسؤال ده — هتتراجع من الأستاذ',
+      feedback: feedback || 'الصورة مفيهاش حل واضح للسؤال ده — لو ده حل الطالب صحّحه من الأدمن',
       onTopic: false,
       confidence: confidence,
-      needsGrading: true,
+      needsGrading: false,
     }
   }
 
   // ---- GUARD 2: the "extracted answer" is basically the QUESTION text
-  // (the model read the printed question instead of the student's work —
-  //  the exact bug from the user's screenshot). Never auto-grade that.
-  if (question && extractedAnswer && wordSimilarity(extractedAnswer, question) >= 0.8) {
+  // (the model read the printed question instead of the student's work).
+  // Only a problem when there is NO final answer to grade — with a real
+  // finalAnswer we grade by it and never stall the submission.
+  if (question && extractedAnswer && !finalAns && wordSimilarity(extractedAnswer, question) >= 0.8) {
     return {
       extractedAnswer: extractedAnswer,
       finalAnswer: finalAns,
       isCorrect: false,
       awardedPoints: 0,
       maxPoints: maxPoints,
-      feedback: 'اللي اتقري من الصورة شبه نص السؤال مش حل الطالب — هتتراجع من الأستاذ',
+      feedback: 'مفيش إجابة نهائية واضحة في الصورة — راجعها من الأدمن لو الطالب حصل حل',
       onTopic: true,
       confidence: 'low',
       needsGrading: true,
@@ -324,8 +334,11 @@ export async function gradeImageAnswer(params: {
   // AI said wrong → 0 points, period
   if (!isCorrect) awardedPoints = 0
 
-  // ---- GUARD 4: low confidence → send to admin review instead of a random verdict
-  if (confidence === 'low') needsGrading = true
+  // ---- GUARD 4: low confidence NEVER blocks the result anymore — the AI
+  // verdict stands and the teacher can still flip it from the admin panel.
+  if (confidence === 'low' && !feedback) {
+    feedback = isCorrect ? 'إجابة صحيحة (بثقة منخفضة — راجعها لو شكيت)' : 'إجابة مختلفة عن الصحيحة (بثقة منخفضة)'
+  }
 
   // display text: work + final answer
   var displayExtracted = extractedAnswer
@@ -464,6 +477,7 @@ export async function gradeTextAnswer(params: {
     maxPoints: maxPoints,
     feedback: String(parsed.feedback || '').trim() || (isCorrect ? 'إجابة صحيحة' : 'إجابة مختلفة عن الإجابة الصحيحة'),
     confidence: confidence,
-    needsGrading: confidence === 'low',
+    // Decisive: low confidence never blocks — teacher can override in admin
+    needsGrading: false,
   }
 }

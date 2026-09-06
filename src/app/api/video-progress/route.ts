@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
-// GET /api/video-progress?studentId=xxx - Get all progress for a student
+// GET /api/video-progress?studentId=xxx [&videoId=yyy]
+// - with videoId → returns just that video's row (player resume)
+// - without     → all rows for the student (list percentages)
 export async function GET(request: NextRequest) {
   try {
     const studentId = request.nextUrl.searchParams.get('studentId')
     if (!studentId) return NextResponse.json({ error: 'studentId required' }, { status: 400 })
 
+    const videoId = request.nextUrl.searchParams.get('videoId')
     const progress = await db.videoProgress.findMany({
-      where: { studentId },
+      where: videoId ? { studentId, videoId } : { studentId },
       orderBy: { lastWatchedAt: 'desc' },
     })
 
@@ -19,7 +22,11 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/video-progress - Save/update video progress
+// POST /api/video-progress — save/update video progress.
+// CUMULATIVE: the stored watchedSeconds is the MAX ever reached, so re-opening
+// a video (or re-watching the beginning) can NEVER pull the percentage back.
+// Watched 95% then closed → next session still starts from 95% and can only
+// grow until the video reaches 100%.
 export async function POST(request: NextRequest) {
   try {
     const { studentId, videoId, watchedSeconds, totalSeconds } = await request.json()
@@ -29,8 +36,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Cap watchedSeconds to never exceed totalSeconds
-    var safeTotal = Math.max(totalSeconds, 0)
-    var safeWatched = Math.max(watchedSeconds, 0)
+    var safeTotal = Math.max(Number(totalSeconds) || 0, 0)
+    var safeWatched = Math.max(Number(watchedSeconds) || 0, 0)
     if (safeTotal > 0 && safeWatched > safeTotal) {
       safeWatched = safeTotal
     }
@@ -40,21 +47,34 @@ export async function POST(request: NextRequest) {
       if (safeWatched > safeTotal) safeWatched = safeTotal
     }
 
-    const completed = safeTotal > 0 && (safeWatched / safeTotal) >= 0.9
+    // ---- CUMULATIVE MERGE: never regress ----
+    var existing: any = null
+    try {
+      existing = await db.videoProgress.findUnique({
+        where: { studentId_videoId: { studentId, videoId } },
+      })
+    } catch (e) {
+      existing = null
+    }
+
+    var finalTotal = Math.max(existing?.totalSeconds || 0, safeTotal)
+    var finalWatched = Math.max(existing?.watchedSeconds || 0, safeWatched)
+    if (finalTotal > 0 && finalWatched > finalTotal) finalWatched = finalTotal
+    const completed = finalTotal > 0 && (finalWatched / finalTotal) >= 0.9
 
     const progress = await db.videoProgress.upsert({
       where: { studentId_videoId: { studentId, videoId } },
       update: {
-        watchedSeconds: safeWatched,
-        totalSeconds: safeTotal,
+        watchedSeconds: finalWatched,
+        totalSeconds: finalTotal,
         completed,
         lastWatchedAt: new Date(),
       },
       create: {
         studentId,
         videoId,
-        watchedSeconds: safeWatched,
-        totalSeconds: safeTotal,
+        watchedSeconds: finalWatched,
+        totalSeconds: finalTotal,
         completed,
       },
     })
