@@ -18,9 +18,10 @@ var DEFAULTS = {
   hero_stat2_label: 'درس فيديو',
   hero_stat3_value: '24/7',
   hero_stat3_label: 'متابعة مستمرة',
-  hero_developer_url: 'https://hero-developer-portfolio-11.vercel.app',
+  hero_developer_url: 'https://prime-developer-portfolio-11.vercel.app',
   hero_developer_label: 'Hero Developer',
   footer_made_by_label: 'Made by Adam Hawash',
+  prime_developer_url: 'https://prime-developer-portfolio-11.vercel.app',
 
   // === Schedule Page ===
   schedule_title: 'مواعيد السنتر',
@@ -32,6 +33,7 @@ var DEFAULTS = {
 
   // === Instructor ===
   instructor_name: 'مستر شريف السيد',
+  instructor_name_en: 'MR. Sherif ElSayed',
   instructor_title: 'مدرس رياضيات | Math Teacher',
   instructor_photo: '',
 

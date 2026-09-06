@@ -65,11 +65,53 @@ function parseAIJson(text: string): any | null {
   if (!text || !text.trim()) return null
   var jsonMatch = text.match(/\{[\s\S]*\}/)
   if (!jsonMatch) return null
+  var raw = jsonMatch[0]
+  // 1) direct parse
   try {
-    return JSON.parse(jsonMatch[0])
-  } catch (e) {
-    return null
+    return JSON.parse(raw)
+  } catch (e) {}
+  // 2) trailing-garbage tolerance (model sometimes closes the root object
+  //    then appends extra fields like ,{"answerKey":""} — walk back over
+  //    earlier '}' positions until a prefix parses)
+  var attempts = 0
+  for (var i = raw.length - 1; i > 0 && attempts < 200; i--) {
+    if (raw.charAt(i) === '}') {
+      attempts++
+      try {
+        return JSON.parse(raw.substring(0, i + 1))
+      } catch (e) {}
+    }
   }
+  // 3) truncation repair: append missing closing brackets/quotes
+  var stack: string[] = []
+  var inStr = false
+  var esc = false
+  for (var j = 0; j < raw.length; j++) {
+    var ch = raw.charAt(j)
+    if (inStr) {
+      if (esc) esc = false
+      else if (ch === '\\') esc = true
+      else if (ch === '"') inStr = false
+    } else {
+      if (ch === '"') inStr = true
+      else if (ch === '{') stack.push('}')
+      else if (ch === '[') stack.push(']')
+      else if (ch === '}' || ch === ']') {
+        if (stack.length) stack.pop()
+      }
+    }
+  }
+  if (stack.length > 0 && stack.length <= 8) {
+    var repaired = raw
+    if (inStr || esc) repaired += '"'
+    while (stack.length) {
+      repaired += stack.pop()
+    }
+    try {
+      return JSON.parse(repaired)
+    } catch (e) {}
+  }
+  return null
 }
 
 // Merge questions from questions-doc with answers from answers-doc
@@ -331,7 +373,7 @@ function buildSingleFilePrompt(grade: string, type: string): string {
   lines.push('- Match each question with its correct answer/solution')
   lines.push('- Grade: ' + grade + ' | Type: ' + type)
   lines.push('')
-  lines.push('JSON only:')
+  lines.push('Return ONE single valid JSON object — no text before or after, no markdown fences; all fields including answerKey must be INSIDE the same object:')
   lines.push('{"title":"...","content":"...","questions":[{"type":"mcq","question":"...","options":["A","B","C","D"],"correct":0,"points":1,"modelAnswer":"step by step solution"},{"type":"writing","question":"...","options":[],"correct":-1,"points":5,"modelAnswer":"full step by step solution","acceptedAnswers":["5","x=5"]}],"answerKey":""}')
   return lines.join('\n')
 }
@@ -377,7 +419,7 @@ function buildQuestionsOnlyPrompt(grade: string, type: string): string {
   lines.push('- Preserve the order of questions as they appear in the document')
   lines.push('- Grade: ' + grade + ' | Type: ' + type)
   lines.push('')
-  lines.push('JSON only:')
+  lines.push('Return ONE single valid JSON object — no text before or after, no markdown fences, no fields outside the object:')
   lines.push('{"title":"...","content":"...","questions":[{"type":"mcq","question":"...","options":["A","B","C","D"],"correct":0,"points":1,"modelAnswer":""},{"type":"writing","question":"...","options":[],"correct":-1,"points":5,"modelAnswer":"","acceptedAnswers":[]}]}')
   return lines.join('\n')
 }
@@ -416,7 +458,7 @@ function buildAnswersOnlyPrompt(grade: string, type: string, questions: any[]): 
   lines.push('- The "answers" array MUST have the same length and order as the questions above')
   lines.push('- Each answer object MUST have an "index" field matching the question number (0-based)')
   lines.push('')
-  lines.push('JSON only:')
+  lines.push('Return ONE single valid JSON object — no text before or after, no markdown fences, no fields outside the object:')
   lines.push('{"answers":[{"index":0,"correct":0,"modelAnswer":"step by step"},{"index":1,"modelAnswer":"full solution","acceptedAnswers":["5","x=5"]}]}')
   return lines.join('\n')
 }
