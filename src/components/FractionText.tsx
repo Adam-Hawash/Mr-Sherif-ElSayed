@@ -109,6 +109,7 @@ var MATH_FUNCS = /^(?:sin|cos|tan|cot|sec|csc|log|ln|lg|lim|exp|max|min|gcd|lcm|
 function isMathSymbol(c: string): boolean {
   if (c === undefined || c === '') return false
   if (/[0-9]/.test(c)) return true
+  if (/[\u0660-\u0669\u06F0-\u06F9]/.test(c)) return true /* Arabic-Indic digits are numbers */
   if ('+-*/=()[]{}^_.|~<>?!,:;\'"'.indexOf(c) > -1) return true
   if ('×÷·±√π°∞∠∆θ≤≥≠≈∈∉⊂⊆∪∩→←↔↑↓'.indexOf(c) > -1) return true
   if ('⁰¹²³⁴⁵⁶⁷⁸⁹⁻ⁿⁱ½⅓¼¾'.indexOf(c) > -1) return true
@@ -160,10 +161,10 @@ function readArgAt(src: string, idx: number): number {
   if (idx >= src.length) return -1
   if (src[idx] === '{') return readGroupAt(src, idx)
   if (src[idx] === '(') return readParenAt(src, idx)
-  var m = /^\d+(?:\.\d+)?/.exec(src.slice(idx))
+  var m = /^[\d\u0660-\u0669\u06F0-\u06F9]+(?:\.[\d\u0660-\u0669\u06F0-\u06F9]+)?/.exec(src.slice(idx))
   if (m) return idx + m[0].length
   if (src[idx] === '-' || src[idx] === '+') {
-    var m2 = /^\d+(?:\.\d+)?/.exec(src.slice(idx + 1))
+    var m2 = /^[\d\u0660-\u0669\u06F0-\u06F9]+(?:\.[\d\u0660-\u0669\u06F0-\u06F9]+)?/.exec(src.slice(idx + 1))
     if (m2) return idx + 1 + m2[0].length
     return idx + 1
   }
@@ -204,8 +205,9 @@ function absorbMathTail(src: string, i: number): number {
     if (j >= n) return i /* spaces at end → not part of math */
     var c = src[j]
 
-    /* hard stops */
-    if (c === '\n' || c === '$' || isArabicChar(c)) return i
+    /* hard stops (Arabic-Indic DIGITS are numbers, not letters — keep them) */
+    if (c === '\n' || c === '$') return i
+    if (isArabicChar(c) && !/[\u0660-\u0669\u06F0-\u06F9]/.test(c)) return i
 
     if (c === '\\') {
       var isCmd = /^[a-zA-Z]+/.test(src.slice(j + 1))
@@ -266,7 +268,7 @@ function toSuperscript(s: string): string | null {
 
 /* trailing lone operators at the end of a run belong back in the text */
 function trimTrailingOps(v: string): { v: string; cut: string } {
-  var m = /[+\-*/=×÷·±<>≤≥≠≈]+[\s]*$/.exec(v)
+  var m = /[+\-*/=×÷·±<>≤≥≠≈\^_]+[\s]*$/.exec(v)
   if (m && m.index > 0) return { v: v.slice(0, m.index), cut: v.slice(m.index) }
   return { v: v, cut: '' }
 }
@@ -360,8 +362,9 @@ function segmentMath(src: string): Seg[] {
       continue
     }
 
-    /* bare math run starting at ^ or _ (extend backwards over the base atom) */
-    if ((c === '^' || c === '_') && i + 1 < n && src[i + 1] !== ' ') {
+    /* bare math run starting at ^ or _ (extend backwards over the base atom;
+       spaces around the operator are allowed — ٥ ^ ٢ renders like ٥²) */
+    if (c === '^' || c === '_') {
       var start = i
       /* back over one atom: {group} | (group) | digit-run | single char */
       var prev = i - 1
@@ -390,18 +393,76 @@ function segmentMath(src: string): Seg[] {
       } else if (prev >= 0 && (isLatinLetter(src[prev]) || '×÷·±√π°∞'.indexOf(src[prev]) > -1)) {
         start = prev
       }
-      var argEnd = readArgAt(src, i + 1)
+      /* skip spaces after the operator before reading its argument */
+      var argStart = i + 1
+      while (argStart < n && src[argStart] === ' ') argStart++
+      var argEnd = argStart < n ? readArgAt(src, argStart) : -1
       var prevIsBase = start < i
-      if (argEnd > i && !prevIsBase) {
-        /* bare ^ with no math base (Arabic/space/start) — degrade to
+      if (argEnd > argStart && !prevIsBase) {
+        var argSrc = src.slice(argStart, argEnd)
+        /* Arabic base (letter or Arabic-Indic digit) right before the ^ —
+           e.g. ٢^٨ or س^2: pop that base char from the text buffer and emit
+           a REAL math run so the exponent renders SMALL AND ABOVE as <sup>
+           (never a full-size digit sitting beside the number) */
+        var prevCh = i > 0 ? src[i - 1] : ''
+        var isArabicBase = !!prevCh && (isArabicChar(prevCh) || /[\u0660-\u0669\u06F0-\u06F9]/.test(prevCh))
+        /* allow spaces between the base and the ^ (٨ ^٢ / 8 ^2 / x ^ 2) */
+        if (!isArabicBase) {
+          var back = i - 1
+          while (back >= 0 && src[back] === ' ') back--
+          var bch = back >= 0 ? src[back] : ''
+          if (bch && (isArabicChar(bch) || /[\u0660-\u0669\u06F0-\u06F9]/.test(bch) || /[0-9]/.test(bch) || isLatinLetter(bch))) {
+            prevCh = bch
+            var popLen = i - back /* base char + any spaces before ^ */
+            var popped = textBuf.slice(textBuf.length - popLen)
+            textBuf = textBuf.slice(0, textBuf.length - popLen)
+            flushText()
+            segs.push({ t: 'math', v: prevCh + c + '{' + argSrc + '}' })
+            textBuf = popped.replace(/[^ ]/g, '')
+            i = argEnd
+            continue
+          }
+        }
+        if (isArabicBase) {
+          /* absorb the FULL math tail after the exponent (close-parens, +, =,
+             further powers…) so patterns like (٣^٢)^٢ stay in ONE math run —
+             otherwise the second ^ fragments and duplicates the group */
+          var runStartA = i - 1 /* the Arabic base char */
+          var popLenA = 1
+          /* include an adjacent '(' wrapper into the same run */
+          if (i >= 2 && src[i - 2] === '(' && textBuf.charAt(textBuf.length - 2) === '(') {
+            runStartA = i - 2
+            popLenA = 2
+          }
+          var runEndA = absorbMathTail(src, argEnd)
+          textBuf = textBuf.slice(0, textBuf.length - popLenA)
+          flushText()
+          var mvA = src.slice(runStartA, runEndA)
+          var tA = trimTrailingOps(mvA)
+          if (tA.cut) {
+            segs.push({ t: 'math', v: tA.v })
+            textBuf = tA.cut
+            flushText()
+          } else {
+            segs.push({ t: 'math', v: mvA })
+          }
+          i = runEndA
+          continue
+        }
+        /* bare ^ with no math base at all (space/start) — degrade to
            Unicode superscript or plain text, never a stray '^' glyph */
-        var argSrc = src.slice(i + 1, argEnd)
         if (argSrc[0] !== '(' && argSrc[0] !== '{') {
           var sup = toSuperscript(argSrc)
           textBuf += sup !== null ? sup : argSrc
           i = argEnd
           continue
         }
+        /* braced arg with no base (e.g. text starts with ^{2}) → math run */
+        flushText()
+        var bracedInner = argSrc[0] === '{' || argSrc[0] === '(' ? argSrc.slice(1, -1) : argSrc
+        segs.push({ t: 'math', v: c + '{' + bracedInner + '}' })
+        i = argEnd
+        continue
       }
       if (argEnd > i && prevIsBase) {
         var runEnd = absorbMathTail(src, argEnd)
@@ -436,6 +497,13 @@ function segmentMath(src: string): Seg[] {
         i = runEnd
         continue
       }
+
+      /* dangling ^ or _ with no argument after it (end of text) → drop the
+         operator entirely — a raw caret must NEVER leak into the question */
+      if (argStart >= n || argEnd <= argStart) {
+        i += 1
+        continue
+      }
     }
 
     textBuf += c
@@ -455,7 +523,7 @@ function readGroupContent(src: string, idx: number): [string, number] {
   var opener = src[idx]
   if (opener !== '{' && opener !== '(') {
     /* single token: signed number | letters | single char */
-    var mNum = /^[+\-]?\d+(?:\.\d+)?/.exec(src.slice(idx))
+    var mNum = /^[+\-]?[\d\u0660-\u0669\u06F0-\u06F9]+(?:\.[\d\u0660-\u0669\u06F0-\u06F9]+)?/.exec(src.slice(idx))
     if (mNum) return [mNum[0], idx + mNum[0].length]
     var mLet = /^[a-zA-Z]+/.exec(src.slice(idx))
     if (mLet) return [mLet[0], idx + mLet[0].length]

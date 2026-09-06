@@ -46,8 +46,8 @@ export function repairCorruptMath(input: string): string {
     s = s.replace(/\\(?:d|t)?frac\s*\{([^{}]*)\}\s*\^\s*\{([^{}]*)\}/g, '\\frac{$1}{$2}')
     s = s.replace(/\\(?:d|t)?frac\s*\(([^()]*)\)\s*\^\s*\{([^{}]*)\}/g, '\\frac{$1}{$2}')
   }
-  // chained exponents  a^b^c  →  a^{b^{c}}  (repeat to catch triples)
-  var SUP_ATOM = '(\\{(?:[^{}]|\\{[^{}]*\\})*\\}|[A-Za-z0-9]+)'
+  // chained exponents  a^b^c  →  a^{b^{c}}  (repeat to catch triples; ASCII + Arabic-Indic digits)
+  var SUP_ATOM = '(\\{(?:[^{}]|\\{[^{}]*\\})*\\}|[A-Za-z0-9\\u0660-\\u0669\\u06F0-\\u06F9]+)'
   for (var q = 0; q < 3; q++) {
     var chainRe = new RegExp('\\^\\s*' + SUP_ATOM + '\\s*\\^\\s*' + SUP_ATOM, 'g')
     s = s.replace(chainRe, function (_m, a: string, b: string) {

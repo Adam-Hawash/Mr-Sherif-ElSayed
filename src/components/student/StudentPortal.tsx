@@ -1369,7 +1369,7 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                         var pts = (typeof q.points === 'number' && q.points > 0) ? q.points : 1
                         return (
                           <div key={'mcq-' + di} className="space-y-2 rounded-lg p-2" dir="ltr">
-                            <p className="font-medium text-sm whitespace-pre-wrap break-words" style={{ textAlign: 'left' }}>{di + 1}. <FractionText text={q.question || q.q} /> <span className="text-muted-foreground text-xs">({pts} {pts === 1 ? 'pt' : 'pts'})</span></p>
+                            <p className="font-medium text-sm whitespace-pre-wrap break-words" style={{ textAlign: 'left' }}>{di + 1}. <FractionText text={q.question || q.q} /> <span className="text-muted-foreground text-xs">({pts} {pts === 1 ? 'درجة' : 'درجات'})</span></p>
                             <div className="space-y-1.5">
                               {(q.options || []).map(function(opt: string, oi: number) {
                                 var isSelected = myAnswers[di] === oi
@@ -1405,8 +1405,8 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                           <div key={'writing-' + wi} className="space-y-2 rounded-lg p-2 border border-amber-500/20 bg-amber-50 dark:bg-amber-900/10" dir="ltr">
                             <p className="font-medium text-sm whitespace-pre-wrap break-words" style={{ textAlign: 'left' }}>
                               {hasMCQ ? displayMcq.length + wi + 1 : wi + 1}. <FractionText text={q.question || q.q} />
-                              <span className="text-muted-foreground text-xs ml-2">({pts} pts)</span>
-                              <Badge variant="outline" className="text-[9px] ml-2 border-amber-500/40 text-amber-600">Writing</Badge>
+                              <span className="text-muted-foreground text-xs ml-2">({pts} درجات)</span>
+                              <Badge variant="outline" className="text-[9px] ml-2 border-amber-500/40 text-amber-600">مقالي</Badge>
                             </p>
                             <div dir="ltr">
                               <MathKeyboard
@@ -1631,13 +1631,13 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
       <div className="space-y-4" dir="ltr">
         <div className="flex items-center justify-between">
           <h3 className="font-bold">{exam.title}</h3>
-          <Button variant="outline" size="sm" onClick={() => { setTakingExam(null); setAnswers({}); setWritingAnswers({}); setExamQuestions([]); setExamShuffleMap([]) }}>Back</Button>
+          <Button variant="outline" size="sm" onClick={() => { setTakingExam(null); setAnswers({}); setWritingAnswers({}); setExamQuestions([]); setExamShuffleMap([]) }}>رجوع</Button>
         </div>
         
         {/* MCQ Section */}
         {mcqQs.length > 0 && (
           <div className="space-y-3">
-            {writingQs.length > 0 && <p className="text-xs font-semibold text-blue-600 dark:text-blue-400">Multiple Choice:</p>}
+            {writingQs.length > 0 && <p className="text-xs font-semibold text-blue-600 dark:text-blue-400">الأسئلة الاختيارية:</p>}
             {mcqQs.map(function(item, mi) {
               var q = item.q
               var displayIdx = item.displayIdx
@@ -1646,7 +1646,7 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
               return (
                 <Card key={'mcq-' + mi}>
                   <CardContent className="p-4 space-y-3">
-                    <p className="font-medium text-sm" style={{ textAlign: 'left' }}>{mi + 1}. {qText} <span className="text-muted-foreground text-xs">({pts} {pts === 1 ? 'pt' : 'pts'})</span></p>
+                    <p className="font-medium text-sm" style={{ textAlign: 'left' }}>{mi + 1}. <FractionText text={qText} /> <span className="text-muted-foreground text-xs">({pts} {pts === 1 ? 'درجة' : 'درجات'})</span></p>
                     <div className="space-y-2">
                       {(q.options || []).map((opt: string, oi: number) => (
                         <button
@@ -1671,7 +1671,7 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
         {/* Writing Section */}
         {writingQs.length > 0 && (
           <div className="space-y-3">
-            {mcqQs.length > 0 && <div className="border-t pt-3"><p className="text-xs font-semibold text-amber-600 dark:text-amber-400">Written Questions:</p></div>}
+            {mcqQs.length > 0 && <div className="border-t pt-3"><p className="text-xs font-semibold text-amber-600 dark:text-amber-400">الأسئلة المقالية:</p></div>}
             {writingQs.map(function(item, wi) {
               var q = item.q
               var displayIdx = item.displayIdx
@@ -1681,9 +1681,9 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
                 <Card key={'writing-' + wi} className="border-amber-500/20">
                   <CardContent className="p-4 space-y-3">
                     <p className="font-medium text-sm" style={{ textAlign: 'left' }}>
-                      {mcqQs.length > 0 ? mcqQs.length + wi + 1 : wi + 1}. {qText}
-                      <span className="text-muted-foreground text-xs ml-2">({pts} pts)</span>
-                      <Badge variant="outline" className="text-[9px] ml-2 border-amber-500/40 text-amber-600">Writing</Badge>
+                      {mcqQs.length > 0 ? mcqQs.length + wi + 1 : wi + 1}. <FractionText text={qText} />
+                      <span className="text-muted-foreground text-xs ml-2">({pts} درجات)</span>
+                      <Badge variant="outline" className="text-[9px] ml-2 border-amber-500/40 text-amber-600">مقالي</Badge>
                     </p>
                     <div dir="ltr">
                       <MathKeyboard
@@ -1691,7 +1691,7 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
                         onChange={function(val: string) {
                           setWritingAnswers(function(prev) { return { ...prev, [displayIdx]: val } })
                         }}
-                        placeholder="Write your answer here or upload an image..."
+                        placeholder="اكتب إجابتك هنا أو ارفع صورة..."
                         rows={4}
                       />
                     </div>
@@ -1757,7 +1757,7 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
             setSubmitting(false)
           }}
         >
-          {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : `Submit Exam (${Object.keys(answers).length + Object.keys(writingAnswers).length}/${examQuestions.length})`}
+          {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : `تسليم الامتحان (${Object.keys(answers).length + Object.keys(writingAnswers).length}/${examQuestions.length})`}
         </Button>
       </div>
     )
