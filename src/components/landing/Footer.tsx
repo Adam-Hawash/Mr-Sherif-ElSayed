@@ -3,7 +3,7 @@
 import { useAppStore } from '@/stores/app-store'
 import { GraduationCap, Heart } from 'lucide-react'
 
-const FALLBACK_PORTFOLIO_URL = 'https://hero-developer-portfolio-11.vercel.app'
+const FALLBACK_PORTFOLIO_URL = 'https://prime-developer-portfolio-11.vercel.app'
 
 function FacebookIcon({ className }: { className?: string }) {
   return (
@@ -51,6 +51,7 @@ export function Footer() {
 
   var cfg = siteConfig
   var portfolioUrl = cfg.hero_developer_url || FALLBACK_PORTFOLIO_URL
+  var primeUrl = cfg.prime_developer_url || FALLBACK_PORTFOLIO_URL
   var heroDevLabel = cfg.hero_developer_label || 'Hero Developer'
   var madeByLabel = cfg.footer_made_by_label || 'Made by Adam Hawash'
   var brandName = cfg.footer_brand || 'منصة مستر شريف السيد'
@@ -125,11 +126,27 @@ export function Footer() {
           </a>
         </div>
         
-        {/* Powered by Prime Developer */}
+        {/* Powered by Prime Developer + Made by Adam Hawash */}
         <div className="mt-6 pt-4 border-t border-border/40 text-center">
-          <p className="text-xs text-foreground">
-            Powered by{' '}
-            <span className="font-bold text-[#EA580C]">Prime Developer</span>
+          <p className="text-xs text-foreground flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1">
+            <span>Powered by</span>
+            <a
+              href={primeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-bold text-[#EA580C] hover:underline underline-offset-2 transition-colors"
+            >
+              Prime Developer
+            </a>
+            <span className="text-muted-foreground">•</span>
+            <a
+              href={portfolioUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-muted-foreground hover:text-primary hover:underline underline-offset-2 transition-colors"
+            >
+              {madeByLabel}
+            </a>
           </p>
         </div>
       </div>

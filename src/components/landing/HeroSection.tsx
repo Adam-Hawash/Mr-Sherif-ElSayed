@@ -164,13 +164,23 @@ export default function HeroSection() {
 
             {/* Hero Developer / Adam Hawash branding */}
             <div className="pt-3 flex flex-col items-center lg:items-start gap-1">
-              <span className="text-sm font-semibold text-white/55">
+              <a
+                href={cfg.hero_developer_url || 'https://prime-developer-portfolio-11.vercel.app'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm font-semibold text-white/55 hover:text-[#FB923C] transition-colors"
+              >
                 {cfg.hero_developer_label || 'Hero Developer'}
-              </span>
+              </a>
               <div className="h-px w-16 bg-white/10" />
-              <span className="text-xs text-white/35 font-light tracking-wider">
+              <a
+                href={cfg.hero_developer_url || 'https://prime-developer-portfolio-11.vercel.app'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-white/35 font-light tracking-wider hover:text-[#FB923C] transition-colors"
+              >
                 {cfg.footer_made_by_label || 'Made by Adam Hawash'}
-              </span>
+              </a>
             </div>
 
             {/* Stats Row */}
@@ -222,7 +232,7 @@ export default function HeroSection() {
           </div>
 
           {/* ===== Instructor photo — big glossy circle with orange crescent (left side) ===== */}
-          <div className="flex justify-center lg:justify-start order-1 lg:order-2 -mt-2 sm:-mt-6">
+          <div className="flex justify-center lg:justify-end order-1 lg:order-2 -mt-2 sm:-mt-6">
             <div className="relative group">
               {/* Outer rotating dashed ring */}
               <div className="absolute -inset-5 sm:-inset-7 rounded-full border-2 border-dashed border-[#F97316]/30 spin-slow pointer-events-none" />
@@ -252,10 +262,10 @@ export default function HeroSection() {
                 <div className="absolute inset-0 bg-gradient-to-t from-[#12121F]/35 via-transparent to-white/10 pointer-events-none" />
               </div>
 
-              {/* Name badge overlay */}
+              {/* Name badge overlay — English name under the photo */}
               <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 bg-[#12121F] border border-[#F97316]/45 rounded-full px-6 py-2.5 shadow-[0_8px_30px_rgba(0,0,0,0.45),0_0_24px_rgba(249,115,22,0.25)]">
-                <p className="shine-text font-extrabold text-base sm:text-lg tracking-wide whitespace-nowrap">
-                  {cfg.instructor_name || 'مستر شريف السيد'}
+                <p className="shine-text font-extrabold text-base sm:text-lg tracking-wide whitespace-nowrap" dir="ltr">
+                  {cfg.instructor_name_en || 'MR. Sherif ElSayed'}
                 </p>
               </div>
 
