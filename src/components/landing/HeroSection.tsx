@@ -164,23 +164,13 @@ export default function HeroSection() {
 
             {/* Hero Developer / Adam Hawash branding */}
             <div className="pt-3 flex flex-col items-center lg:items-start gap-1">
-              <a
-                href={cfg.hero_developer_url || 'https://hero-developer-portfolio-11.vercel.app'}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm font-semibold text-white/55 hover:text-[#FB923C] transition-colors underline underline-offset-4 decoration-white/20 hover:decoration-[#F97316]/50"
-              >
+              <span className="text-sm font-semibold text-white/55">
                 {cfg.hero_developer_label || 'Hero Developer'}
-              </a>
+              </span>
               <div className="h-px w-16 bg-white/10" />
-              <a
-                href={cfg.hero_developer_url || 'https://hero-developer-portfolio-11.vercel.app'}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-white/35 font-light tracking-wider hover:text-[#FB923C] transition-colors"
-              >
+              <span className="text-xs text-white/35 font-light tracking-wider">
                 {cfg.footer_made_by_label || 'Made by Adam Hawash'}
-              </a>
+              </span>
             </div>
 
             {/* Stats Row */}
