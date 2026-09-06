@@ -376,10 +376,58 @@ img {
   }
 }
 
-/* ---- KaTeX math sizing (FractionText) ----
-   KaTeX defaults to 1.21em which looks oversized inline with Arabic text.
-   1em keeps math the same size as the surrounding sentence. */
-.mathx .katex { font-size: 1.05em; }
-.mathx .katex-display { margin: 0; }
-.mathx .katex .mfrac .delim-center { border: 0; }
-.mathx .katex .vlist-t { margin-top: 1px; margin-bottom: 1px; }
+/* ---- Native math rendering (FractionText) ----
+   Math is rendered in the APP'S OWN FONT (no external math fonts):
+   • exponents = real nested <sup> stacking on the digit itself
+   • fractions = true stacked numerator / bar / denominator
+   • sqrt = radical with overline                     */
+.mathx { line-height: 1.9; }
+.mathx .matom { display: inline-block; white-space: nowrap; }
+.mathx sup.msup {
+  font-size: 0.72em;
+  line-height: 0;
+  vertical-align: baseline;
+  position: relative;
+  top: -0.55em;
+  margin: 0 1px;
+}
+.mathx sub.msub {
+  font-size: 0.72em;
+  line-height: 0;
+  vertical-align: baseline;
+  position: relative;
+  bottom: -0.25em;
+  margin: 0 1px;
+}
+.mathx .mfrac {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  vertical-align: middle;
+  margin: 0 3px;
+  line-height: 1.25;
+  text-align: center;
+}
+.mathx .mfrac > .mnum {
+  display: block;
+  padding: 0 5px 1px;
+  border-bottom: 1.6px solid currentColor;
+}
+.mathx .mfrac > .mden {
+  display: block;
+  padding: 1px 5px 0;
+}
+.mathx .mfrac .mfrac { font-size: 0.9em; }
+.mathx .msqrt { display: inline-block; white-space: nowrap; }
+.mathx .msqrt .mrad { margin-right: -1px; }
+.mathx .msqrt .mradicand {
+  border-top: 1.4px solid currentColor;
+  padding: 1px 3px 0 2px;
+  margin-left: -1px;
+}
+.mathx .msqrt .mrootidx { font-size: 0.6em; margin-right: 1px; }
+.mathx .moverline {
+  display: inline-block;
+  border-top: 1.4px solid currentColor;
+  padding: 1px 2px 0;
+}

@@ -14,9 +14,13 @@
 //                related-videos end screen)
 //          - NO native controls, NO keyboard shortcuts, NO right-click
 //          - Settings (gear) button → video quality control
-//            (تلقائي / 1080p / 720p / 480p / 360p / 240p / 144p)
-//            The chosen quality is re-applied automatically if YouTube
-//            tries to change it (sticky quality).
+//            (تلقائي 480p [DEFAULT] / تلقائي / 1080p / 720p / 480p / 360p / 240p / 144p)
+//            "تلقائي 480p" = automatic quality CAPPED at 480p (opens fast,
+//            never blurry-hd, saves data). The chosen quality is enforced:
+//            soft hints first, then a HARD stream reload if YouTube ignores it.
+//          - RESUME: on open the player fetches the saved progress for this
+//            student+video and seeks there — progress is CUMULATIVE (max ever
+//            reached), re-watching the start can never pull the % back down.
 //          - FULLSCREEN on mobile: locks the phone into LANDSCAPE so the
 //            16:9 video fills the screen (no tiny letterboxed strip), and
 //            the iframe crop gets stronger so YouTube's native fullscreen
@@ -62,6 +66,7 @@ function formatTime(sec: number) {
 /* ---------- Quality helpers ---------- */
 var STANDARD_QUALITIES = ['hd2160', 'hd1440', 'hd1080', 'hd720', 'large', 'medium', 'small', 'tiny']
 function qualityLabel(q: string): string {
+  if (q === 'auto480') return 'تلقائي 480p'
   if (q === 'auto' || q === 'default') return 'تلقائي'
   var map: any = { highres: '2160p+', hd2160: '2160p', hd1440: '1440p', hd1080: '1080p', hd720: '720p', large: '480p', medium: '360p', small: '240p', tiny: '144p' }
   return map[q] || q
@@ -104,12 +109,19 @@ export function ProtectedYouTubePlayer({
   const pendingPlayRef = useRef(!!autoplay)
   const onWatchRef = useRef(onWatch)
 
-  /* quality settings state — default 720p so it never starts blurry */
+  /* resume + cumulative progress state */
+  const savedSecondsRef = useRef(0)
+  const maxSeenRef = useRef(0)
+
+  /* quality settings state — DEFAULT: automatic capped at 480p so it opens
+     fast, never blurry, and never wastes data on hd */
   const [qualityLevels, setQualityLevels] = useState<string[]>([])
-  const [selectedQuality, setSelectedQuality] = useState<string>('hd720')
+  const [selectedQuality, setSelectedQuality] = useState<string>('auto480')
   const [showQualityMenu, setShowQualityMenu] = useState(false)
-  const selectedQualityRef = useRef('hd720')
+  const selectedQualityRef = useRef('auto480')
   const lastQualityApplyRef = useRef(0)
+  const mismatchSinceRef = useRef(0)
+  const lastHardReloadRef = useRef(0)
 
   useEffect(function () { selectedQualityRef.current = selectedQuality }, [selectedQuality])
   useEffect(function () { onWatchRef.current = onWatch }, [onWatch])
@@ -164,13 +176,21 @@ export function ProtectedYouTubePlayer({
     var p = playerRef.current
     if (!p) return
     try {
-      if (p.setPlaybackQualityRange) {
-        if (q === 'auto') p.setPlaybackQualityRange('auto', 'auto')
-        else p.setPlaybackQualityRange(q, q)
+      if (q === 'auto') {
+        /* full automatic — YouTube adapts freely */
+        if (p.setPlaybackQualityRange) p.setPlaybackQualityRange('auto', 'auto')
+        if (p.setPlaybackQuality) p.setPlaybackQuality('auto')
+      } else if (q === 'auto480') {
+        /* automatic but CAPPED at 480p: suggested 360p, allowed 240p–480p.
+           Called with both documented signatures — YouTube accepts one. */
+        if (p.setPlaybackQualityRange) {
+          try { p.setPlaybackQualityRange('medium', 'small', 'large') } catch (e) {}
+          try { p.setPlaybackQualityRange('small', 'large') } catch (e) {}
+        }
+      } else {
+        if (p.setPlaybackQualityRange) p.setPlaybackQualityRange(q, q)
+        if (p.setPlaybackQuality) p.setPlaybackQuality(q)
       }
-    } catch (e) {}
-    try {
-      if (p.setPlaybackQuality) p.setPlaybackQuality(q === 'auto' ? 'auto' : q)
     } catch (e) {}
     lastQualityApplyRef.current = Date.now()
   }
@@ -206,6 +226,29 @@ export function ProtectedYouTubePlayer({
               try { setDuration(e.target.getDuration() || 0) } catch (err) {}
               /* push the default quality BEFORE playback starts */
               applyQuality(selectedQualityRef.current)
+              /* RESUME: pull the saved position for this student+video and seek
+                 there — the student continues from where they stopped and the
+                 percentage only ever grows (server keeps the max). */
+              if (studentId && videoId) {
+                fetch('/api/video-progress?studentId=' + encodeURIComponent(studentId) + '&videoId=' + encodeURIComponent(videoId))
+                  .then(function (r) { return r.ok ? r.json() : null })
+                  .then(function (data) {
+                    if (cancelled) return
+                    var row = data && data.progress && data.progress[0]
+                    if (!row) return
+                    var saved = Number(row.watchedSeconds) || 0
+                    var total = Number(row.totalSeconds) || 0
+                    if (!total) { try { total = e.target.getDuration() || 0 } catch (err) {} }
+                    maxSeenRef.current = saved
+                    if (saved > 5 && (!total || saved < total - 3)) {
+                      savedSecondsRef.current = saved
+                      try { e.target.seekTo(saved, true) } catch (err) {}
+                      setCurrentTime(saved)
+                      if (total) setDuration(total)
+                    }
+                  })
+                  .catch(function () {})
+              }
               /* available quality levels for the settings menu */
               try {
                 var levels = e.target.getAvailableQualityLevels ? e.target.getAvailableQualityLevels() : []
@@ -268,18 +311,37 @@ export function ProtectedYouTubePlayer({
         if (p.getVideoLoadedFraction) setBuffered((p.getVideoLoadedFraction() || 0) * 100)
         /* sticky quality + captions stay OFF */
         var wanted = selectedQualityRef.current
-        if (wanted !== 'auto' && p.getPlaybackQuality) {
+        if (wanted !== 'auto' && wanted !== 'auto480' && p.getPlaybackQuality) {
           var cur = p.getPlaybackQuality()
-          if (cur && cur !== wanted && Date.now() - lastQualityApplyRef.current > 3000) {
-            applyQuality(wanted)
+          if (cur && cur !== wanted) {
+            /* HARD enforcement: if YouTube keeps ignoring the soft hints for
+               8s, reload the stream at the chosen quality (cooldown 20s) */
+            if (mismatchSinceRef.current === 0) mismatchSinceRef.current = Date.now()
+            if (Date.now() - mismatchSinceRef.current > 8000 && Date.now() - lastHardReloadRef.current > 20000) {
+              lastHardReloadRef.current = Date.now()
+              mismatchSinceRef.current = 0
+              try {
+                var posNow = p.getCurrentTime ? p.getCurrentTime() : 0
+                p.loadVideoById(ytId, Math.max(0, Math.floor(posNow)), wanted)
+                try { p.playVideo && p.playVideo() } catch (err) {}
+              } catch (e) {}
+            } else {
+              applyQuality(wanted)
+            }
+          } else {
+            mismatchSinceRef.current = 0
           }
         }
         try { if (p.unloadModule) p.unloadModule('captions') } catch (e) {}
+        try { if (p.setOption) p.setOption('captions', 'track', {}) } catch (e) {}
         if (studentId && videoId && t > 0) {
+          /* CUMULATIVE: report the highest position ever reached this session
+             (seeded with the saved position) — never a smaller one */
+          if (t > maxSeenRef.current) maxSeenRef.current = t
           var bucket = Math.floor(t / 5)
           if (bucket !== lastReportRef.current) {
             lastReportRef.current = bucket
-            reportWatched(t, d)
+            reportWatched(maxSeenRef.current, d)
           }
         }
       } catch (e) {}
@@ -355,18 +417,21 @@ export function ProtectedYouTubePlayer({
     setSelectedQuality(q)
     selectedQualityRef.current = q
     applyQuality(q)
-    /* HARD enforcement: YouTube mostly ignores soft quality hints, so we
-       reload the same video at the same position with the chosen quality
-       as the documented suggestedQuality — this actually switches streams */
-    var p = playerRef.current
-    try {
-      var pos = 0
-      try { pos = (p && p.getCurrentTime ? p.getCurrentTime() : 0) || 0 } catch (err) {}
-      if (p && p.loadVideoById) {
-        p.loadVideoById(ytId, Math.max(0, Math.floor(pos)), q === 'auto' ? 'default' : q)
-        try { p.playVideo && p.playVideo() } catch (err) {}
-      }
-    } catch (e) {}
+    mismatchSinceRef.current = 0
+    if (q !== 'auto' && q !== 'auto480') {
+      /* HARD enforcement for explicit qualities: reload the same video at the
+         same position with the chosen quality as the documented
+         suggestedQuality — this actually switches streams */
+      var p = playerRef.current
+      try {
+        var pos = 0
+        try { pos = (p && p.getCurrentTime ? p.getCurrentTime() : 0) || 0 } catch (err) {}
+        if (p && p.loadVideoById) {
+          p.loadVideoById(ytId, Math.max(0, Math.floor(pos)), q)
+          try { p.playVideo && p.playVideo() } catch (err) {}
+        }
+      } catch (e) {}
+    }
     lastQualityApplyRef.current = Date.now()
     setShowQualityMenu(false)
   }
@@ -502,6 +567,15 @@ export function ProtectedYouTubePlayer({
             aria-label="جودة الفيديو"
           >
             <p className="px-3 py-1 text-[10px] text-white/50 font-bold">جودة الفيديو</p>
+            <button
+              type="button"
+              role="menuitem"
+              className={'w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-white hover:bg-white/10 transition-colors min-h-[36px] ' + (selectedQuality === 'auto480' ? 'text-primary font-bold' : '')}
+              onClick={function (e) { e.preventDefault(); e.stopPropagation(); handleQualitySelect('auto480') }}
+            >
+              <span>تلقائي 480p</span>
+              {selectedQuality === 'auto480' && <Check className="w-4 h-4" />}
+            </button>
             <button
               type="button"
               role="menuitem"

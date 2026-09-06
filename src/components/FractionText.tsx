@@ -1,24 +1,28 @@
 'use client'
 
 import * as React from 'react'
-import katex from 'katex'
-import 'katex/dist/katex.min.css'
 import { repairCorruptMath } from '@/lib/math-text'
 
 /*
- * FractionText — PROFESSIONAL math renderer (KaTeX engine).
+ * FractionText — professional math renderer in the APP'S OWN FONT
+ * (no external math fonts, no exotic symbols).
  *
- * Powers sit ON the digit itself as real superscripts (2¹⁰) and fractions are
- * REAL stacked fractions — numerator above a bar, denominator below — exactly
- * like a textbook. Mixed Arabic/English text flows around the math naturally.
+ * What the teacher asked for — and this file does exactly that:
+ *   • Exponents sit ON TOP of the digit itself (true superscript),
+ *     and NESTED powers stack on top of each other: 2^(3^4) shows
+ *     4 above 3 above 2 — using plain nested <sup> elements.
+ *   • Fractions are REAL stacked fractions: numerator above a bar,
+ *     denominator below (\frac{بسط}{مقام}).
+ *   • The text keeps the app's normal everyday font — no fancy serif.
+ *   • ANY malformed/broken math degrades to readable plain text —
+ *     the student NEVER sees raw commands or garbage glyphs.
  *
  * Pipeline:
- *   1. repairCorruptMath      → fixes JSON-mangled LaTeX ("rac{", control chars)
- *   2. legacy formats          → "3 \n ─── \n 4" and plain "3/4" become \frac{3}{4}
- *   3. segmenter               → splits text into plain-text / math / image runs
- *      (explicit $…$, \(…\), \[…\] AND bare LaTeX like \frac{a}{b}, x^2, 2^{10})
- *   4. KaTeX renderToString    → pixel-perfect math (never leaks raw commands)
- *   5. any KaTeX failure       → graceful plain-text fallback
+ *   1. repairCorruptMath → fixes JSON-mangled LaTeX ("rac{", control
+ *      chars, \frac{A}^{B} mis-braces, chained a^b^c exponents)
+ *   2. legacy formats    → "3 ─── 4" stacks and plain "3/4" → \frac
+ *   3. segmenter         → splits text into plain-text / math / image runs
+ *   4. recursive HTML renderer → sup / sub / stacked fractions in normal font
  */
 
 /* ---------- image markers ---------- */
@@ -389,8 +393,8 @@ function segmentMath(src: string): Seg[] {
       var argEnd = readArgAt(src, i + 1)
       var prevIsBase = start < i
       if (argEnd > i && !prevIsBase) {
-        /* bare ^ with no math base (Arabic/space/start) — never feed a lone '^'
-           to KaTeX: degrade to Unicode superscript or plain text */
+        /* bare ^ with no math base (Arabic/space/start) — degrade to
+           Unicode superscript or plain text, never a stray '^' glyph */
         var argSrc = src.slice(i + 1, argEnd)
         if (argSrc[0] !== '(' && argSrc[0] !== '{') {
           var sup = toSuperscript(argSrc)
@@ -441,48 +445,187 @@ function segmentMath(src: string): Seg[] {
   return segs
 }
 
-/* ---------- KaTeX rendering ---------- */
+/* ============================================================
+ * Recursive math renderer — normal app font, real <sup> stacking
+ * ============================================================ */
 
-var katexCache = new Map<string, string>()
-
-function renderMath(tex: string): string | null {
-  var cached = katexCache.get(tex)
-  if (cached !== undefined) return cached
-  var html: string | null = null
-  try {
-    var body = /[\\{^_]/.test(tex)
-      ? /* bigger, textbook-style when real structure is present */
-        (tex.indexOf('\\frac') > -1 || tex.indexOf('\\sqrt') > -1 || tex.indexOf('\\dfrac') > -1
-          ? '\\displaystyle ' + tex
-          : tex)
-      : tex
-    html = katex.renderToString(body, {
-      throwOnError: false,
-      strict: 'ignore',
-      trust: false,
-      output: 'html',
-      displayMode: false,
-    })
-  } catch (e) {
-    html = null
+/* read the raw {…}/(…) group content starting at idx (returns [content, nextIdx]) */
+function readGroupContent(src: string, idx: number): [string, number] {
+  if (idx >= src.length) return ['', idx]
+  var opener = src[idx]
+  if (opener !== '{' && opener !== '(') {
+    /* single token: signed number | letters | single char */
+    var mNum = /^[+\-]?\d+(?:\.\d+)?/.exec(src.slice(idx))
+    if (mNum) return [mNum[0], idx + mNum[0].length]
+    var mLet = /^[a-zA-Z]+/.exec(src.slice(idx))
+    if (mLet) return [mLet[0], idx + mLet[0].length]
+    return [src[idx], idx + 1]
   }
-  katexCache.set(tex, html || '')
-  return html
+  var closer = opener === '{' ? '}' : ')'
+  var depth = 0
+  for (var j = idx; j < src.length; j++) {
+    var ch = src[j]
+    if (ch === '\\') { j++; continue }
+    if (ch === opener) depth++
+    else if (ch === closer) {
+      depth--
+      if (depth === 0) return [src.slice(idx + 1, j), j + 1]
+    }
+  }
+  /* unbalanced → take everything to the end */
+  return [src.slice(idx + 1), src.length]
+}
+
+/* LaTeX command → plain symbol (app font keeps these natively readable) */
+var CMD_MAP: Record<string, string> = {
+  times: '×', cdot: '·', div: '÷', pm: '±', mp: '∓',
+  pi: 'π', theta: 'θ', alpha: 'α', beta: 'β', gamma: 'γ', delta: 'Δ', omega: 'ω',
+  le: '≤', leq: '≤', ge: '≥', geq: '≥', ne: '≠', neq: '≠', equiv: '≡',
+  approx: '≈', sim: '~', propto: '∝', infty: '∞', degree: '°', circ: '°',
+  angle: '∠', triangle: '△', perp: '⟂', parallel: '∥',
+  in: '∈', notin: '∉', subset: '⊂', subseteq: '⊆', cup: '∪', cap: '∩',
+  to: '→', rightarrow: '→', Rightarrow: '⇒', leftarrow: '←', leftrightarrow: '↔',
+  ldots: '…', dots: '…', cdots: '⋯', prime: '′',
+  quad: '\u2003', qquad: '\u2003\u2003', ',': '\u2009', ';': '\u2009', '!': '',
+  '%': '%', ampersand: '&', dollar: '$', underscore: '_', brace: '{}',
+}
+
+type MathCtx = { k: number }
+
+function nextKey(ctx: MathCtx): string {
+  ctx.k += 1
+  return 'm' + ctx.k
+}
+
+/*
+ * renderMathTokens — turn a math string into React nodes:
+ *   \frac{N}{D}         → stacked fraction
+ *   base^{exp} base_{s} → real nested superscript/subscript
+ *   \sqrt[3]{x}         → cube-root with overline
+ *   \cmd                → mapped plain symbol (unknown cmds → letters)
+ * Everything else passes through as-is. NEVER throws; worst case the
+ * raw characters show minus backslashes — always readable.
+ */
+function renderMathTokens(src: string, ctx: MathCtx): React.ReactNode[] {
+  var out: React.ReactNode[] = []
+  var i = 0
+  var n = src.length
+
+  while (i < n) {
+    var c = src[i]
+
+    /* ---- LaTeX command ---- */
+    if (c === '\\') {
+      var m = /^[a-zA-Z]+/.exec(src.slice(i + 1))
+      if (!m) {
+        /* escaped single char like \{ \} \\ → literal */
+        if (i + 1 < n && src[i + 1] !== '') out.push(<React.Fragment key={nextKey(ctx)}>{src[i + 1]}</React.Fragment>)
+        i += 2
+        continue
+      }
+      var cmd = m[0]
+      i += 1 + cmd.length
+
+      if (cmd === 'frac' || cmd === 'dfrac' || cmd === 'tfrac') {
+        var numRes = readGroupContent(src, i)
+        var denRes = readGroupContent(src, numRes[1])
+        i = denRes[1]
+        out.push(
+          <span key={nextKey(ctx)} className="mfrac" dir="ltr">
+            <span className="mnum">{renderMathTokens(numRes[0], ctx)}</span>
+            <span className="mden">{renderMathTokens(denRes[0], ctx)}</span>
+          </span>
+        )
+        continue
+      }
+      if (cmd === 'sqrt') {
+        var rootIdx = ''
+        if (src[i] === '[') {
+          var closeB = src.indexOf(']', i + 1)
+          if (closeB > -1) { rootIdx = src.slice(i + 1, closeB); i = closeB + 1 }
+        }
+        var bodyRes = readGroupContent(src, i)
+        i = bodyRes[1]
+        out.push(
+          <span key={nextKey(ctx)} className="msqrt" dir="ltr">
+            {rootIdx ? <sup className="mrootidx">{renderMathTokens(rootIdx, ctx)}</sup> : null}
+            <span className="mrad">√</span>
+            <span className="mradicand">{renderMathTokens(bodyRes[0], ctx)}</span>
+          </span>
+        )
+        continue
+      }
+      if (cmd === 'text' || cmd === 'mathrm' || cmd === 'operatorname') {
+        var txtRes = readGroupContent(src, i)
+        i = txtRes[1]
+        out.push(<React.Fragment key={nextKey(ctx)}>{txtRes[0]}</React.Fragment>)
+        continue
+      }
+      if (cmd === 'left' || cmd === 'right' || cmd === 'displaystyle' || cmd === 'limits') {
+        /* pure layout commands → drop entirely */
+        continue
+      }
+      if (cmd === 'overline' || cmd === 'bar') {
+        var obRes = readGroupContent(src, i)
+        i = obRes[1]
+        out.push(
+          <span key={nextKey(ctx)} className="moverline" dir="ltr">{renderMathTokens(obRes[0], ctx)}</span>
+        )
+        continue
+      }
+      if (CMD_MAP[cmd] !== undefined) {
+        var sym = CMD_MAP[cmd]
+        if (sym !== '') out.push(<React.Fragment key={nextKey(ctx)}>{sym}</React.Fragment>)
+        continue
+      }
+      /* unknown command → plain letters (readable, never garbage) */
+      out.push(<React.Fragment key={nextKey(ctx)}>{cmd}</React.Fragment>)
+      continue
+    }
+
+    /* ---- superscript / subscript ---- */
+    if (c === '^' || c === '_') {
+      var argRes = readGroupContent(src, i + 1)
+      if (argRes[1] === i + 1) { /* nothing consumable → literal char */
+        out.push(<React.Fragment key={nextKey(ctx)}>{c}</React.Fragment>)
+        i += 1
+        continue
+      }
+      i = argRes[1]
+      var script = c === '^'
+        ? <sup className="msup">{renderMathTokens(argRes[0], ctx)}</sup>
+        : <sub className="msub">{renderMathTokens(argRes[0], ctx)}</sub>
+      /* attach to the previous rendered atom (base) if one exists */
+      if (out.length > 0) {
+        var base = out.pop()
+        out.push(
+          <span key={nextKey(ctx)} className="matom" dir="ltr">{base}{script}</span>
+        )
+      } else {
+        out.push(<span key={nextKey(ctx)} className="matom" dir="ltr">{script}</span>)
+      }
+      continue
+    }
+
+    /* ---- plain character ---- */
+    if (c === '{' || c === '}') { i += 1; continue } /* stray braces → invisible */
+    out.push(<React.Fragment key={nextKey(ctx)}>{c}</React.Fragment>)
+    i += 1
+  }
+  return out
 }
 
 function MathSpan({ tex }: { tex: string }) {
-  var html = renderMath(tex)
-  if (html === null || html === '') {
-    /* graceful fallback: plain text, backslashes stripped */
-    return <span dir="ltr" className="inline-block align-middle">{tex.replace(/\\/g, '')}</span>
-  }
+  var ctx: MathCtx = { k: 0 }
+  var nodes = renderMathTokens(tex, ctx)
   return (
     <span
       dir="ltr"
       className="mathx inline-block align-middle mx-0.5"
       style={{ unicodeBidi: 'isolate' }}
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
+    >
+      {nodes}
+    </span>
   )
 }
 

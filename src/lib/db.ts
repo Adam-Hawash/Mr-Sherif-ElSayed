@@ -38,7 +38,7 @@ function createPrismaClient() {
   // Use the LibSQL adapter whenever Turso credentials are configured. This
   // also handles Turso URLs copied with the https:// protocol.
   if (process.env.TURSO_AUTH_TOKEN || dbUrl.indexOf('libsql://') === 0 || dbUrl.indexOf('https://') === 0) {
-    var authToken = process.env.TURSO_AUTH_TOKEN || ''
+    var authToken = process.env.TURSO_AUTH_TOKEN || process.env.DATABASE_AUTH_TOKEN || ''
     var libsqlOpts = { url: dbUrl }
     if (authToken) { libsqlOpts.authToken = authToken }
     var adapter = new PrismaLibSQL(libsqlOpts)

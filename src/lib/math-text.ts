@@ -17,10 +17,15 @@
  * repairCorruptMath — fix ALREADY-CORRUPTED stored text (render time).
  * Safe on any string: only touches control chars sitting exactly where a
  * LaTeX command would start, plus the bare "rac{" leftover signature.
+ * Also repairs structurally-broken LaTeX the models keep producing:
+ *   \frac{A}^{B}   →  \frac{A}{B}
+ *   a^b^c          →  a^{b^{c}}     (nested exponents stack properly)
  */
 export function repairCorruptMath(input: string): string {
   if (!input) return input
   var s = String(input)
+  // U+FFFD replacement chars are lossy-encoding leftovers — never legitimate
+  s = s.replace(/\uFFFD/g, '')
   // <FF>rac{…} → \frac{…}  (restore only when letters follow — a real command)
   s = s.replace(/\f(?=[a-zA-Z])/g, '\\f')
   // leftover invisible FF junk (not part of a command) → drop
@@ -35,6 +40,20 @@ export function repairCorruptMath(input: string): string {
   s = s.replace(/\r/g, '\n')
   // bare "rac{…}" (control char already stripped by an older lossy layer) → \frac{…}
   s = s.replace(/(^|[^\\a-zA-Z])rac(?=[\s{(])/g, '$1\\frac')
+  // ---- structural repairs (model-authored broken LaTeX) ----
+  // \frac{A}^{B} or \frac(A)^{B}  →  \frac{A}{B}
+  for (var p = 0; p < 2; p++) {
+    s = s.replace(/\\(?:d|t)?frac\s*\{([^{}]*)\}\s*\^\s*\{([^{}]*)\}/g, '\\frac{$1}{$2}')
+    s = s.replace(/\\(?:d|t)?frac\s*\(([^()]*)\)\s*\^\s*\{([^{}]*)\}/g, '\\frac{$1}{$2}')
+  }
+  // chained exponents  a^b^c  →  a^{b^{c}}  (repeat to catch triples)
+  var SUP_ATOM = '(\\{(?:[^{}]|\\{[^{}]*\\})*\\}|[A-Za-z0-9]+)'
+  for (var q = 0; q < 3; q++) {
+    var chainRe = new RegExp('\\^\\s*' + SUP_ATOM + '\\s*\\^\\s*' + SUP_ATOM, 'g')
+    s = s.replace(chainRe, function (_m, a: string, b: string) {
+      return '^{' + a + '^{' + b + '}}'
+    })
+  }
   return s
 }
 
