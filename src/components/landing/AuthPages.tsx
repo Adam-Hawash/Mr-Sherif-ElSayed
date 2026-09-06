@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { useAppStore, GRADES } from '@/stores/app-store'
 import { getDeviceId } from '@/lib/device'
-import { ArrowRight, Phone, Lock, GraduationCap, Users, Loader2, AlertCircle, AlertTriangle, Eye, EyeOff } from 'lucide-react'
+import { ArrowRight, Phone, Lock, GraduationCap, Users, Loader2, AlertCircle, Bell, ShieldAlert, Eye, EyeOff } from 'lucide-react'
 import { toast } from 'sonner'
 
 var fadeInUp = {
@@ -156,6 +156,21 @@ export function LoginView() {
   return (
     <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-md">
+        {/* إشعار سياسة الجهاز الواحد — بيبان لأي طالب أول ما يدخل صفحة الدخول
+            (خصوصًا الطلاب اللي عملوا حسابهم قبل ما التحذير كان بيظهر) */}
+        <div className="mb-5 rounded-2xl border-2 border-amber-500/50 bg-amber-50 dark:bg-amber-900/20 p-4 shadow-sm">
+          <div className="flex items-start gap-2.5">
+            <div className="shrink-0 h-9 w-9 rounded-xl bg-amber-500/15 flex items-center justify-center">
+              <Bell className="h-5 w-5 text-amber-600" />
+            </div>
+            <div className="text-xs text-amber-900 dark:text-amber-200 space-y-1.5">
+              <p className="font-extrabold text-sm">🔔 إشعار مهم قبل ما تسجل دخول:</p>
+              <p>حسابك بيشتغل على <span className="font-bold">جهاز واحد بس</span> — الجهاز اللي اتعمل بيه الحساب. أي موبايل أو لاب تاني مش هيعرف يفتح حسابك.</p>
+              <p className="flex items-start gap-1"><ShieldAlert className="h-3.5 w-3.5 shrink-0 mt-0.5" /><span><span className="font-bold">أوعى تمسح بيانات المتصفح</span> (الكاش أو الكوكيز) — دي بقتل بيانات جهازك ومش هتقدر تدخل حسابك.</span></p>
+              <p>ولو حصلت معاك أي مشكلة، <span className="font-bold">كلم المستر</span> وهو يعمل لك سماح فورًا.</p>
+            </div>
+          </div>
+        </div>
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center h-16 w-16 rounded-2xl bg-primary/10 mb-4"><GraduationCap className="h-8 w-8 text-primary" /></div>
           <h1 className="text-2xl font-bold text-foreground mb-2">تسجيل الدخول</h1>
@@ -282,12 +297,17 @@ export function RegisterView() {
                   </div>
                 </div>
                 <PhoneField value={parentPhone} onChange={setParentPhone} placeholder="رقم هاتف ولي الأمر" id="reg-parent-phone" error={errors.parentPhone} />
-                <div className="rounded-lg border border-amber-500/40 bg-amber-50 dark:bg-amber-900/10 p-3 flex gap-2.5">
-                  <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
-                  <div className="text-xs text-amber-800 dark:text-amber-300 space-y-1">
-                    <p className="font-bold">تنبيه مهم قبل ما تعمل الحساب:</p>
-                    <p>الحساب هيتقيد على <span className="font-bold">الجهاز اللي أنت مسجل بيه دلوقتي بس</span>. مش هينفع تعمل تسجيل دخول من أي جهاز تاني (موبايل تاني أو لاب تاني) غير لما تتواصل مع المستر الأول وهو يعمل لك سماح من كل الأجهزة.</p>
-                    <p className="text-[10px] text-amber-700 dark:text-amber-400">فاكرك: مسح بيانات المتصفح ممكن يغيّر بصمة الجهاز — خلي بالك.</p>
+                <div className="rounded-2xl border-2 border-amber-500/50 bg-amber-50 dark:bg-amber-900/20 p-4 shadow-sm">
+                  <div className="flex items-start gap-2.5">
+                    <div className="shrink-0 h-9 w-9 rounded-xl bg-amber-500/15 flex items-center justify-center">
+                      <Bell className="h-5 w-5 text-amber-600" />
+                    </div>
+                    <div className="text-xs text-amber-900 dark:text-amber-200 space-y-1.5">
+                      <p className="font-extrabold text-sm">🔔 إشعار مهم قبل ما تعمل الحساب:</p>
+                      <p>الحساب ده هيتبند على <span className="font-bold">الجهاز اللي أنت فاتح بيه الموقع دلوقتي</span> — يعني هتدخل بحسابك من الجهاز ده بس. أي موبايل أو لاب تاني مش هينفع، غير لما تتواصل مع المستر وهو يعمل لك سماح من كل الأجهزة.</p>
+                      <p className="flex items-start gap-1"><ShieldAlert className="h-3.5 w-3.5 shrink-0 mt-0.5" /><span><span className="font-bold">أوعى تمسح بيانات المتصفح</span> (الكاش أو الكوكيز) — لو مسحتها هتتغير بيانات جهازك ومش هتعرف تدخل بحسابك.</span></p>
+                      <p>ولو حصلت معاك أي مشكلة، <span className="font-bold">كلم المستر</span> وهو يعمل لك سماح.</p>
+                    </div>
                   </div>
                 </div>
                 <Button className="w-full min-h-[44px] font-semibold" onClick={handleRegister} disabled={loading}>{loading ? (<><Loader2 className="h-4 w-4 ml-2 animate-spin" />جاري التسجيل...</>) : 'اعمل الحساب'}</Button>

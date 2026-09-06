@@ -4,7 +4,7 @@ import { useState, useEffect, use } from "react";
 import Link from "next/link";
 import { Lock, CreditCard, ArrowRight, CheckCircle2, Loader2 } from "lucide-react";
 import { ProtectedYouTubePlayer } from "@/components/student/ProtectedYouTubePlayer";
-import { VideoWatermark } from "@/components/student/VideoWatermark";
+import { ProtectedFilePlayer } from "@/components/student/ProtectedFilePlayer";
 
 // حماية الفيديو: السيرفر مبيرسلش اللينكات الخام — التشغيل كله
 // عن طريق /api/video-play (ytId لل يوتيوب أو توكن موقّع للملف المرفوع)
@@ -106,29 +106,22 @@ export default function VideoDetailPage({ params }: { params: Promise<{ id: stri
         ) : (
           <div className="aspect-video bg-black flex items-center justify-center relative">
             {grant?.isYouTube && grant?.ytId ? (
-              <>
-                <ProtectedYouTubePlayer
-                  ytId={grant.ytId}
-                  poster={video.thumbnail || undefined}
-                  videoId={video.id}
-                />
-                <VideoWatermark name={student?.name} phone={student?.phone} />
-              </>
+              <ProtectedYouTubePlayer
+                ytId={grant.ytId}
+                poster={video.thumbnail || undefined}
+                videoId={video.id}
+                studentName={student?.name}
+                studentPhone={student?.phone}
+              />
             ) : grant?.isVideoFile && grant?.fileUrl ? (
-              <>
-                <video
-                  src={grant.fileUrl}
-                  controls
-                  controlsList="nodownload noremoteplayback"
-                  disablePictureInPicture
-                  disableRemotePlayback
-                  playsInline
-                  className="w-full h-full"
-                  style={{ border: "none" }}
-                  onContextMenu={(e) => e.preventDefault()}
-                />
-                <VideoWatermark name={student?.name} phone={student?.phone} />
-              </>
+              <ProtectedFilePlayer
+                videoId={video.id}
+                src={grant.fileUrl}
+                poster={video.thumbnail || undefined}
+                studentId={student?.id}
+                studentName={student?.name}
+                studentPhone={student?.phone}
+              />
             ) : grant ? (
               <div className="text-slate-500 text-sm">لا يوجد فيديو</div>
             ) : (

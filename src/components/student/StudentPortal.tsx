@@ -701,11 +701,14 @@ function CustomVideoPlayer({ videoId, src, poster, studentId, studentName, stude
   const [buffered, setBuffered] = useState(0)
   const [showControls, setShowControls] = useState(true)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [fakeFs, setFakeFs] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
   const hideTimerRef = useRef<any>(null)
 
   useEffect(() => {
     var onFsChange = function() {
-      setIsFullscreen(!!document.fullscreenElement)
+      var d = document as any
+      setIsFullscreen(!!(d.fullscreenElement || d.webkitFullscreenElement))
     }
     document.addEventListener('fullscreenchange', onFsChange)
     document.addEventListener('webkitfullscreenchange', onFsChange)
@@ -773,20 +776,22 @@ function CustomVideoPlayer({ videoId, src, poster, studentId, studentName, stude
 
   var handleFullscreen = function(e: React.MouseEvent | React.TouchEvent) {
     if (e) { e.preventDefault(); e.stopPropagation() }
-    if (document.fullscreenElement) { document.exitFullscreen().catch(function(){}) ; return }
-    if ((document as any).webkitFullscreenElement) { (document as any).webkitExitFullscreen() ; return }
-    var v = videoRef.current
-    if (!v) return
-    v.play().then(function() {
-      var vv = v as any
-      if (vv.webkitEnterFullscreen) {
-        vv.webkitEnterFullscreen()
-      } else if (vv.parentElement && vv.parentElement.requestFullscreen) {
-        vv.parentElement.requestFullscreen().catch(function(){})
-      } else if (vv.requestFullscreen) {
-        vv.requestFullscreen().catch(function(){})
-      }
-    }).catch(function(){})
+    var d = document as any
+    if (d.fullscreenElement) { d.exitFullscreen().catch(function(){}) ; return }
+    if (d.webkitFullscreenElement) { d.webkitExitFullscreen() ; return }
+    if (fakeFs) { setFakeFs(false) ; return }
+    /* ملء الشاشة على الكونتينر نفسه — الووترمارك وعناصر التحكم جواه فتفضل
+       ظاهرة. ممنوع webkitEnterFullscreen (مشغّل أبل الأصلي بيلغي الووترمارك
+       — دي كانت المشكلة) — آيفون بياخد fake fullscreen بالـ CSS */
+    var c = containerRef.current as any
+    if (c && c.requestFullscreen) {
+      var pr = c.requestFullscreen()
+      if (pr && pr.catch) pr.catch(function(){})
+    } else if (c && c.webkitRequestFullscreen) {
+      c.webkitRequestFullscreen()
+    } else {
+      setFakeFs(true)
+    }
   }
 
   var formatTime = function(sec: number) {
@@ -798,9 +803,15 @@ function CustomVideoPlayer({ videoId, src, poster, studentId, studentName, stude
 
   var progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0
 
+  var fsActive = isFullscreen || fakeFs
+
   return (
     <div
-      className="video-protected w-full h-full relative select-none"
+      ref={containerRef}
+      className={
+        'video-protected select-none bg-black overflow-hidden ' +
+        (fsActive ? 'fixed inset-0 z-[150]' : 'w-full h-full relative')
+      }
       onClick={togglePlay}
       onTouchStart={function() { setShowControls(true) }}
       onContextMenu={function(e) { e.preventDefault() }}
@@ -876,7 +887,7 @@ function CustomVideoPlayer({ videoId, src, poster, studentId, studentName, stude
             onTouchEnd={function(e) { e.preventDefault(); e.stopPropagation(); handleFullscreen(e) }}
             aria-label="تكبير"
           >
-            {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
+            {fsActive ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
           </button>
         </div>
       </div>

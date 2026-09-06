@@ -13,6 +13,7 @@
 import { NextResponse, after } from 'next/server'
 import { db } from '@/lib/db'
 import { gradeImageAnswer, gradeTextAnswer, extractImageMediaIds } from '@/lib/ai-image-grader'
+import { gradeFallbackDecisive } from '@/lib/smart-grader'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120
@@ -303,6 +304,29 @@ export async function POST(request) {
     }
 
     // ============ BACKGROUND: grade ALL writing questions IN PARALLEL ============
+    // المستر طلب: مفيش حاجة اسمها تصحيح يدوي — كل سؤال بياخد حكم نهائي من
+    // الـ AI، ولو الـ AI فشل بياخد حكم محلي حاسم (المستر يقدر يعدّل بعدها).
+    var decisiveImageFallback = function(wa: any) {
+      var hasRealWork = (wa.answer || '').replace(/\[📷[^\]]*\]/g, '').trim().length > 0
+      if (!hasRealWork) {
+        return Object.assign({}, wa, {
+          gradingStatus: 'graded', needsGrading: false, isCorrect: false, awardedPoints: 0,
+          feedback: 'لم يتم الإجابة',
+        })
+      }
+      // صورة اترفعت والـ AI مقدرش يحكم — نص الحسم: نص درجة المحاولة + المستر يراجع
+      return Object.assign({}, wa, {
+        gradingStatus: 'graded',
+        needsGrading: false,
+        isCorrect: false,
+        awardedPoints: Math.ceil(wa.points / 2),
+        aiExtractedAnswer: '(صورة الحل مقدرناش نقراها بدقة)',
+        aiIsCorrect: false,
+        aiFeedback: 'صورة الحل اترفعت — التصحيح الآلي محتاج مراجعة المستر للدرجة دي',
+        feedback: 'صورة الحل اترفعت — درجة مؤقتة لحد مراجعة المستر (يقدر يعدلها من لوحته)',
+      })
+    }
+
     var gradeOneWriting = async function(wa: any) {
       var answerText = (wa.answer || '').trim()
 
@@ -317,43 +341,24 @@ export async function POST(request) {
             acceptedAnswers: wa.acceptedAnswers,
             maxPoints: wa.points,
           })
-          if (gradeData.needsGrading) {
-            // AI unsure / photo not on topic / AI failed → admin reviews (no random verdict)
+          if (gradeData && !gradeData.needsGrading) {
             return Object.assign({}, wa, {
-              gradingStatus: 'manual',
-              needsGrading: true,
-              isCorrect: false,
-              awardedPoints: 0,
-              aiExtractedAnswer: gradeData.extractedAnswer || '(تعذر الاستخراج)',
-              aiIsCorrect: false,
-              aiFeedback: gradeData.feedback || 'محتاجة مراجعة يدوية',
-              aiAwardedPoints: 0,
-              feedback: gradeData.feedback || 'محتاجة مراجعة يدوية',
+              gradingStatus: 'graded',
+              needsGrading: false,
+              aiExtractedAnswer: gradeData.extractedAnswer || '',
+              aiIsCorrect: gradeData.isCorrect === true,
+              aiFeedback: gradeData.feedback || '',
+              aiAwardedPoints: gradeData.awardedPoints || 0,
+              isCorrect: gradeData.isCorrect === true,
+              awardedPoints: gradeData.awardedPoints || 0,
+              feedback: gradeData.feedback || '',
             })
           }
-          return Object.assign({}, wa, {
-            gradingStatus: 'graded',
-            needsGrading: false,
-            aiExtractedAnswer: gradeData.extractedAnswer || '',
-            aiIsCorrect: gradeData.isCorrect === true,
-            aiFeedback: gradeData.feedback || '',
-            aiAwardedPoints: gradeData.awardedPoints || 0,
-            isCorrect: gradeData.isCorrect === true,
-            awardedPoints: gradeData.awardedPoints || 0,
-          })
+          // AI مش متأكد / فشل → حكم محلي حاسم (مفيش manual)
+          return decisiveImageFallback(wa)
         } catch (gradeErr) {
           console.error('[HW BG] AI grade image error:', gradeErr)
-          return Object.assign({}, wa, {
-            gradingStatus: 'manual',
-            needsGrading: true,
-            isCorrect: false,
-            awardedPoints: 0,
-            aiExtractedAnswer: '(فشل الـ AI في قراءة الصورة)',
-            aiIsCorrect: false,
-            aiFeedback: 'فشل التصحيح بالـ AI - هتتراجع من الأستاذ',
-            aiAwardedPoints: 0,
-            feedback: 'فشل التصحيح بالـ AI - هتتراجع من الأستاذ',
-          })
+          return decisiveImageFallback(wa)
         }
       }
 
@@ -427,20 +432,7 @@ export async function POST(request) {
           acceptedAnswers: wa.acceptedAnswers,
           maxPoints: wa.points,
         })
-        if (textGrade) {
-          if (textGrade.needsGrading) {
-            return Object.assign({}, wa, {
-              gradingStatus: 'manual',
-              needsGrading: true,
-              isCorrect: false,
-              awardedPoints: 0,
-              aiExtractedAnswer: answerText,
-              aiIsCorrect: false,
-              aiFeedback: textGrade.feedback || 'محتاجة مراجعة يدوية',
-              aiAwardedPoints: 0,
-              feedback: textGrade.feedback || 'محتاجة مراجعة يدوية',
-            })
-          }
+        if (textGrade && !textGrade.needsGrading) {
           return Object.assign({}, wa, {
             gradingStatus: 'graded',
             needsGrading: false,
@@ -453,18 +445,36 @@ export async function POST(request) {
             feedback: textGrade.feedback || '',
           })
         }
-        // AI returned nothing → manual review (NOT auto-wrong)
+        // AI رجّع حاجة مفهوماش → حكم محلي حاسم (مفيش manual)
+        var fb1 = gradeFallbackDecisive({
+          question: wa.question,
+          answer: answerText,
+          modelAnswer: wa.modelAnswer || '',
+          acceptedAnswers: wa.acceptedAnswers || [],
+          points: wa.points,
+        })
         return Object.assign({}, wa, {
-          gradingStatus: 'manual',
-          needsGrading: true,
-          feedback: 'التصحيح الذكي تعذر — هتتراجع من الأستاذ',
+          gradingStatus: 'graded',
+          needsGrading: false,
+          isCorrect: fb1.isCorrect,
+          awardedPoints: fb1.awardedPoints,
+          feedback: fb1.feedback,
         })
       } catch (textGradeErr) {
         console.error('[HW BG] AI text grading error:', textGradeErr)
+        var fb2 = gradeFallbackDecisive({
+          question: wa.question,
+          answer: answerText,
+          modelAnswer: wa.modelAnswer || '',
+          acceptedAnswers: wa.acceptedAnswers || [],
+          points: wa.points,
+        })
         return Object.assign({}, wa, {
-          gradingStatus: 'manual',
-          needsGrading: true,
-          feedback: 'التصحيح الذكي تعذر — هتتراجع من الأستاذ',
+          gradingStatus: 'graded',
+          needsGrading: false,
+          isCorrect: fb2.isCorrect,
+          awardedPoints: fb2.awardedPoints,
+          feedback: fb2.feedback,
         })
       }
     }
@@ -474,8 +484,8 @@ export async function POST(request) {
         var gradedList = await Promise.all(writingAnswers.map(function(wa) { return gradeOneWriting(wa) }))
         var writingScore = 0
         gradedList.forEach(function(g) {
-          // only 'graded' entries count toward the score; 'manual' wait for the admin
-          if (g.gradingStatus === 'graded') writingScore += (g.awardedPoints || 0)
+          // كل الأسئلة بقت 'graded' — مفيش manual خالص (طلب المستر)
+          writingScore += (g.awardedPoints || 0)
         })
         var finalScore = mcqScore + writingScore
         try {
