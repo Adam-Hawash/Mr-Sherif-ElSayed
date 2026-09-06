@@ -37,3 +37,16 @@ Stage Summary:
 - New standalone repo created for منصة مستر شريف السيد — same battle-tested Maths-Genius engine (videos, homework, exams, AI assistant with tutor-mode + streaming, payments, CMS) with a completely different glossy orange/navy identity
 - All user requirements met: new design "لمعة", 3ammiya texts, "ادخل لحسابك دلوقتي" CTA, anime teacher photo (admin-changeable), hidden admin gate 22222222222/mr sherif2026# → تسجيل دخول المشرفين → sherif math@2026
 - Deploy note (same as Maths-Genius): set env vars TURSO_DATABASE_URL/TURSO_AUTH_TOKEN (or DATABASE_URL), GEMINI_API_KEYS, optional RESEND_API_KEY+ADMIN_EMAIL, then push schema
+
+---
+Task ID: 11-note
+Agent: Main Agent (Z.ai Code)
+Task: Repo creation follow-up note
+
+Work Log:
+- Attempted to create the repo with the exact Arabic name "منصة-مستر-شريف-السيد" — GitHub API accepted the call but transliterated EVERY Arabic character into a dash, producing a junk repo named "-------"
+- The PAT lacks the delete_repo scope, so the junk repo could NOT be deleted via API — it was renamed to "Adam-Hawash/zzz-delete-me-unused" instead
+- ACTION NEEDED (owner): delete the repo "zzz-delete-me-unused" manually from GitHub → Settings → Danger Zone (the real platform repo is Adam-Hawash/Mr-Sherif-ElSayed)
+
+Stage Summary:
+- Final repo: https://github.com/Adam-Hawash/Mr-Sherif-ElSayed (main branch, Arabic description set)
