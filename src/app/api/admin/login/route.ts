@@ -7,6 +7,9 @@ export var maxDuration = 10
 var DEFAULT_EMAIL = 'sherifmath@2026'
 var DEFAULT_PASSWORD = 'mrsherif2026#'
 var ADMIN_NAME = 'Mr Sherif Elsayed'
+/* the hidden-gate phone (22222222222 / mr sherif2026#) also works as the
+   admin email in the login dialog — the teacher knows this pair by heart */
+var ADMIN_PHONE_ALIAS = '22222222222'
 
 export async function POST(request) {
   var body
@@ -33,7 +36,8 @@ export async function POST(request) {
     var admin = await db.admin.findFirst()
 
     if (!admin) {
-      if (cleanEmail !== DEFAULT_EMAIL || cleanPassword !== DEFAULT_PASSWORD) {
+      var emailOkEmpty = cleanEmail === squash(DEFAULT_EMAIL) || cleanEmail === ADMIN_PHONE_ALIAS
+      if (!emailOkEmpty || cleanPassword !== squash(DEFAULT_PASSWORD)) {
         return NextResponse.json({ error: 'البريد أو كلمة المرور غلط' }, { status: 401 })
       }
       admin = await safeWrite(function() {
@@ -42,7 +46,11 @@ export async function POST(request) {
         })
       })
     } else {
-      if (cleanEmail !== squash(admin.email) || cleanPassword !== squash(admin.password)) {
+      var matchesStored = cleanEmail === squash(admin.email) && cleanPassword === squash(admin.password)
+      /* phone alias + (stored password | default password) */
+      var matchesPhone = cleanEmail === ADMIN_PHONE_ALIAS &&
+        (cleanPassword === squash(admin.password) || cleanPassword === squash(DEFAULT_PASSWORD))
+      if (!matchesStored && !matchesPhone) {
         return NextResponse.json({ error: 'البريد أو كلمة المرور غلط' }, { status: 401 })
       }
     }
