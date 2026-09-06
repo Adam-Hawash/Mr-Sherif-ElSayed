@@ -35,6 +35,9 @@ const LessonsSection = dynamic(() => import('@/components/landing/LessonsSection
 const WhatsAppButton = dynamic(() => import('@/components/landing/WhatsAppButton').then(m => ({ default: m.WhatsAppButton })), {
   ssr: false,
 })
+const FloatingLoginButton = dynamic(() => import('@/components/landing/FloatingLoginButton').then(function(m) { return { default: m.FloatingLoginButton } }), {
+  ssr: false,
+})
 const VideoProtection = dynamic(() => import('@/components/landing/VideoProtection').then(m => ({ default: m.VideoProtection })), {
   ssr: false,
 })
@@ -175,6 +178,7 @@ export default function HomePage() {
 
       {showFooter && <Footer />}
       {showWhatsApp && <WhatsAppButton />}
+      {showWhatsApp && <FloatingLoginButton />}
     </div>
   )
 }
