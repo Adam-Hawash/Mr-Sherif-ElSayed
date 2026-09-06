@@ -4,6 +4,7 @@ const nextConfig: NextConfig = {
   typescript: { ignoreBuildErrors: true },
   reactStrictMode: false,
   poweredByHeader: false,
+  allowedDevOrigins: ['localhost', '127.0.0.1'],
   serverExternalPackages: [
     '@libsql/client',
     '@prisma/adapter-libsql',
@@ -21,6 +22,9 @@ const nextConfig: NextConfig = {
     ],
   },
   async headers() {
+    // Production-only: immutable caching for static assets.
+    // In dev these headers make the browser stick to stale chunks forever.
+    if (process.env.NODE_ENV !== 'production') return [];
     return [
       { source: '/uploads/:path*', headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }] },
       { source: '/_next/static/:path*', headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }] },
