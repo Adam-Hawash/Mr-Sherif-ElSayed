@@ -117,6 +117,16 @@ export function ProtectedYouTubePlayer({
   const hideTimerRef = useRef<any>(null)
   const pendingPlayRef = useRef(!!autoplay)
   const onWatchRef = useRef(onWatch)
+  // حماية التشغيل: منع النقر المزدوج + مراقب إعادة المحاولة لو الأمر الأول فشل
+  const lastToggleRef = useRef(0)
+  const playWatchdogRef = useRef<any>(null)
+  const mutedFallbackRef = useRef(false)
+  const [needsUnmute, setNeedsUnmute] = useState(false)
+  // حماية التشغيل: منع النقر المزدوج + مراقب إعادة المحاولة لو الأمر الأول فشل
+  const lastToggleRef = useRef(0)
+  const playWatchdogRef = useRef<any>(null)
+  const mutedFallbackRef = useRef(false)
+  const [needsUnmute, setNeedsUnmute] = useState(false)
 
   /* resume + cumulative progress state */
   const savedSecondsRef = useRef(0)
@@ -297,10 +307,8 @@ export function ProtectedYouTubePlayer({
               } catch (err) { setQualityLevels(['hd1080', 'hd720', 'large', 'medium', 'small', 'tiny']) }
               if (pendingPlayRef.current) {
                 pendingPlayRef.current = false
-                try {
-                  e.target.playVideo()
-                  if (onWatchRef.current) onWatchRef.current()
-                } catch (err) {}
+                startPlaybackWithWatchdog(e.target)
+                if (onWatchRef.current) onWatchRef.current()
               }
             },
             onStateChange: function (e: any) {
@@ -313,6 +321,14 @@ export function ProtectedYouTubePlayer({
                 applyQuality(selectedQualityRef.current)
               }
               else if (e.data === 2) setPlaying(false)
+              else if (e.data === 5) {
+                /* cued قبل التشغيل — لو فيه طلب تشغيل معلق نبعت الأمر تاني */
+                if (pendingPlayRef.current) {
+                  pendingPlayRef.current = false
+                  startPlaybackWithWatchdog(e.target)
+                  if (onWatchRef.current) onWatchRef.current()
+                }
+              }
               else if (e.data === 0) {
                 // Ended → back to our poster so YouTube's end screen
                 // (related videos / links / logos) is NEVER visible
@@ -395,13 +411,59 @@ export function ProtectedYouTubePlayer({
     }).catch(function () {})
   }
 
+  /* ===== مراقب التشغيل — علاج "الفيديو مش بيفتح" =====
+     على موبايلات كتير أول أمر playVideo() المبعوت عبر postMessage بيتجاهل
+     المتصفح (مفيش user gesture واصل للـ iframe). المراقب بيجرب تاني كل
+     700ms، ولو 3 محاولات فشلوا → بيشغل **صامت** (مسموح دايمًا برمجيًا)
+     ويظهر زرار "اضغط لتفعيل الصوت" — بكده الفيديو يفتح على أي جهاز. */
+  function startPlaybackWithWatchdog(p: any) {
+    if (playWatchdogRef.current) { clearInterval(playWatchdogRef.current); playWatchdogRef.current = null }
+    try { p.playVideo() } catch (e) {}
+    var attempts = 0
+    playWatchdogRef.current = setInterval(function () {
+      var st = -1
+      try { st = p.getPlayerState ? p.getPlayerState() : -1 } catch (e) {}
+      if (st === 1 || st === 3) {
+        clearInterval(playWatchdogRef.current); playWatchdogRef.current = null
+        return
+      }
+      attempts++
+      if (attempts >= 3) {
+        clearInterval(playWatchdogRef.current); playWatchdogRef.current = null
+        try {
+          p.mute(); mutedFallbackRef.current = true; setNeedsUnmute(true)
+          p.playVideo()
+        } catch (e) {}
+      } else {
+        try { p.playVideo() } catch (e) {}
+      }
+    }, 700)
+  }
+
+  function unmuteAudio() {
+    var p = playerRef.current
+    try {
+      if (p) { p.unMute(); p.setVolume && p.setVolume(100) }
+    } catch (e) {}
+    mutedFallbackRef.current = false
+    setNeedsUnmute(false)
+  }
+
   function togglePlay() {
     var p = playerRef.current
     if (!p || !p.playVideo) return
+    // منع النقر المزدوج: تجاهل أي نقرة تانية خلال 350ms (بعض المتصفحات بتبعت
+    // touchend + click مع بعض — كان بيعمل تشغيل وإيقاف في نفس اللحظة)
+    var now = Date.now()
+    if (now - lastToggleRef.current < 350) return
+    lastToggleRef.current = now
     if (!ready) { pendingPlayRef.current = true }
     try {
-      if (playing) { p.pauseVideo() } else {
-        p.playVideo()
+      if (playing) {
+        if (playWatchdogRef.current) { clearInterval(playWatchdogRef.current); playWatchdogRef.current = null }
+        p.pauseVideo()
+      } else {
+        startPlaybackWithWatchdog(p)
         if (!started && onWatchRef.current) onWatchRef.current()
       }
     } catch (e) {}
@@ -525,25 +587,9 @@ export function ProtectedYouTubePlayer({
         </div>
       </div>
 
-      {/* Static WRITTEN YouTube mark — decorative only, replaces the old
-          solid black corner covers (removed by request). It is just text:
-          tapping it does NOTHING (clicks are swallowed here, it never
-          links to YouTube and the iframe below stays fully blocked by the
-          click-catch layer). */}
-      {started && (
-        <div
-          className="absolute top-2.5 left-3 z-[25] select-none"
-          aria-hidden="true"
-          onClick={function (e) { e.preventDefault(); e.stopPropagation() }}
-          onTouchEnd={function (e) { e.preventDefault(); e.stopPropagation() }}
-        >
-          <svg width="90" height="18" viewBox="0 0 122 24" fill="none" style={{ opacity: 0.85, display: 'block', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.6))', direction: 'ltr' }}>
-            <rect x="0" y="0" width="34" height="24" rx="6" fill="#FF0000" />
-            <path d="M13.5 6.5 L24.5 12 L13.5 17.5 Z" fill="#FFFFFF" />
-            <text x="40" y="18" fill="#FFFFFF" fontSize="16" fontWeight="700" fontFamily="Arial, Helvetica, sans-serif" style={{ direction: 'ltr' }}>YouTube</text>
-          </svg>
-        </div>
-      )}
+      {/* ملاحظة: شيلنا علامة "YouTube" المكتوبة خالص — طلب المستر الصريح:
+          ممنوع كلمة يوتيوب أو اللوجو يبانوا. الكارت الطائر (الووترمارك)
+          بيمر على الركن ده بانتظام وهو اللي بيغطي مكانه. */}
 
       {/* Click-catch overlay — blocks ALL interaction with the YouTube iframe */}
       <div
@@ -551,6 +597,22 @@ export function ProtectedYouTubePlayer({
         onClick={function (e) { e.preventDefault(); e.stopPropagation(); handleVideoAreaClick() }}
         onTouchEnd={function (e) { e.preventDefault(); e.stopPropagation(); handleVideoAreaClick() }}
       />
+
+      {/* زرار تفعيل الصوت — بيظهر بس لو التشغيل ابدأ صامت (احتياط المتصفحات
+          اللي بترفض أول أمر تشغيل) — ضغطة واحدة بترجع الصوت */}
+      {needsUnmute && started && (
+        <button
+          type="button"
+          aria-label="اضغط لتفعيل الصوت"
+          className="absolute z-[70] left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full bg-black/80 border border-white/25 text-white text-xs sm:text-sm font-bold px-4 py-2.5 min-h-[44px] shadow-2xl"
+          style={{ top: '38%' }}
+          onClick={function (e) { e.preventDefault(); e.stopPropagation(); unmuteAudio() }}
+          onTouchEnd={function (e) { e.preventDefault(); e.stopPropagation(); unmuteAudio() }}
+        >
+          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" /></svg>
+          اضغط لتفعيل الصوت
+        </button>
+      )}
 
       {/* PAUSED indicator — NO dark/blur cover (removed by request): the
           paused frame stays visible. Our big OPAQUE play button is pinned

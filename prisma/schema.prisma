@@ -29,8 +29,12 @@ model Student {
   lastLogin    DateTime?
   isPaidAccess Boolean           @default(false)
   // ربط الجهاز: الطالب بيسجل دخول من جهازه بس — المستر يقدر يسمح بكل الأجهزة
-  deviceId        String  @default("")
-  deviceFp        String  @default("")
+  // creationDeviceId/creationDeviceFp = جهاز إنشاء الحساب — ثابت لا يتغير أبدًا
+  deviceId          String  @default("")
+  deviceFp          String  @default("")
+  creationDeviceId  String  @default("")
+  creationDeviceFp  String  @default("")
+  deviceType        String  @default("")
   allowAllDevices Boolean @default(false)
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt

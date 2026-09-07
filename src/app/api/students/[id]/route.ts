@@ -56,10 +56,13 @@ export async function PUT(
     // allowAllDevices: سماح لمرة واحدة — أول جهاز يدخل بعدها بيبقى جهاز الحساب
     // والسماح بيتقفل لوحده (شوف منطق الدخول في /api/students)
     if (typeof body.allowAllDevices === 'boolean') updateData.allowAllDevices = body.allowAllDevices
-    // resetDevice: فك الربط الكامل — أول جهاز يسجل دخول بعد كده بيبقى هو جهاز الحساب الجديد
+    // resetDevice: فك الربط الكامل — أول جهاز يسجل دخول بعد كده بيبقى هو
+    // جهاز إنشاء الحساب الجديد (بيتمسح الربط العادي + ربط الإنشاء الثابت)
     if (body.resetDevice === true) {
       updateData.deviceId = ''
       updateData.deviceFp = ''
+      updateData.creationDeviceId = ''
+      updateData.creationDeviceFp = ''
     }
     // bindDevice: ربط الحساب بجهاز الطالب الحالي (لو المستر عايز يرجّع الربط يدوي)
     if (typeof body.bindDevice === 'string' && body.bindDevice) updateData.deviceId = body.bindDevice
