@@ -59,10 +59,20 @@ function parseTraitsJson(s: any): Record<string, string> | null {
   } catch (e) { return null }
 }
 
+// مقاس الشاشة بيتقارن **من غير ترتيب** (الصغير×الكبير) — لف الموبايل طولي↔عرضي
+// بيبدّل width/height ومكانها يكسر التعرف على نفس الجهاز (كانت حالة حجب حقيقية)
+function dimsPair(t: Record<string, string>): string {
+  var a = parseInt(t.sw || '0', 10) || 0
+  var b = parseInt(t.sh || '0', 10) || 0
+  return a < b ? a + 'x' + b : b + 'x' + a
+}
+
 function traitsMatchSameDevice(stored: Record<string, string> | null, fresh: Record<string, string> | null): boolean {
   if (!stored || !fresh) return false
   if (stored.fallback === '1' || fresh.fallback === '1') return false
-  var hard = ['sw', 'sh', 'webgl', 'platform']
+  // المكوّنات الحاكمة: كارت الشاشة + المنصة (الشاشة بتتقارن من غير ترتيب فوق)
+  if (dimsPair(stored) !== dimsPair(fresh)) return false
+  var hard = ['webgl', 'platform']
   for (var i = 0; i < hard.length; i++) {
     if (String(stored[hard[i]] || '') !== String(fresh[hard[i]] || '')) return false
   }
@@ -208,6 +218,40 @@ export async function GET(request: NextRequest) {
               })
               sameDevice = !other
             } catch (gErr) { sameDevice = false }
+          }
+          // حساب قديم اتسجل قبل نظام المكوّنات خالص (مكوّنات فاضية) ومفيش أي
+          // هوية/بصمة مطابقة — مفيش أي طريقة نتحقق بيها من الجهاز ده نهائيًا،
+          // ومن غير الحركة دي الحساب بيفضل محجوب للأبد على صاحبه نفسه!
+          // أول حد يدخل بالباسورد الصح بيبقى جهاز الحساب (نفس فلسفة فك الربط)
+          // وحماية ضد المشاركة: الجهاز ممنوع يكون مربوط بحساب تاني
+          if (!sameDevice && !storedTraits && current.uuid) {
+            try {
+              var other2 = await db.student.findFirst({
+                where: { id: { not: student.id }, OR: [{ deviceId: current.uuid }, { creationDeviceId: current.uuid }] },
+                select: { id: true },
+              })
+              if (!other2) {
+                await db.student.update({
+                  where: { id: student.id },
+                  data: {
+                    deviceId: current.uuid,
+                    deviceFp: current.fp,
+                    creationDeviceId: current.uuid,
+                    creationDeviceFp: current.fp,
+                    deviceTraits: freshTraitsStr,
+                    deviceType: inDeviceType || (student as any).deviceType || '',
+                  },
+                })
+                ;(student as any).deviceId = current.uuid
+                ;(student as any).creationDeviceId = current.uuid
+                try {
+                  await db.studentActivity.create({
+                    data: { studentId: student.id, action: 'device_legacy_rebind', details: 'حساب قديم من غير مكوّنات محفوظة — أول دخول ناجح بعد الترقية بقى هو جهاز الحساب' },
+                  })
+                } catch (aErr3) {}
+                deviceTrusted = true
+              }
+            } catch (lErr) { console.error('Legacy rebind error:', lErr) }
           }
           if (sameDevice && freshTraits) {
             // نفس الجهاز فعلًا — نحدّث الهوية والبصمة المخزنة (جهاز واحد لسه واحد)
@@ -470,23 +514,36 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'الاسم ورقم الهاتف والصف مطلوبين' }, { status: 400 })
     }
 
-    var student = await db.student.create({
-      data: {
-        name: name,
-        phone: phone,
-        grade: grade,
-        status: status,
-        parentName: parentName,
-        parentPhone: parentPhone,
-        password: password,
-        deviceId: deviceId,
-        deviceFp: deviceFp,
-        deviceTraits: deviceTraits,
-        deviceType: deviceType,
-        creationDeviceId: creationDeviceId,
-        creationDeviceFp: creationDeviceFp,
-      },
-    })
+    var student: any = null
+    try {
+      student = await db.student.create({
+        data: {
+          name: name,
+          phone: phone,
+          grade: grade,
+          status: status,
+          parentName: parentName,
+          parentPhone: parentPhone,
+          password: password,
+          deviceId: deviceId,
+          deviceFp: deviceFp,
+          deviceTraits: deviceTraits,
+          deviceType: deviceType,
+          creationDeviceId: creationDeviceId,
+          creationDeviceFp: creationDeviceFp,
+        },
+      })
+    } catch (cErr: any) {
+      // الرقم متسجل قبل كده (unique) → رسالة عربية واضحة بدل الخطأ التقني —
+      // دي كانت سبب "مشكلة تسجيل الحساب": الطالب بيجرب تاني فيفشل من غير ما يفهم
+      if (cErr && cErr.code === 'P2002') {
+        return NextResponse.json(
+          { error: '⚠️ الرقم ده متسجل قبل كده في المنصة — لو الحساب ده بتاعك اعمل تسجيل دخول عادي بالرقم وكلمة السر، ولو نسيت كلمة السر أو قابلتك أي مشكلة كلم المستر' },
+          { status: 409 }
+        )
+      }
+      throw cErr
+    }
 
     try {
       await db.studentActivity.create({

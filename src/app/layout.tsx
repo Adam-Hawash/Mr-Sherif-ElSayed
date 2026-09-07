@@ -17,7 +17,8 @@ const geistMono = Geist_Mono({
 });
 
 export var metadata: Metadata = {
-  title: "منصة مستر شريف السيد | Maths Platform",
+  title: "Mr. Sherif ElSayed | Math Platform",
+  applicationName: "Mr. Sherif ElSayed — Math Platform",
   description:
     "منصة مستر شريف السيد التعليمية — شرح رياضيات بيسهّلك الماث، واجبات أسبوعية، امتحانات دورية، ومتابعة مستمرة.",
 };
@@ -44,8 +45,8 @@ export default async function RootLayout({
     /* DB not available yet — client will fetch via /api/config */
   }
 
-  // Favicon: use user's custom image or the platform logo
-  var faviconUrl = initialConfig.favicon_url || "/logo.svg";
+  // Favicon: صورة المستر (الافتراضي) أو صورة مخصصة من لوحة التحكم
+  var faviconUrl = initialConfig.favicon_url || "/favicon.png";
 
   return (
     <html lang="ar" dir="rtl" className="dark" suppressHydrationWarning>
@@ -62,8 +63,10 @@ export default async function RootLayout({
           rel="stylesheet"
         />
 
-        {/* Favicon — user's custom image, NO Z logo */}
+        {/* Favicon — صورة المستر كافتراضي، وapple-touch-icon للموبايل */}
         <link rel="icon" href={faviconUrl} />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <link rel="shortcut icon" href="/favicon.ico" sizes="16x16 32x32" />
 
         {/* Inject config server-side for instant client access */}
         <script

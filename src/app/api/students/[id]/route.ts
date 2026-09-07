@@ -65,7 +65,12 @@ export async function PUT(
       updateData.creationDeviceFp = ''
     }
     // bindDevice: ربط الحساب بجهاز الطالب الحالي (لو المستر عايز يرجّع الربط يدوي)
-    if (typeof body.bindDevice === 'string' && body.bindDevice) updateData.deviceId = body.bindDevice
+    // **مهم**: الدخول بيفحص أعمدة الإنشاء الثابتة الأول — فالربط اليدوي لازم
+    // يتكتب هناك كمان وإلا الجهاز المربوط يدويًا هيفضل مرفوض 403!
+    if (typeof body.bindDevice === 'string' && body.bindDevice) {
+      updateData.deviceId = body.bindDevice
+      updateData.creationDeviceId = body.bindDevice
+    }
 
     const student = await db.student.update({
       where: { id },
