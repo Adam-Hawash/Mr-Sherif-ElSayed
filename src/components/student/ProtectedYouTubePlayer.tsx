@@ -122,22 +122,17 @@ export function ProtectedYouTubePlayer({
   const playWatchdogRef = useRef<any>(null)
   const mutedFallbackRef = useRef(false)
   const [needsUnmute, setNeedsUnmute] = useState(false)
-  // حماية التشغيل: منع النقر المزدوج + مراقب إعادة المحاولة لو الأمر الأول فشل
-  const lastToggleRef = useRef(0)
-  const playWatchdogRef = useRef<any>(null)
-  const mutedFallbackRef = useRef(false)
-  const [needsUnmute, setNeedsUnmute] = useState(false)
 
   /* resume + cumulative progress state */
   const savedSecondsRef = useRef(0)
   const maxSeenRef = useRef(0)
 
-  /* quality settings state — DEFAULT: automatic capped at 480p so it opens
-     fast, never blurry, and never wastes data on hd */
+  /* quality settings state — DEFAULT: 480p PINNED (طلب المستر: الجودة ثابتة
+     على 480 — واضحة وبتفتح سريع وبتوفر داتا). الحارس بيفرضها باستمرار. */
   const [qualityLevels, setQualityLevels] = useState<string[]>([])
-  const [selectedQuality, setSelectedQuality] = useState<string>('auto480')
+  const [selectedQuality, setSelectedQuality] = useState<string>('large')
   const [showQualityMenu, setShowQualityMenu] = useState(false)
-  const selectedQualityRef = useRef('auto480')
+  const selectedQualityRef = useRef('large')
   const lastQualityApplyRef = useRef(0)
   const mismatchSinceRef = useRef(0)
   const lastHardReloadRef = useRef(0)
@@ -683,6 +678,15 @@ export function ProtectedYouTubePlayer({
             aria-label="جودة الفيديو"
           >
             <p className="px-3 py-1 text-[10px] text-white/50 font-bold">جودة الفيديو</p>
+            <button
+              type="button"
+              role="menuitem"
+              className={'w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-white hover:bg-white/10 transition-colors min-h-[36px] ' + (selectedQuality === 'large' ? 'text-primary font-bold' : '')}
+              onClick={function (e) { e.preventDefault(); e.stopPropagation(); handleQualitySelect('large') }}
+            >
+              <span>480p (ثابتة)</span>
+              {selectedQuality === 'large' && <Check className="w-4 h-4" />}
+            </button>
             <button
               type="button"
               role="menuitem"

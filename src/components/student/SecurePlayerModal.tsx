@@ -186,7 +186,8 @@ export function SecurePlayerModal({
         if (!alive) return
         var rows = (d && d.progress) || []
         var w = rows.length ? Number(rows[0].watchedSeconds) || 0 : 0
-        setResume(w > 5 ? w : 0)
+        // 999999 = علامة "خلص الفيديو" — مش نقطة تكملة → نبدأ من الأول
+        setResume(w > 5 && w < 999000 ? w : 0)
       })
       .catch(function () { if (alive) setResume(0) })
     return function () { alive = false }
