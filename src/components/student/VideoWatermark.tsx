@@ -51,8 +51,8 @@ export function VideoWatermark({ name, phone }: { name?: string; phone?: string 
   // + الاسم (أول اسمين) والرقم يبانوا كاملين ومش بيغطوا الفيديو
   const esc = function (s: string) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }
   const svgTile = encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="520">' +
-      '<text x="28" y="260" font-size="11" font-weight="bold" fill="rgba(255,255,255,0.5)" stroke="rgba(0,0,0,0.5)" stroke-width="1.8" paint-order="stroke" transform="rotate(-18 320 260)" font-family="sans-serif">' +
+    '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="300">' +
+      '<text x="24" y="150" font-size="14" font-weight="bold" fill="rgba(255,255,255,0.5)" stroke="rgba(0,0,0,0.5)" stroke-width="1.8" paint-order="stroke" transform="rotate(-18 250 150)" font-family="sans-serif">' +
         esc(tileLabel) +
       '</text>' +
     '</svg>'

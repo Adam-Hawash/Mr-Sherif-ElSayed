@@ -69,6 +69,9 @@ export function AIAssistant() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  // مرجع دايمًا بيشاور على آخر رسائل — عشان نبعت تاريخ المحادثة للسيرفر
+  const messagesRef = useRef<Message[]>([])
+  useEffect(function () { messagesRef.current = messages }, [messages])
 
   useEffect(() => {
     if (messagesEndRef.current) {
@@ -176,12 +179,18 @@ export function AIAssistant() {
     }
 
     try {
+      // تاريخ المحادثة: آخر 8 رسائل (من غير placeholder المساعد الفاضي الأخير)
+      var historyForApi = (function () {
+        var arr = messagesRef.current.slice(0, -1).filter(function (m) { return m.content && m.content.trim() })
+        return arr.slice(-8).map(function (m) { return { role: m.role, content: m.content } })
+      })()
       var res = await fetch('/api/ai/assistant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: msg || 'شوف الصور دي وساعدني فيها.',
           images: imgs.length > 0 ? imgs : undefined,
+          history: historyForApi,
           context: { page: page, studentId: studentId },
           stream: true,
         }),
