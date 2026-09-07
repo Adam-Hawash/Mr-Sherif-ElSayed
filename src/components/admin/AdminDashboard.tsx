@@ -11,15 +11,18 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
+import { Switch } from '@/components/ui/switch'
 import {
-  Users, UserCheck, Clock, Video, ClipboardList, FileText,
+  Users, UserCheck, Clock, ClipboardList, FileText,
   Megaphone, Plus, Check, X, Trash2, LogOut, Loader2,
   BarChart3, RefreshCw, Settings, Upload, MessageSquare,
   Link2, Activity, Eye, ImagePlus, Trophy, UserX, Camera,
   PlayCircle, Pause, Film, Search, FileDown, PictureInPicture2, Save, Sparkles, Wallet,
+  Video as VideoIcon,
   ChevronLeft, CheckCircle2, Smartphone, RotateCcw, ShieldCheck
 } from 'lucide-react'
 import { CMSPanel } from './CMSPanel'
+import { VideoProtectionSettings } from './VideoProtectionSettings'
 import { FractionText, hasMathMarkup } from '@/components/FractionText'
 import { SocialLinksPanel } from './SocialLinksPanel'
 import { CommunityPanel } from './CommunityPanel'
@@ -211,7 +214,7 @@ export function AdminDashboard() {
             <StatCard icon={Users} label="إجمالي الطلاب" value={stats.totalStudents} color="bg-[#EA580C]/10 text-[#EA580C]" />
             <StatCard icon={Clock} label="بانتظار الموافقة" value={stats.pendingStudents} color="bg-amber-500/10 text-amber-600 dark:text-amber-400" />
             <StatCard icon={UserCheck} label="طلاب مفعلين" value={stats.approvedStudents} color="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" />
-            <StatCard icon={Video} label="إجمالي الفيديوهات" value={stats.totalVideos} color="bg-purple-500/10 text-purple-600 dark:text-purple-400" />
+            <StatCard icon={VideoIcon} label="إجمالي الفيديوهات" value={stats.totalVideos} color="bg-purple-500/10 text-purple-600 dark:text-purple-400" />
             <StatCard icon={Wallet} label="مدفوعات معلقة" value={(stats as any).pendingPayments || 0} color="bg-amber-500/10 text-amber-600 dark:text-amber-400" />
           </div>
         )}
@@ -220,7 +223,7 @@ export function AdminDashboard() {
           <TabsList className="flex flex-wrap h-auto gap-1 bg-muted/50 p-1">
             <TabsTrigger value="students" className="text-xs sm:text-sm gap-1"><Users className="h-4 w-4" /><span className="hidden sm:inline">الطلاب</span></TabsTrigger>
             <TabsTrigger value="my-students" className="text-xs sm:text-sm gap-1"><BarChart3 className="h-4 w-4" /><span className="hidden sm:inline">طلابي</span></TabsTrigger>
-            <TabsTrigger value="videos" className="text-xs sm:text-sm gap-1"><Video className="h-4 w-4" /><span className="hidden sm:inline">الفيديوهات</span></TabsTrigger>
+            <TabsTrigger value="videos" className="text-xs sm:text-sm gap-1"><VideoIcon className="h-4 w-4" /><span className="hidden sm:inline">الفيديوهات</span></TabsTrigger>
             <TabsTrigger value="homework" className="text-xs sm:text-sm gap-1"><ClipboardList className="h-4 w-4" /><span className="hidden sm:inline">الواجبات</span></TabsTrigger>
             <TabsTrigger value="exams" className="text-xs sm:text-sm gap-1"><FileText className="h-4 w-4" /><span className="hidden sm:inline">الامتحانات</span></TabsTrigger>
             <TabsTrigger value="announcements" className="text-xs sm:text-sm gap-1"><Megaphone className="h-4 w-4" /><span className="hidden sm:inline">الإعلانات</span></TabsTrigger>
@@ -411,6 +414,31 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
 
   useEffect(() => { loadStudents() }, [filter, filterGrade])
 
+  // ===== مفتاح قفل الأجهزة العام (المستر يتحكم فيه) =====
+  const [deviceLock, setDeviceLock] = useState(false)
+  useEffect(function () {
+    fetch('/api/site-config').then(function (r) { return r.json() }).then(function (cfgs) {
+      var arr = Array.isArray(cfgs) ? cfgs : []
+      for (var i = 0; i < arr.length; i++) {
+        if (arr[i] && arr[i].key === 'device_lock') setDeviceLock(arr[i].value === '1')
+      }
+    }).catch(function () {})
+  }, [])
+  const toggleDeviceLock = async function (on: boolean) {
+    var prev = deviceLock
+    setDeviceLock(on)
+    try {
+      var res = await fetch('/api/site-config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'device_lock', value: on ? '1' : '0' }) })
+      if (!res.ok) throw new Error()
+      toast.success(on
+        ? 'قفل الأجهزة شغال 🔒 — الحساب بيشتغل على جهازه بس (وبصمة ناتج الجهاز فنفس الجهاز بيدخل دايمًا)'
+        : 'قفل الأجهزة مطفي — الدخول حر من أي جهاز ومفيش حاجة بتتقفل')
+    } catch {
+      setDeviceLock(prev)
+      toast.error('خطأ في تحديث إعدادات القفل')
+    }
+  }
+
   const loadStudentProgress = async (studentId: string) => {
     setSelectedStudentId(studentId)
     setLoadingProgress(true)
@@ -555,6 +583,11 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
                 </Button>
               ))}
             </div>
+            <div className="flex items-center gap-1.5 rounded-lg border px-2 py-1" title="لما يشتغل: الحساب بيتقفل على جهاز الطالب بس (بصمة ناتج الجهاز — نفس الجهاز بيدخل حتى لو مسح بيانات المتصفح). لما يتطفي: الدخول حر من أي جهاز">
+              <Smartphone className={'h-3.5 w-3.5 ' + (deviceLock ? 'text-emerald-600' : 'text-muted-foreground')} />
+              <span className="text-[10px] font-medium text-muted-foreground">قفل الأجهزة</span>
+              <Switch checked={deviceLock} onCheckedChange={toggleDeviceLock} className="scale-90" />
+            </div>
           </div>
         </div>
       </CardHeader>
@@ -577,7 +610,7 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
                       <Badge variant="outline" className="text-[9px] text-muted-foreground">هيتربط بأول جهاز يدخل بيه</Badge>
                     )}
                     {s.loginCount > 0 && <span className="text-[10px] text-muted-foreground flex items-center gap-0.5"><Eye className="h-3 w-3" />{s.loginCount} دخول</span>}
-                    {(s as any).watchedVideoCount > 0 && <span className="text-[10px] text-purple-600 dark:text-purple-400 flex items-center gap-0.5"><Video className="h-3 w-3" />{(s as any).watchedVideoCount} فيديو</span>}
+                    {(s as any).watchedVideoCount > 0 && <span className="text-[10px] text-purple-600 dark:text-purple-400 flex items-center gap-0.5"><VideoIcon className="h-3 w-3" />{(s as any).watchedVideoCount} فيديو</span>}
                   </div>
                   <p className="text-xs text-muted-foreground" dir="ltr">{s.phone}</p>
                   <p className="text-xs text-muted-foreground">ولي الأمر: {s.parentName} <span dir="ltr">({s.parentPhone})</span></p>
@@ -826,6 +859,9 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* حماية الفيديوهات — الووترمارك الذكي + منظومة التذاكر */}
+        <VideoProtectionSettings />
+
         {/* Add Video Form */}
         {showForm && (
           <div className="p-4 rounded-lg border bg-muted/30 space-y-3">
@@ -933,7 +969,7 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
                     {thumb ? (
                       <Image src={thumb} alt={v.title} fill className="object-cover" sizes="200px" unoptimized />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center"><Video className="h-8 w-8 text-white/30" /></div>
+                      <div className="w-full h-full flex items-center justify-center"><VideoIcon className="h-8 w-8 text-white/30" /></div>
                     )}
                     <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                       <PlayCircle className="h-10 w-10 text-white" />
@@ -2050,7 +2086,7 @@ function MyStudentsPanel({ onViewImage }: { onViewImage?: (src: string) => void 
                 {/* Video Progress Detail */}
                 {detail.videoProgress && detail.videoProgress.length > 0 && (
                   <div className="sm:col-span-2">
-                    <h4 className="text-xs font-semibold mb-2 flex items-center gap-1"><Video className="h-3.5 w-3.5" />تقدم الفيديوهات</h4>
+                    <h4 className="text-xs font-semibold mb-2 flex items-center gap-1"><VideoIcon className="h-3.5 w-3.5" />تقدم الفيديوهات</h4>
                     <div className="space-y-1.5 max-h-[200px] overflow-y-auto custom-scrollbar">
                       {detail.videoProgress.slice(0, 10).map((vp: any) => (
                         <div key={vp.id} className="flex items-center gap-2 p-1.5 rounded border bg-card">

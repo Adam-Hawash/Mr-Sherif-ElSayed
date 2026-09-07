@@ -15,9 +15,7 @@ export async function GET(request: NextRequest) {
       var password = searchParams.get('password') || ''
       var deviceId = searchParams.get('deviceId') || ''
       // بصمة الجهاز — نسخ متعددة من نفس الجهاز (localStorage + cookie + بصمة ثابتة
-      // محسوبة من خصائص الجهاز). أي نسخة تطابق الحساب تعدي — كده لو الطالب مسح
-      // بيانات المتصفح أو دخل من لينك بدومين مختلف، الجهاز بيفضل متعرف عليه
-      // والحساب مايتقفلش بالغلط (المستر: "أنت كده البيانات كلها هتضيع").
+      // محسوبة من خصائص الجهاز = "ناتج الجهاز"). أي نسخة تطابق الحساب تعدي.
       var candidates: string[] = []
       try {
         var rawIds = JSON.parse(searchParams.get('deviceIds') || '[]')
@@ -41,46 +39,68 @@ export async function GET(request: NextRequest) {
         if (!password || student.password !== password) {
           return NextResponse.json({ students: [], total: 0, page: 1, pageSize: 1, totalPages: 0 })
         }
+        // ===== مفتاح قفل الأجهزة العام (المستر يتحكم فيه من لوحة الأدمن) =====
+        // افتراضيًا: مطفي ('0') — الدخول حر من أي جهاز ومفيش أي حاجة بتتقفل.
+        // لما المستر يشغّله ('1') — الحساب يشتغل على أجهزته المعروفة بس
+        // (بصمة ناتج الجهاز الثابتة موجودة دايمًا في القائمة فنفس الجهاز
+        // بيدخل حتى لو بيانات المتصفح اتمسحت).
+        var deviceLock = false
+        try {
+          var lockCfg = await db.siteConfig.findUnique({ where: { key: 'device_lock' } })
+          deviceLock = Boolean(lockCfg && lockCfg.value === '1')
+        } catch (e) {}
         // IDs بايظة من إصدارات قديمة (اتخزنت كنص "null" مثلاً) → نعتبرها زي ما تكون فاضية
         var LEGACY_IDS = ['null', 'undefined', 'dev_null', 'none', '']
         var storedId = (student as any).deviceId || ''
         var storedIsBroken = LEGACY_IDS.indexOf(storedId) !== -1
         var deviceTrusted = !storedIsBroken && !!storedId && candidates.indexOf(storedId) !== -1
-        // ===== ربط الجهاز =====
-        // الحساب مربوط بجهاز معين + المستر ماسمحش بكل الأجهزة + الجهاز الحالي
-        // مش من الأجهزة المعروفة → مرفوض
-        if (
-          storedId &&
-          !storedIsBroken &&
-          !deviceTrusted &&
-          !(student as any).allowAllDevices &&
-          candidates.length > 0
-        ) {
-          return NextResponse.json(
-            {
-              students: [],
-              deviceBlocked: true,
-              error: 'الحساب ده مربوط بجهاز تاني. مش هينفع تسجل دخول من الجهاز ده غير لما تتواصل مع المستر يعمل لك سماح.',
-            },
-            { status: 403 }
-          )
-        }
-        // أول تسجيل دخول (حساب عمله الأدمن مثلاً) أو ربط قديم بايظ → الجهاز ده بيتسجل
-        if ((!storedId || storedIsBroken) && primaryDevice) {
-          try {
-            await db.student.update({ where: { id: student.id }, data: { deviceId: primaryDevice } })
-            ;(student as any).deviceId = primaryDevice
-          } catch (bindErr) {
-            console.error('Device bind error:', bindErr)
+        // ===== ربط الجهاز (بس لما المستر يكون شاغل القفل) =====
+        if (deviceLock) {
+          // الحساب مربوط بجهاز معين + المستر ماسمحش بكل الأجهزة + الجهاز الحالي
+          // مش من الأجهزة المعروفة → مرفوض
+          if (
+            storedId &&
+            !storedIsBroken &&
+            !deviceTrusted &&
+            !(student as any).allowAllDevices &&
+            candidates.length > 0
+          ) {
+            return NextResponse.json(
+              {
+                students: [],
+                deviceBlocked: true,
+                error: 'الحساب ده مربوط بجهاز تاني. مش هينفع تسجل دخول من الجهاز ده غير لما تتواصل مع المستر يعمل لك سماح.',
+              },
+              { status: 403 }
+            )
           }
-        } else if (!deviceTrusted && (student as any).allowAllDevices && primaryDevice) {
-          // المستر عمل سماح للطالب → أول جهاز يدخل بيه بيبقى جهاز الحساب الجديد
-          // (كده لو المستر شال السماح بعدين، الطالب يفضل شغال على جهازه)
+          // أول تسجيل دخول (حساب عمله الأدمن مثلاً) أو ربط قديم بايظ → الجهاز ده بيتسجل
+          if ((!storedId || storedIsBroken) && primaryDevice) {
+            try {
+              await db.student.update({ where: { id: student.id }, data: { deviceId: primaryDevice } })
+              ;(student as any).deviceId = primaryDevice
+            } catch (bindErr) {
+              console.error('Device bind error:', bindErr)
+            }
+          } else if (!deviceTrusted && (student as any).allowAllDevices && primaryDevice) {
+            // المستر عمل سماح للطالب → أول جهاز يدخل بيه بيبقى جهاز الحساب الجديد
+            // (كده لو المستر شال السماح بعدين، الطالب يفضل شغال على جهازه)
+            try {
+              await db.student.update({ where: { id: student.id }, data: { deviceId: primaryDevice } })
+              ;(student as any).deviceId = primaryDevice
+            } catch (bindErr) {
+              console.error('Device rebind error:', bindErr)
+            }
+          }
+        } else if (primaryDevice && (!storedId || storedIsBroken || (!deviceTrusted && !(student as any).allowAllDevices))) {
+          // القفل مطفي → مفيش أي حاجة بتتقفل، وكمان بنعمل self-heal:
+          // لو الحساب متربط بجهاز قديم ضايع (بصمة اتغيرت مثلاً) نجدد الربط
+          // للجهاز الحالي تلقائيًا عشان لما المستر يشغّل القفل مفيش حد يتقفل بالغلط
           try {
             await db.student.update({ where: { id: student.id }, data: { deviceId: primaryDevice } })
             ;(student as any).deviceId = primaryDevice
           } catch (bindErr) {
-            console.error('Device rebind error:', bindErr)
+            console.error('Device self-heal error:', bindErr)
           }
         }
         return NextResponse.json({ students: [{ ...student, watchedVideoCount: 0 }], total: 1, page: 1, pageSize: 1, totalPages: 1 })

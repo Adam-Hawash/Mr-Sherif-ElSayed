@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
       // This handles cases like "تالتة إعدادي" matching "الصف الثالث الاعدادي"
     }
     if (keyword) {
-      where.OR = where.OR ? [...where.OR, { title: { contains: keyword } }] : [{ title: { contains: keyword } }]
+      where.OR = where.OR ? [...(where.OR as unknown[]), { title: { contains: keyword } }] : [{ title: { contains: keyword } }]
     }
 
     const [homework, total] = await Promise.all([
