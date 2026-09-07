@@ -230,3 +230,27 @@ model PlayTicket {
 
   @@index([expiresAt])
 }
+
+// ============================================================
+// Complaint — صفحة الشكاوي: الطالب يكتب مشكلته (الاسم والتليفون
+// بيتسجلوا تلقائي من حسابه) والشكوى تظهر للأدمن بس.
+// source = "student" أو "ai" (المساعد الذكي سجلها تلقائي).
+// ============================================================
+model Complaint {
+  id          String    @id @default(cuid())
+  studentId   String    @default("")
+  studentName String    @default("")
+  phone       String    @default("")
+  grade       String    @default("")
+  message     String
+  summary     String    @default("")
+  source      String    @default("student")
+  status      String    @default("new")
+  reply       String    @default("")
+  reviewedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now())
+
+  @@index([status])
+  @@index([studentId])
+}

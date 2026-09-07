@@ -192,39 +192,38 @@ const PLAYER_PAGE = `<!doctype html>
   #wrap.fs{width:100vw;height:100vh;max-width:none}
   #yt,#fileVid{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000}
   /* ===== الووترمارك (مواصفات المستر) =====
-     أسود بالكامل: 6 شِپات على الحواف كلها بتدور دورة ناعمة مستمرة
-     + ووترمارك كبير في نص الخلفية شفاف بحواف سودة وبالعرض
-     + كارت طائر أسود بينط على الحواف بس (ممنوع يقف في النص) */
+     سابتين في مكانهم: 4 على منتصفات الحواف + 2 في الزوايا (شكل سنبوكس)
+     + ووترمارك كبير في نص الخلفية شفاف بحواف سودة وبالعرض — هو بس اللي بينطف ناعم
+     مفيش كارت طائر — كل شِپ في مسافة كافية والبيانات جواه كلها باينة */
   .wm{position:absolute;inset:0;z-index:40;pointer-events:none;user-select:none;overflow:hidden}
-  /* الووترمارك الكبير في النص — شفاف بحواف سودة، بالعرض، والمحتوى يبان تحته عادي */
+  /* الووترمارك الكبير في النص — شفاف بحواف سودة، بالعرض، وهو بس اللي بيتحرك */
   #wmBig{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:41;direction:rtl;
-    text-align:center;max-width:92%;white-space:nowrap;overflow:hidden;
+    text-align:center;max-width:86%;white-space:normal;
     font-weight:900;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
-    font-size:clamp(26px,6.5vw,76px);line-height:1.3;
-    color:rgba(0,0,0,.17);
-    -webkit-text-stroke:1.6px rgba(0,0,0,.42);
-    paint-order:stroke fill;
-    unicode-bidi:plaintext}
-  #wmBig .b2{display:block;font-size:.38em;font-weight:800;letter-spacing:.05em;direction:ltr;unicode-bidi:plaintext;
-    -webkit-text-stroke:1.1px rgba(0,0,0,.38)}
-  /* الشِپات الصغيرة — أسود شفاف على الحواف، بتتقلب أماكنها بحركة ناعمة مستمرة */
-  .wmChip{position:absolute;z-index:44;direction:rtl;text-align:center;
-    transition:top 3.2s cubic-bezier(.45,0,.25,1),left 3.2s cubic-bezier(.45,0,.25,1),transform 3.2s cubic-bezier(.45,0,.25,1)}
+    font-size:clamp(20px,5.6vw,72px);line-height:1.3;
+    unicode-bidi:plaintext;letter-spacing:0}
+  #wmBig .dx{animation:wmDriftX 17s ease-in-out infinite alternate}
+  #wmBig .dy{animation:wmDriftY 11.5s ease-in-out infinite alternate-reverse}
+  #wmBig .b1{display:block;color:rgba(0,0,0,.13);
+    -webkit-text-stroke:1.8px rgba(0,0,0,.5);paint-order:stroke fill;
+    text-shadow:0 0 18px rgba(255,255,255,.22)}
+  #wmBig .b2{display:block;font-size:.36em;font-weight:800;direction:ltr;unicode-bidi:plaintext;letter-spacing:0;
+    color:rgba(0,0,0,.13);-webkit-text-stroke:1.2px rgba(0,0,0,.45);paint-order:stroke fill}
+  @keyframes wmDriftX{0%{transform:translateX(-1.1em)}100%{transform:translateX(1.1em)}}
+  @keyframes wmDriftY{0%{transform:translateY(-.6em)}100%{transform:translateY(.6em)}}
+  /* الشِپات الصغيرة — سابتين في مكانهم، مفيش أي حركة خالص */
+  .wmChip{position:absolute;z-index:44;direction:rtl;text-align:center}
   .wmChip .in{display:inline-block;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.20);
-    color:rgba(255,255,255,.95);font-size:10px;font-weight:700;font-family:system-ui,-apple-system,sans-serif;
-    padding:3px 11px;border-radius:999px;white-space:nowrap;letter-spacing:0;max-width:46vw;overflow:hidden;
-    text-shadow:0 1px 2px rgba(0,0,0,.8);
-    animation:wmFloat 4.6s ease-in-out infinite alternate}
-  .wmChip:nth-child(odd) .in{animation-duration:5.8s;animation-delay:-2.4s}
-  @media (max-width:640px){ .wmChip .in{font-size:9px;padding:2px 9px;border-radius:999px} }
-  @keyframes wmFloat{0%{transform:translateY(0)}100%{transform:translateY(-7px)}}
-  /* كارت الووترمارك الطائر — أسود شفاف + اسم الطالب كامل ورقمه — على الحواف بس */
-  #wmBadge{position:absolute;z-index:45;pointer-events:none;user-select:none;direction:rtl;text-align:center;
-    padding:9px 16px;border-radius:14px;background:rgba(0,0,0,.62);border:1.5px solid rgba(255,255,255,.22);
-    box-shadow:0 6px 22px rgba(0,0,0,.55);max-width:58%;
-    transition:top 3.2s cubic-bezier(.45,0,.25,1),left 3.2s cubic-bezier(.45,0,.25,1),transform 3.2s cubic-bezier(.45,0,.25,1)}
-  #wmBadge .num{color:#fff;font-weight:900;font-size:16px;line-height:1.3;text-shadow:0 1px 3px rgba(0,0,0,.95);direction:ltr;unicode-bidi:plaintext}
-  #wmBadge .nm{color:rgba(255,255,255,.95);font-weight:700;font-size:12px;line-height:1.45;text-shadow:0 1px 3px rgba(0,0,0,.9);white-space:normal;max-width:240px;word-break:break-word}
+    color:rgba(255,255,255,.95);font-size:clamp(8.5px,1.05vw,11px);font-weight:700;font-family:system-ui,-apple-system,sans-serif;
+    padding:3px 11px;border-radius:999px;white-space:nowrap;letter-spacing:0;overflow:hidden;
+    text-shadow:0 1px 2px rgba(0,0,0,.8);unicode-bidi:plaintext}
+  .wmChip .short{display:none}
+  @media (max-width:640px){
+    .wmChip .in{font-size:8.5px;padding:2px 8px;border-radius:999px}
+    /* على الموبايل: الجانبية والزوايا تعرض الرقم بس عشان مفيش تداخل */
+    .wmChip.compact .full{display:none}
+    .wmChip.compact .short{display:inline}
+  }
   /* درع فوق بيقفل شريط عنوان يوتيوب اللي بيظهر لحظة الوقوف */
   #topShield{position:absolute;top:0;left:0;right:0;height:60px;z-index:22;pointer-events:none;opacity:0;transition:opacity .35s;
     background:linear-gradient(to bottom,rgba(0,0,0,.92),rgba(0,0,0,.55) 55%,rgba(0,0,0,0))}
@@ -289,69 +288,66 @@ function deobfuscate(b64, key){
   }catch(e){ return ''; }
 }
 
-/* ===== الووترمارك (مواصفات المستر) =====
-   • أسود بالكامل — شِپات + كارت + ووترمارك كبير كلهم أسود شفاف
-   • 6 شِپات على الحواف كلها (فوق وتحت: أركان + منتصفات) بتدور دورة ناعمة مستمرة
-   • ووترمارك كبير في نص الخلفية: شفاف بحواف سودة وبالعرض — محتوى الفيديو يبان تحته عادي
-   • الكارت الطائر بينط على الحواف بس — ممنوع يقف في نص الشاشة أبدًا
-   • الاسم كامل 100% من غير قص أي حرف — DOM حقيقي فالحروف العربية متوصلة وسليمة */
+/* ===== الووترمارك (مواصفات المستر النهائية) =====
+   • الست شِپات سابتين في مكانهم مفيش حاجة بتتحرك:
+     4 على الخطوط (منتصف فوق + منتصف تحت + منتصف شمال + منتصف يمين)
+     + 2 في الزوايا (شكل السنبوكس): فوق شمال + تحت يمين
+     كل واحدة في مسافة كافية — البيانات جوه كلها باينة
+   • ووترمارك كبير واحد في نص الخلفية: شفاف بحواف سودة وبالعرض —
+     وهو **البس** اللي بيتحرك (نطفة ناعمة مستمرة)
+   • الاسم كامل 100% من غير قص أي حرف — ممنوع letter-spacing
+     وpaint-order:stroke عشان الحواف السودة متاكلش الحروف */
 var WM_SPOTS = [
-  {t:'3%',   l:'2.5%',  tx:'0%',    rot:-9},
-  {t:'3%',   l:'50%',   tx:'-50%',  rot:7},
-  {t:'3%',   l:'97.5%', tx:'-100%', rot:-7},
-  {t:'91%',  l:'2.5%',  tx:'0%',    rot:7},
-  {t:'91%',  l:'50%',   tx:'-50%',  rot:-9},
-  {t:'91%',  l:'97.5%', tx:'-100%', rot:9}
+  {t:'2.4%', l:'50%',   tx:'-50%',  ty:'0%'},   /* 1) منتصف الخط العلوي */
+  {t:'2.4%', l:'1.8%',  tx:'0%',    ty:'0%'},   /* 2) الزاوية فوق شمال */
+  {t:'50%',  l:'1.8%',  tx:'0%',    ty:'-50%'}, /* 3) منتصف الخط الشمال */
+  {t:'50%',  l:'98.2%', tx:'-100%', ty:'-50%'}, /* 4) منتصف الخط اليمين */
+  {b:'2.4%', l:'50%',   tx:'-50%',  ty:'0%'},   /* 5) منتصف الخط السفلي */
+  {b:'2.4%', l:'98.2%', tx:'-100%', ty:'0%'}    /* 6) الزاوية تحت يمين */
 ];
-var wmTick = 0, chipEls = [], badgeEl = null;
+var chipEls = [];
 var wmName = String(CFG.wm.name || '').trim();
 var wmPhone = String(CFG.wm.phone || '').trim();
 function wmChipText(){ return [wmPhone, wmName].filter(Boolean).join(' • '); }
 function applySpot(el, p){
-  el.style.top = p.t; el.style.left = p.l;
-  el.style.transform = 'translateX(' + (p.tx || '0%') + ') rotate(' + (p.rot || 0) + 'deg)';
+  if(p.b != null){ el.style.top = 'auto'; el.style.bottom = p.b; }
+  else { el.style.bottom = 'auto'; el.style.top = p.t; }
+  el.style.left = p.l;
+  el.style.transform = 'translate(' + (p.tx || '0%') + ',' + (p.ty || '0%') + ')';
 }
 function buildWm(){
   if(!CFG.wm.enabled) return;
   var old = document.getElementById('wm');
   if(old) old.parentNode.removeChild(old);
-  chipEls = []; badgeEl = null;
+  chipEls = [];
   var layer = document.createElement('div');
   layer.id = 'wm'; layer.className = 'wm';
-  /* 1) الووترمارك الكبير في نص الخلفية — شفاف بحواف سودة وبالعرض */
+  /* 1) الووترمارك الكبير في نص الخلفية — شفاف بحواف سودة وبالعرض — هو بس اللي بيتحرك */
   var bigLine1 = wmName || wmPhone;
   var bigLine2 = (wmName && wmPhone) ? wmPhone : '';
   if(bigLine1){
     var big = document.createElement('div');
     big.id = 'wmBig';
-    big.innerHTML = '<span class="b1">' + esc(bigLine1) + '</span>' + (bigLine2 ? '<span class="b2">' + esc(bigLine2) + '</span>' : '');
+    big.innerHTML = '<div class="dx"><div class="dy"><span class="b1">' + esc(bigLine1) + '</span>' + (bigLine2 ? '<span class="b2">' + esc(bigLine2) + '</span>' : '') + '</div></div>';
     big.style.opacity = String(Math.min(1, (Number(CFG.wm.opacity) || 0.55) * 1.15));
     layer.appendChild(big);
   }
-  /* 2) الست شِپات على الحواف — بتتقلب أماكنها بحركة ناعمة (الجري المستمر) */
+  /* 2) الست شِپات على الحواف — سابتين في مكانهم بالظبط، مفيش أي حركة */
   var chipText = wmChipText();
   if(chipText){
     for(var ci = 0; ci < WM_SPOTS.length; ci++){
       var chip = document.createElement('div');
-      chip.className = 'wmChip';
+      /* على الموبايل الشِپات الجانبية والزوايا تعرض الرقم بس عشان مفيش تداخل */
+      chip.className = 'wmChip' + ((ci !== 0 && ci !== 4) ? ' compact' : '');
       applySpot(chip, WM_SPOTS[ci]);
       chip.style.opacity = String(Math.min(1, (Number(CFG.wm.opacity) || 0.55) + 0.05));
       var inner = document.createElement('span');
       inner.className = 'in';
-      inner.textContent = chipText;
+      inner.innerHTML = '<span class="full">' + esc(chipText) + '</span><span class="short">' + esc(wmPhone) + '</span>';
       chip.appendChild(inner);
       layer.appendChild(chip);
       chipEls.push(chip);
     }
-  }
-  /* 3) الكارت الطائر — الاسم كامل + الرقم — على الحواف بس */
-  if(wmPhone || wmName){
-    badgeEl = document.createElement('div');
-    badgeEl.id = 'wmBadge';
-    badgeEl.innerHTML = (wmPhone ? '<div class="num">' + esc(wmPhone) + '</div>' : '') + (wmName ? '<div class="nm">' + esc(wmName) + '</div>' : '');
-    badgeEl.style.opacity = String(Math.min(1, (Number(CFG.wm.opacity) || 0.55) + 0.12));
-    applySpot(badgeEl, WM_SPOTS[(wmTick * 2 + 3) % WM_SPOTS.length]);
-    layer.appendChild(badgeEl);
   }
   wrap.appendChild(layer);
 }
@@ -360,22 +356,13 @@ function ensureTopShield(){
   if(document.getElementById('topShield')) return;
   var ts = document.createElement('div'); ts.id='topShield'; wrap.appendChild(ts);
 }
-/* خطوة الجري: الشِپات بتدور دورة ناعمة على الحواف (كل شِپ ياخد مكان اللي بعده)
-   والكارت الطائر بينط لمكان بعيد عنها — الكل على الحواف بس، النص ممنوع */
-function wmStep(){
-  wmTick++;
-  for(var i = 0; i < chipEls.length; i++){ applySpot(chipEls[i], WM_SPOTS[(i + wmTick) % WM_SPOTS.length]); }
-  if(badgeEl){ applySpot(badgeEl, WM_SPOTS[(wmTick * 2 + 3) % WM_SPOTS.length]); }
-}
 /* self-heal: الووترمارك بيرجع يترسم لو حد شاله من الـ DOM */
 function ensureWm(){
   if(!CFG.wm.enabled) return;
   if(!document.getElementById('wm')) buildWm();
-  else if(!document.getElementById('wmBadge') && (wmPhone || wmName)) buildWm();
   else if(document.getElementById('wm') && chipEls.length === 0 && wmChipText()) buildWm();
 }
 setInterval(ensureWm, 4000);
-setInterval(wmStep, Math.max(6, CFG.wm.interval || 14) * 1000);
 try{ new MutationObserver(ensureWm).observe(wrap, {childList:true, subtree:true}); }catch(e){}
 
 /* ===== ملء الشاشة (الووترمارك جوه العنصر فبيفضل ظاهر) ===== */
