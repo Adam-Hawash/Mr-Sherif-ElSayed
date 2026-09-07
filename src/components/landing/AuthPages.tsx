@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { useAppStore, GRADES } from '@/stores/app-store'
 import { getDeviceId, getDeviceCandidates } from '@/lib/device'
-import { ArrowRight, Phone, Lock, GraduationCap, Users, Loader2, AlertCircle, Eye, EyeOff } from 'lucide-react'
+import { ArrowRight, Phone, Lock, GraduationCap, Users, Loader2, AlertCircle, AlertTriangle, Eye, EyeOff } from 'lucide-react'
 import { toast } from 'sonner'
 
 var fadeInUp = {
@@ -22,6 +22,26 @@ var PHONE_REGEX = /^\d{11}$/
 // Hidden admin entry: phone 22222222222 + this password redirects to admin login (تسجيل دخول المشرفين)
 var ADMIN_PHONE = '22222222222'
 var ADMIN_PASSWORD = 'mr sherif2026#'
+
+// لافتة تحذير الجهاز الواحد — فوق صفحتين الدخول والتسجيل (من غير أي كلام عن مسح بيانات المتصفح)
+function DeviceWarningBanner({ mode }: { mode: 'login' | 'register' }) {
+  return (
+    <div className="mb-5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 flex items-start gap-2.5" role="alert">
+      <AlertTriangle className="h-4.5 w-4.5 text-amber-500 shrink-0 mt-0.5" />
+      <p className="text-[13px] leading-relaxed text-foreground">
+        {mode === 'register' ? (
+          <>
+            <span className="font-bold">مهم جدًا:</span> الحساب بيتقفل على <span className="font-bold">جهاز واحد بس</span> — الجهاز اللي هتعمل بيه الحساب دلوقتي. اعمل الحساب من الجهاز اللي هتفتح بيه المنصة دايمًا، ولو حصلت أي مشكلة كلم المستر.
+          </>
+        ) : (
+          <>
+            <span className="font-bold">تنبيه:</span> الحساب مربوط بـ <span className="font-bold">جهاز واحد بس</span> (الجهاز اللي اتعمل بيه). الدخول من جهاز تاني مش هيشتغل غير لو المستر عمل سماح للحساب من لوحة التحكم.
+          </>
+        )}
+      </p>
+    </div>
+  )
+}
 
 function PhoneField(props) {
   var value = props.value
@@ -156,6 +176,7 @@ export function LoginView() {
   return (
     <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-md">
+        <DeviceWarningBanner mode="login" />
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center h-16 w-16 rounded-2xl bg-primary/10 mb-4"><GraduationCap className="h-8 w-8 text-primary" /></div>
           <h1 className="text-2xl font-bold text-foreground mb-2">تسجيل الدخول</h1>
@@ -240,6 +261,7 @@ export function RegisterView() {
   return (
     <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center px-4 py-8">
       <motion.div className="w-full max-w-lg" initial="hidden" animate="visible" variants={fadeInUp} transition={{ duration: 0.5, ease: 'easeOut' }}>
+        <DeviceWarningBanner mode="register" />
         <div className="text-center mb-6">
           <div className="inline-flex items-center justify-center h-14 w-14 rounded-2xl bg-primary/10 mb-3"><Users className="h-7 w-7 text-primary" /></div>
           <h1 className="text-2xl font-bold text-foreground mb-1">اعمل حساب جديد</h1>

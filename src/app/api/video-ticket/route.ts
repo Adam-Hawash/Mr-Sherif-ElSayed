@@ -11,14 +11,36 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { db } from '@/lib/db'
-import { computePlayback, isAdmin } from '@/lib/video-guard'
+import { computePlayback, isAdmin, ensurePlayTicketTable } from '@/lib/video-guard'
 
 export const dynamic = 'force-dynamic'
 
 const TICKET_TTL_MS = 120 * 1000 // دقيقتين — كفاية لفتح المشغل
 
+// إنشاء تذكرة مع self-heal: لو جدول التذاكر ناقص/اتمسح والموقع شغال
+// (تبديل داتابيز مثلًا) بنعمل الجدول بقوة وبنجرب مرة كمان قبل ما نفشل
+async function createTicketSafe(videoId: string, studentId: string): Promise<string> {
+  const ticket = crypto.randomBytes(24).toString('hex')
+  try {
+    await db.playTicket.create({
+      data: { id: ticket, videoId, studentId, expiresAt: new Date(Date.now() + TICKET_TTL_MS) },
+    })
+  } catch (createErr: any) {
+    const msg = String(createErr && (createErr.message || createErr))
+    const isMissingTable = msg.indexOf('does not exist') !== -1 || msg.indexOf('no such table') !== -1
+    if (!isMissingTable) throw createErr
+    await ensurePlayTicketTable(true)
+    await db.playTicket.create({
+      data: { id: ticket, videoId, studentId, expiresAt: new Date(Date.now() + TICKET_TTL_MS) },
+    })
+  }
+  return ticket
+}
+
 export async function GET(request: NextRequest) {
   try {
+    // self-heal: لو جدول التذاكر ناقص في الداتابيز بنعمله هنا فورًا
+    await ensurePlayTicketTable()
     const { searchParams } = new URL(request.url)
     const videoId = searchParams.get('videoId') || ''
     const galleryId = searchParams.get('galleryId') || ''
@@ -37,14 +59,14 @@ export async function GET(request: NextRequest) {
       try {
         await db.playTicket.deleteMany({ where: { expiresAt: { lt: new Date(Date.now() - 10 * 60 * 1000) } } })
       } catch {}
-      const ticket = crypto.randomBytes(24).toString('hex')
-      await db.playTicket.create({
-        data: { id: ticket, videoId: 'gal_' + galleryId, studentId: '', expiresAt: new Date(Date.now() + TICKET_TTL_MS) },
-      })
-      return NextResponse.json({ ok: true, ticket })
+      const galTicket = await createTicketSafe('gal_' + galleryId, '')
+      return NextResponse.json({ ok: true, ticket: galTicket })
     }
 
     if (!videoId) return NextResponse.json({ error: 'videoId مطلوب' }, { status: 400 })
+
+    // self-heal: لو جدول التذاكر ناقص في الداتابيز بنعمله هنا فورًا
+    await ensurePlayTicketTable()
 
     // الأدمن يقدر يعمل معاينة — بس برضه عن طريق التذكرة (نفس المسار الآمن)
     let authorized = false
@@ -62,15 +84,7 @@ export async function GET(request: NextRequest) {
       await db.playTicket.deleteMany({ where: { expiresAt: { lt: new Date(Date.now() - 10 * 60 * 1000) } } })
     } catch {}
 
-    const ticket = crypto.randomBytes(24).toString('hex')
-    await db.playTicket.create({
-      data: {
-        id: ticket,
-        videoId,
-        studentId: studentId || '',
-        expiresAt: new Date(Date.now() + TICKET_TTL_MS),
-      },
-    })
+    const ticket = await createTicketSafe(videoId, studentId || '')
 
     // مفيش أي معلومة عن الفيديو نفسه — التذكرة بس
     return NextResponse.json({ ok: true, ticket })

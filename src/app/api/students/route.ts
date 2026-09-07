@@ -26,7 +26,13 @@ export async function GET(request: NextRequest) {
         }
       } catch (e) {}
       if (deviceId && candidates.indexOf(deviceId) === -1) candidates.unshift(deviceId)
-      var primaryDevice = candidates[0] || deviceId || ''
+      // الربط الدائم بيكون على بصمة "ناتج الجهاز" (dv2_) الأولويّة —
+      // دي القيمة الثابتة اللي بترجع دايمًا حتى بعد مسح بيانات المتصفح
+      var primaryDevice = ''
+      for (var pi = 0; pi < candidates.length; pi++) {
+        if (candidates[pi].indexOf('dv2_') === 0) { primaryDevice = candidates[pi]; break }
+      }
+      if (!primaryDevice) primaryDevice = candidates[0] || deviceId || ''
       try {
         var student = await db.student.findFirst({
           where: { phone },
@@ -39,68 +45,52 @@ export async function GET(request: NextRequest) {
         if (!password || student.password !== password) {
           return NextResponse.json({ students: [], total: 0, page: 1, pageSize: 1, totalPages: 0 })
         }
-        // ===== مفتاح قفل الأجهزة العام (المستر يتحكم فيه من لوحة الأدمن) =====
-        // افتراضيًا: مطفي ('0') — الدخول حر من أي جهاز ومفيش أي حاجة بتتقفل.
-        // لما المستر يشغّله ('1') — الحساب يشتغل على أجهزته المعروفة بس
-        // (بصمة ناتج الجهاز الثابتة موجودة دايمًا في القائمة فنفس الجهاز
-        // بيدخل حتى لو بيانات المتصفح اتمسحت).
-        var deviceLock = false
-        try {
-          var lockCfg = await db.siteConfig.findUnique({ where: { key: 'device_lock' } })
-          deviceLock = Boolean(lockCfg && lockCfg.value === '1')
-        } catch (e) {}
+        // ===== قفل الجهاز الصارم (شغال دايمًا — من غير مفتاح) =====
+        // المستر قال صراحة: "جهاز واحد اللي هو عامل منه الحساب من الأول".
+        // القاعدة: الحساب بيتقفل على الجهاز اللي اتعمل بيه بس.
+        // - نفس الجهاز بيدخل دايمًا حتى لو بيانات المتصفح اتمسحت، لأن بصمة
+        //   "ناتج الجهاز" الثابتة (dv2) موجودة دايمًا في القائمة.
+        // - أي جهاز تاني → مرفوض، والفتح الوحيد: المستر يعمل "سماح" للحساب
+        //   (أول جهاز يدخل بعدها بيبقى جهاز الحساب الجديد بشكل دائم).
         // IDs بايظة من إصدارات قديمة (اتخزنت كنص "null" مثلاً) → نعتبرها زي ما تكون فاضية
         var LEGACY_IDS = ['null', 'undefined', 'dev_null', 'none', '']
         var storedId = (student as any).deviceId || ''
         var storedIsBroken = LEGACY_IDS.indexOf(storedId) !== -1
         var deviceTrusted = !storedIsBroken && !!storedId && candidates.indexOf(storedId) !== -1
-        // ===== ربط الجهاز (بس لما المستر يكون شاغل القفل) =====
-        if (deviceLock) {
-          // الحساب مربوط بجهاز معين + المستر ماسمحش بكل الأجهزة + الجهاز الحالي
-          // مش من الأجهزة المعروفة → مرفوض
-          if (
-            storedId &&
-            !storedIsBroken &&
-            !deviceTrusted &&
-            !(student as any).allowAllDevices &&
-            candidates.length > 0
-          ) {
-            return NextResponse.json(
-              {
-                students: [],
-                deviceBlocked: true,
-                error: 'الحساب ده مربوط بجهاز تاني. مش هينفع تسجل دخول من الجهاز ده غير لما تتواصل مع المستر يعمل لك سماح.',
-              },
-              { status: 403 }
-            )
-          }
-          // أول تسجيل دخول (حساب عمله الأدمن مثلاً) أو ربط قديم بايظ → الجهاز ده بيتسجل
-          if ((!storedId || storedIsBroken) && primaryDevice) {
-            try {
-              await db.student.update({ where: { id: student.id }, data: { deviceId: primaryDevice } })
-              ;(student as any).deviceId = primaryDevice
-            } catch (bindErr) {
-              console.error('Device bind error:', bindErr)
-            }
-          } else if (!deviceTrusted && (student as any).allowAllDevices && primaryDevice) {
-            // المستر عمل سماح للطالب → أول جهاز يدخل بيه بيبقى جهاز الحساب الجديد
-            // (كده لو المستر شال السماح بعدين، الطالب يفضل شغال على جهازه)
-            try {
-              await db.student.update({ where: { id: student.id }, data: { deviceId: primaryDevice } })
-              ;(student as any).deviceId = primaryDevice
-            } catch (bindErr) {
-              console.error('Device rebind error:', bindErr)
-            }
-          }
-        } else if (primaryDevice && (!storedId || storedIsBroken || (!deviceTrusted && !(student as any).allowAllDevices))) {
-          // القفل مطفي → مفيش أي حاجة بتتقفل، وكمان بنعمل self-heal:
-          // لو الحساب متربط بجهاز قديم ضايع (بصمة اتغيرت مثلاً) نجدد الربط
-          // للجهاز الحالي تلقائيًا عشان لما المستر يشغّل القفل مفيش حد يتقفل بالغلط
+        // الحساب مربوط بجهاز معين + المستر ماسمحش بكل الأجهزة + الجهاز الحالي
+        // مش من الأجهزة المعروفة → مرفوض
+        if (
+          storedId &&
+          !storedIsBroken &&
+          !deviceTrusted &&
+          !(student as any).allowAllDevices &&
+          candidates.length > 0
+        ) {
+          return NextResponse.json(
+            {
+              students: [],
+              deviceBlocked: true,
+              error: 'الحساب ده مربوط بجهاز واحد بس (الجهاز اللي اتعمل بيه). الدخول من الجهاز ده محتاج المستر يعمل لك سماح من لوحة التحكم.',
+            },
+            { status: 403 }
+          )
+        }
+        // أول تسجيل دخول (حساب عمله الأدمن مثلاً) أو ربط قديم بايظ → الجهاز ده بيتسجل
+        if ((!storedId || storedIsBroken) && primaryDevice) {
           try {
             await db.student.update({ where: { id: student.id }, data: { deviceId: primaryDevice } })
             ;(student as any).deviceId = primaryDevice
           } catch (bindErr) {
-            console.error('Device self-heal error:', bindErr)
+            console.error('Device bind error:', bindErr)
+          }
+        } else if (!deviceTrusted && (student as any).allowAllDevices && primaryDevice) {
+          // المستر عمل سماح للطالب → أول جهاز يدخل بيه بيبقى جهاز الحساب الجديد
+          // (كده لو المستر شال السماح بعدين، الطالب يفضل شغال على جهازه)
+          try {
+            await db.student.update({ where: { id: student.id }, data: { deviceId: primaryDevice } })
+            ;(student as any).deviceId = primaryDevice
+          } catch (bindErr) {
+            console.error('Device rebind error:', bindErr)
           }
         }
         return NextResponse.json({ students: [{ ...student, watchedVideoCount: 0 }], total: 1, page: 1, pageSize: 1, totalPages: 1 })
@@ -175,6 +165,16 @@ export async function POST(request: NextRequest) {
     // (نتعامل مع "null" النصية القديمة كأنها فاضية)
     var rawDeviceId = typeof body.deviceId === 'string' ? body.deviceId : ''
     var deviceId = ['null', 'undefined', 'dev_null', 'none'].indexOf(rawDeviceId) !== -1 ? '' : rawDeviceId
+    // احتياطي: لو الـ ID الأساسي فاضي بس فيه قايمة مرشحين → ناخد أول واحد
+    if (!deviceId && Array.isArray(body.deviceIds)) {
+      for (var di = 0; di < body.deviceIds.length; di++) {
+        var cand = body.deviceIds[di]
+        if (typeof cand === 'string' && cand && ['null', 'undefined', 'dev_null', 'none'].indexOf(cand) === -1) {
+          deviceId = cand
+          break
+        }
+      }
+    }
 
     if (!name || !phone || !grade) {
       return NextResponse.json({ error: 'الاسم ورقم الهاتف والصف مطلوبين' }, { status: 400 })
