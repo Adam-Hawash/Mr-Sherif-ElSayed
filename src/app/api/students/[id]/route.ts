@@ -53,10 +53,14 @@ export async function PUT(
     if (status) updateData.status = status
     if (typeof isPaidAccess === 'boolean') updateData.isPaidAccess = isPaidAccess
     // ===== ربط الجهاز: تحكم المستر =====
-    // allowAllDevices: سماح الطالب يدخل من أي جهاز (بدون ربط)
+    // allowAllDevices: سماح لمرة واحدة — أول جهاز يدخل بعدها بيبقى جهاز الحساب
+    // والسماح بيتقفل لوحده (شوف منطق الدخول في /api/students)
     if (typeof body.allowAllDevices === 'boolean') updateData.allowAllDevices = body.allowAllDevices
-    // resetDevice: فك الربط — أول جهاز يسجل دخول بعد كده بيبقى هو جهاز الحساب الجديد
-    if (body.resetDevice === true) updateData.deviceId = ''
+    // resetDevice: فك الربط الكامل — أول جهاز يسجل دخول بعد كده بيبقى هو جهاز الحساب الجديد
+    if (body.resetDevice === true) {
+      updateData.deviceId = ''
+      updateData.deviceFp = ''
+    }
     // bindDevice: ربط الحساب بجهاز الطالب الحالي (لو المستر عايز يرجّع الربط يدوي)
     if (typeof body.bindDevice === 'string' && body.bindDevice) updateData.deviceId = body.bindDevice
 

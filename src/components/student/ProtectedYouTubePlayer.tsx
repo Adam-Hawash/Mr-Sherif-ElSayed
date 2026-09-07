@@ -22,11 +22,11 @@
 //            student+video and seeks there — progress is CUMULATIVE (max ever
 //            reached), re-watching the start can never pull the % back down.
 //          - FULLSCREEN on mobile: locks the phone into LANDSCAPE so the
-//            16:9 video fills the screen (no tiny letterboxed strip), and
-//            the iframe crop gets stronger so YouTube's native fullscreen
-//            UI (share/save bar + logos) stays outside the visible box.
-//            If the device has no element-fullscreen (iPhone) → CSS fake
-//            fullscreen instead.
+//            16:9 video fills the screen (no tiny letterboxed strip).
+//            If the phone can't rotate (auto-rotate off / iPhone) we FORCE
+//            landscape with a CSS 90° rotation of the whole stage — the
+//            student just turns the phone sideways and the video + controls
+//            + watermark fill the screen edge-to-edge, always landscape.
 //          - SINGLE play indicator: our big opaque play button sits EXACTLY
 //            on top of YouTube's own big play button (same center point)
 //            and covers it completely — students only ever see ONE button.
@@ -110,6 +110,10 @@ export function ProtectedYouTubePlayer({
   const [showControls, setShowControls] = useState(true)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [fakeFs, setFakeFs] = useState(false)
+  // الدوران القسري: لو الموبايل في وضع طولي جوه ملء الشاشة → ندوّر الستيج 90°
+  // بالـ CSS عشان الفيديو يبان بالعرض دايمًا حتى لو الدوران التلقائي مقفول
+  const [rotated, setRotated] = useState(false)
+  const [vp, setVp] = useState({ w: 0, h: 0 })
   const hideTimerRef = useRef<any>(null)
   const pendingPlayRef = useRef(!!autoplay)
   const onWatchRef = useRef(onWatch)
@@ -165,6 +169,33 @@ export function ProtectedYouTubePlayer({
       tryUnlockOrientation()
     }
   }, [])
+
+  /* مقتص الدوران: جوه ملء الشاشة لو الشاشة طولية → ندوّر الستيج 90°.
+     لو الدوران التلقائي شغال والجهاز لفّ لوحده (بعد قفل landscape) → بيرجع
+     عادي لأن innerWidth هتبقى أكبر من innerHeight. */
+  useEffect(function () {
+    var fsActiveNow = isFullscreen || fakeFs
+    if (!fsActiveNow) { setRotated(false); return }
+    function measure() {
+      try {
+        var w = window.innerWidth || 0
+        var h = window.innerHeight || 0
+        setVp({ w: w, h: h })
+        setRotated(h > w)
+      } catch (e) {}
+    }
+    measure()
+    /* إعادة محاولة — قفل landscape ممكن يلف الشاشة بعد لحظة */
+    var t1 = setTimeout(measure, 250)
+    var t2 = setTimeout(measure, 800)
+    window.addEventListener('resize', measure)
+    window.addEventListener('orientationchange', measure)
+    return function () {
+      clearTimeout(t1); clearTimeout(t2)
+      window.removeEventListener('resize', measure)
+      window.removeEventListener('orientationchange', measure)
+    }
+  }, [isFullscreen, fakeFs])
 
   /* auto-hide controls (stay visible while the quality menu is open) */
   useEffect(function () {
@@ -445,6 +476,19 @@ export function ProtectedYouTubePlayer({
   var progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0
   var menuLevels = qualityLevels.length > 0 ? qualityLevels : STANDARD_QUALITIES
 
+  /* الستيج: الطبقة اللي جوه الكونتينر — في الوضع الطولي بندوّرها 90° عشان
+     الفيديو + الكنترولز + الووترمارك كلهم يبانوا بالعرض على الشاشة كلها */
+  var stageStyle: any = null
+  if (rotated && vp.w > 0 && vp.h > 0) {
+    stageStyle = {
+      width: vp.h + 'px',
+      height: vp.w + 'px',
+      top: '50%',
+      left: '50%',
+      transform: 'translate(-50%, -50%) rotate(90deg)',
+    }
+  }
+
   return (
     <div
       ref={containerRef}
@@ -454,6 +498,11 @@ export function ProtectedYouTubePlayer({
       }
       onContextMenu={function (e) { e.preventDefault() }}
     >
+      {/* ===== الستيج الدوّار — كل الطبقات جواه فالدوران يشمل الكل ===== */}
+      <div
+        className={rotated ? 'absolute overflow-hidden' : 'absolute inset-0 overflow-hidden'}
+        style={stageStyle || undefined}
+      >
       {/* YouTube player — SCALED & CROPPED so NO native YouTube UI can ever
           be seen. The iframe is oversized and shifted so the crops are
           SYMMETRIC top/bottom — that keeps the iframe's center exactly on
@@ -666,6 +715,7 @@ export function ProtectedYouTubePlayer({
       {/* ووترمارك الطالب — جوه عنصر الـ fullscreen نفسه عشان تفضل ظاهرة
           في ملء الشاشة (دي كانت المشكلة: كانت بره الكونتينر فبتختفي) */}
       <VideoWatermark name={studentName} phone={studentPhone} />
+      </div>
     </div>
   )
 }
