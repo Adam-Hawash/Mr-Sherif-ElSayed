@@ -114,6 +114,12 @@ export async function GET(
     // Ensure tables exist
     await ensureTables()
 
+    // تنظيف النتايج اليتيمة: واجب/امتحان/فيديو اتحذف من المنصة ودرجته فضلت ظاهرة
+    // (المستر طلب: حذف أي حاجة = حذف نقطتها وكل حاجة ليها)
+    try { await db.$executeRawUnsafe('DELETE FROM HomeworkResult WHERE homeworkId NOT IN (SELECT id FROM Homework)') } catch (e) {}
+    try { await db.$executeRawUnsafe('DELETE FROM ExamResult WHERE examId NOT IN (SELECT id FROM Exam)') } catch (e) {}
+    try { await db.$executeRawUnsafe('DELETE FROM VideoProgress WHERE videoId NOT IN (SELECT id FROM Video)') } catch (e) {}
+
     // Use raw SQL for student lookup (Prisma schema out of sync - isPaidAccess column missing in DB)
     var student: any = null
     try {

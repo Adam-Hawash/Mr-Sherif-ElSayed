@@ -4,8 +4,9 @@
 // Returns the stored writingResults verdicts (single source of truth) so the
 // student's UI updates live without re-running any AI call.
 
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import { db } from '@/lib/db'
+import { regradeHomeworkResult } from '@/lib/regrade-core'
 
 export const runtime = 'nodejs'
 
@@ -49,6 +50,15 @@ export async function GET(request, ctx) {
     } catch (e) {}
 
     var gradingDone = writingAnswers.every(function(w) { return w.gradingStatus !== 'pending' })
+
+    // self-heal: نتايج قديمة لسه pending → إعادة تصحيح تلقائي في الخلفية بعد الرد
+    if (!gradingDone) {
+      try {
+        after(async function() {
+          try { await regradeHomeworkResult(resultId) } catch (e) {}
+        })
+      } catch (e) {}
+    }
 
     return NextResponse.json({
       ok: true,
