@@ -442,6 +442,12 @@ export function MathKeyboard({ value, onChange, placeholder = 'Type your answer 
             onChange(converted)
           }}
           onKeyDown={function(e) {
+            // زرار السهم لتحت ⬇ من الكيبورد — خروج من وضع الأس (زي الآلة الحاسبة)
+            if (powerMode && e.key === 'ArrowDown') {
+              e.preventDefault()
+              setPowerMode(false)
+              return
+            }
             // وضع الأس: الأرقام من الكيبورد بتتكتب أسّية (زي الآلة الحاسبة)
             if (powerMode && e.key >= '0' && e.key <= '9' && !e.ctrlKey && !e.metaKey && !e.altKey) {
               e.preventDefault()

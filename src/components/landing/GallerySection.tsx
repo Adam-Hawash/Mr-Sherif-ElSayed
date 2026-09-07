@@ -4,7 +4,7 @@ import { useAppStore } from '@/stores/app-store'
 import { Badge } from '@/components/ui/badge'
 import { Camera, Trash2, Heart, ImagePlus, PlayCircle, Film, X, Loader2, Maximize, Minimize } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
-import { ProtectedYouTubeModal } from '@/components/student/ProtectedYouTubePlayer'
+import { SecurePlayerModal } from '@/components/student/SecurePlayerModal'
 import Image from 'next/image'
 import type { GalleryImage } from '@/stores/app-store'
 
@@ -58,7 +58,7 @@ export default function GallerySection() {
   var galleryImages = (store as any).galleryImages || []
   const [images, setImages] = useState<GalleryImage[]>([])
   const [loading, setLoading] = useState(true)
-  const [videoModal, setVideoModal] = useState<string | null>(null)
+  const [videoModal, setVideoModal] = useState<{ id: string; url: string } | null>(null)
 
   var galleryTitle =
     siteConfig.gallery_title ||
@@ -226,7 +226,7 @@ export default function GallerySection() {
                       <div
                         key={img.id}
                         className="aspect-[9/16] rounded-xl overflow-hidden group hover:shadow-lg transition-all duration-300 hover:-translate-y-1 border border-border/50 bg-card cursor-pointer"
-                        onClick={function() { setVideoModal(img.videoUrl) }}
+                        onClick={function() { setVideoModal({ id: img.id, url: img.videoUrl }) }}
                       >
                         <div className="relative w-full h-full overflow-hidden">
                           {thumb ? (
@@ -294,14 +294,14 @@ export default function GallerySection() {
 
       {/* Video Modal */}
       {videoModal && (
-        <GalleryVideoModal url={videoModal} onClose={function() { setVideoModal(null) }} />
+        <GalleryVideoModal galleryId={videoModal.id} url={videoModal.url} onClose={function() { setVideoModal(null) }} />
       )}
     </section>
   )
 }
 
 /* ========== Gallery Video Modal (بدون 3-dot menu / بدون تحميل) ========== */
-function GalleryVideoModal({ url, onClose }: { url: string; onClose: () => void }) {
+function GalleryVideoModal({ galleryId, url, onClose }: { galleryId: string; url: string; onClose: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const progressRef = useRef<HTMLDivElement>(null)
   const [playing, setPlaying] = useState(false)
@@ -338,16 +338,10 @@ function GalleryVideoModal({ url, onClose }: { url: string; onClose: () => void 
     return function() { if (hideTimerRef.current) clearTimeout(hideTimerRef.current) }
   }, [playing, showControls])
 
-  /* YouTube → protected player (no branding, no captions, quality gear,
-     click-catch overlay) — same component used in the student portal.
+  /* YouTube → مشغل آمن بتذكرة واحدة الاستخدام — مفيش أي YouTube ID في الصفحة.
      Placed AFTER all hooks to respect the rules of hooks. */
   if (isYouTube && ytId) {
-    return (
-      <ProtectedYouTubeModal
-        ytId={ytId[1]}
-        onClose={onClose}
-      />
-    )
+    return <GalleryTicketPlayer galleryId={galleryId} onClose={onClose} />
   }
 
   var togglePlay = function(e?: React.MouseEvent | React.TouchEvent) {
@@ -503,5 +497,52 @@ function GalleryVideoModal({ url, onClose }: { url: string; onClose: () => void 
         )}
       </div>
     </div>
+  )
+}
+
+/* ========== Gallery Ticket Player — يوتيوب المعرض بنظام التذاكر ==========
+   بيجيب تذكرة واحدة الاستخدام من /api/video-ticket?galleryId=...
+   وبيفتح /api/player/[ticket] — مفيش أي YouTube ID في الـ DOM/الـ Network
+   بتاع صفحة الهبوط. */
+function GalleryTicketPlayer({ galleryId, onClose }: { galleryId: string; onClose: () => void }) {
+  const [ticket, setTicket] = useState('')
+  const [error, setError] = useState('')
+
+  useEffect(function () {
+    var alive = true
+    fetch('/api/video-ticket?galleryId=' + encodeURIComponent(galleryId))
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d } }) })
+      .then(function (res) {
+        if (!alive) return
+        if (res.ok && res.d.ok && res.d.ticket) setTicket(res.d.ticket)
+        else setError(res.d.error || 'الفيديو مش متاح دلوقتي')
+      })
+      .catch(function () { if (alive) setError('حصل خطأ في تحميل الفيديو') })
+    return function () { alive = false }
+  }, [galleryId])
+
+  if (error) {
+    return (
+      <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4" onClick={onClose} onContextMenu={function (e) { e.preventDefault() }}>
+        <button type="button" aria-label="إغلاق" className="fixed top-4 right-4 z-[200] min-h-[48px] min-w-[48px] rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white" onClick={function (e) { e.stopPropagation(); onClose() }}>
+          <X className="h-6 w-6" />
+        </button>
+        <p className="text-white/80 text-sm">{error}</p>
+      </div>
+    )
+  }
+  if (!ticket) {
+    return (
+      <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center" onClick={onClose}>
+        <Loader2 className="h-8 w-8 animate-spin text-white/80" />
+      </div>
+    )
+  }
+  return (
+    <SecurePlayerModal
+      ticket={ticket}
+      title="فيديو"
+      onClose={onClose}
+    />
   )
 }

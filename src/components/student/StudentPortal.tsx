@@ -10,7 +10,7 @@ import {
   Video, ClipboardList, FileText, Megaphone, MessageSquare, Send,
   LogOut, Loader2, FileDown, Bell, PlayCircle, CheckCircle2,
   BookOpen, Target, TrendingUp, GraduationCap, ChevronLeft, ExternalLink,
-  User, Phone, Award, Maximize, Minimize, Lock, X, ListTodo,
+  User, Phone, Award, Lock, X, ListTodo,
   HelpCircle, ArrowLeft, Rocket,
 } from 'lucide-react'
 import { useState, useEffect, useRef, useMemo } from 'react'
@@ -18,8 +18,7 @@ import Image from 'next/image'
 import { toast } from 'sonner'
 import type { Video as VideoType, Homework, Exam, Announcement, Discussion, ExamResult } from '@/stores/app-store'
 import { MathKeyboard } from '@/components/student/MathKeyboard'
-import { ProtectedYouTubeModal } from '@/components/student/ProtectedYouTubePlayer'
-import { VideoWatermark } from '@/components/student/VideoWatermark'
+import { SecurePlayerModal } from '@/components/student/SecurePlayerModal'
 import { FractionText } from '@/components/FractionText'
 
 export function StudentPortal() {
@@ -376,11 +375,6 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
     return match ? match[1] : null
   }
 
-  const getYouTubeThumbnail = (url: string) => {
-    const id = getYouTubeId(url)
-    return id ? `https://img.youtube.com/vi/${id}/mqdefault.jpg` : null
-  }
-
   // حماية الفيديو: السيرفر مبيرسلش url/filePath خلاص — بنعرف النوع من kind
   // والتشغيل بيتم عبر /api/video-play بس (توكن موقّع للملفات المرفوعة)
   const videoKind = (v: any): 'youtube' | 'file' | 'link' | 'none' => {
@@ -391,15 +385,16 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
     return 'none'
   }
 
-  // فتح فيديو يوتيوب: بنجيب الـ ytId من بوابة التشغيل المحمية لحظة الفتح
+  // فتح أي درس (يوتيوب أو ملف مرفوع): بنطلب تذكرة تشغيل واحدة الاستخدام
+  // من /api/video-ticket — مفيش أي YouTube ID أو رابط ملف بيرجع للصفحة.
   const openPlayModal = (video: VideoType) => {
-    fetch('/api/video-play?videoId=' + video.id + '&studentId=' + encodeURIComponent(studentId || ''))
+    fetch('/api/video-ticket?videoId=' + video.id + '&studentId=' + encodeURIComponent(studentId || ''))
       .then(function (r) {
         return r.json().then(function (d) { return { ok: r.ok, d: d } })
       })
       .then(function (res) {
-        if (res.ok && res.d.isYouTube && res.d.ytId) {
-          setActiveLessonVideo({ ...video, playYtId: res.d.ytId } as any)
+        if (res.ok && res.d.ok && res.d.ticket) {
+          setActiveLessonVideo({ ...video, playTicket: res.d.ticket } as any)
         } else {
           toast.error(res.d.error || 'الفيديو مش متاح — لو دفعت تواصل مع الإدارة', { duration: 6000 })
         }
@@ -480,7 +475,7 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
                     </Button>
                   </div>
                 </div>
-              ) : kind === 'youtube' ? (
+              ) : kind === 'youtube' || isVideoFile ? (
                 // Protected lesson card — gallery style thumbnail (no YouTube branding)
                 // The actual video opens in a protected modal player on click
                 <div
@@ -502,18 +497,6 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
                     </div>
                   </div>
                 </div>
-              ) : isVideoFile ? (
-                <GatedVideoPlayer
-                  videoId={video.id}
-                  studentId={studentId}
-                  poster={thumbSrc || undefined}
-                  studentName={studentName}
-                  studentPhone={studentPhone}
-                  onWatch={() => {
-                    trackVideoWatch(video.id)
-                    setLocalWatched(prev => new Set([...prev, video.id]))
-                  }}
-                />
               ) : thumbSrc ? (
                 <div className="w-full h-full relative">
                   <Image src={thumbSrc} alt={video.title} fill className="object-cover" sizes="(max-width: 640px) 100vw, 50vw" unoptimized loading="eager" fetchPriority="high" />
@@ -565,16 +548,14 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
       })}
       </div>
 
-      {/* Protected lesson video modal — gallery style, no YouTube branding */}
-      {activeLessonVideo && (activeLessonVideo as any).playYtId && (
-        <ProtectedYouTubeModal
-          ytId={(activeLessonVideo as any).playYtId}
+      {/* المشغل الآمن — تذكرة واحدة الاستخدام، مفيش أي لينك في الصفحة */}
+      {activeLessonVideo && (activeLessonVideo as any).playTicket && (
+        <SecurePlayerModal
+          ticket={(activeLessonVideo as any).playTicket}
           title={activeLessonVideo.title}
           poster={activeLessonVideo.thumbnail || (activeLessonVideo as any).thumb || undefined}
           videoId={activeLessonVideo.id}
           studentId={studentId}
-          studentName={studentName}
-          studentPhone={studentPhone}
           onWatch={function () {
             trackVideoWatch(activeLessonVideo.id)
             setLocalWatched(function (prev) { return new Set([...prev, activeLessonVideo.id]) })
@@ -585,316 +566,6 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
     </>
   )
 }
-
-/* ========== CUSTOM VIDEO PLAYER ========== */
-/* ========== YouTube Player - protected, no branding ========== */
-function YouTubePlayer({ videoId, ytId, poster, onWatch }: { videoId: string; ytId: string; poster?: string; onWatch: () => void }) {
-  const [playing, setPlaying] = useState(false)
-  const containerRef = useRef<HTMLDivElement>(null)
-
-  return (
-    <div
-      ref={containerRef}
-      className="video-protected w-full h-full relative select-none bg-black"
-      onContextMenu={function(e) { e.preventDefault() }}
-      onClick={function() { if (!playing) { setPlaying(true); onWatch() } }}
-    >
-      {playing ? (
-        <iframe
-          src={`https://www.youtube-nocookie.com/embed/${ytId}?autoplay=1&controls=1&modestbranding=1&rel=0&playsinline=1&showinfo=0&iv_load_policy=3&fs=1&disablekb=1`}
-          title="Video"
-          className="w-full h-full"
-          allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
-          allowFullScreen
-          style={{ border: 'none' }}
-        />
-      ) : (
-        <div className="w-full h-full relative cursor-pointer">
-          {poster && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={poster} alt="Video thumbnail" className="w-full h-full object-cover" />
-          )}
-          <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
-            <div className="h-16 w-16 rounded-full bg-red-600 flex items-center justify-center shadow-2xl">
-              <svg className="h-8 w-8 text-white" style={{ marginLeft: '3px' }} fill="currentColor" viewBox="0 0 24 24">
-                <path d="M8 5v14l11-7z"/>
-              </svg>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-/* ========== GATED VIDEO PLAYER — حماية الملفات المرفوعة ==========
- * بيجيب رابط التشغيل الموقّع من /api/video-play (توكن HMAC صالح ساعتين
- * مرتبط بالطالب والملف) — من غير توكن السيرفر بيرفضخدمة الملف خالص.
- * ========================================================================= */
-function GatedVideoPlayer({ videoId, studentId, poster, studentName, studentPhone, onWatch }: {
-  videoId: string
-  studentId: string
-  poster?: string
-  studentName?: string
-  studentPhone?: string
-  onWatch: () => void
-}) {
-  const [src, setSrc] = useState('')
-  const [error, setError] = useState('')
-
-  useEffect(function () {
-    var alive = true
-    setSrc(''); setError('')
-    fetch('/api/video-play?videoId=' + videoId + '&studentId=' + encodeURIComponent(studentId || ''))
-      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d } }) })
-      .then(function (res) {
-        if (!alive) return
-        if (res.ok && res.d.isVideoFile && res.d.fileUrl) setSrc(res.d.fileUrl)
-        else setError(res.d.error || 'الفيديو مش متاح')
-      })
-      .catch(function () { if (alive) setError('حصل خطأ في تحميل الفيديو') })
-    return function () { alive = false }
-  }, [videoId, studentId])
-
-  if (error) {
-    return (
-      <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-black/70 text-white/80 text-xs p-4 text-center">
-        <Lock className="h-7 w-7 text-white/50" />
-        <span>{error}</span>
-      </div>
-    )
-  }
-  if (!src) {
-    return (
-      <div className="w-full h-full flex items-center justify-center bg-black/70">
-        <Loader2 className="h-7 w-7 text-white/60 animate-spin" />
-      </div>
-    )
-  }
-  return (
-    <CustomVideoPlayer
-      videoId={videoId}
-      src={src}
-      poster={poster}
-      studentId={studentId}
-      studentName={studentName}
-      studentPhone={studentPhone}
-      onWatch={onWatch}
-    />
-  )
-}
-
-function CustomVideoPlayer({ videoId, src, poster, studentId, studentName, studentPhone, onWatch }: {
-  videoId: string
-  src: string
-  poster?: string
-  studentId: string
-  studentName?: string
-  studentPhone?: string
-  onWatch: () => void
-}) {
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const progressRef = useRef<HTMLDivElement>(null)
-  const [playing, setPlaying] = useState(false)
-  const [currentTime, setCurrentTime] = useState(0)
-  const [duration, setDuration] = useState(0)
-  const [buffered, setBuffered] = useState(0)
-  const [showControls, setShowControls] = useState(true)
-  const [isFullscreen, setIsFullscreen] = useState(false)
-  const [fakeFs, setFakeFs] = useState(false)
-  const containerRef = useRef<HTMLDivElement>(null)
-  const hideTimerRef = useRef<any>(null)
-
-  useEffect(() => {
-    var onFsChange = function() {
-      var d = document as any
-      setIsFullscreen(!!(d.fullscreenElement || d.webkitFullscreenElement))
-    }
-    document.addEventListener('fullscreenchange', onFsChange)
-    document.addEventListener('webkitfullscreenchange', onFsChange)
-    return function() {
-      document.removeEventListener('fullscreenchange', onFsChange)
-      document.removeEventListener('webkitfullscreenchange', onFsChange)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (playing) {
-      hideTimerRef.current = setTimeout(() => setShowControls(false), 3000)
-    } else {
-      setShowControls(true)
-      if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
-    }
-    return () => { if (hideTimerRef.current) clearTimeout(hideTimerRef.current) }
-  }, [playing, showControls])
-
-  var togglePlay = function(e?: React.MouseEvent | React.TouchEvent) {
-    if (e) { e.preventDefault(); e.stopPropagation() }
-    var v = videoRef.current
-    if (!v) return
-    if (v.paused) { v.play().catch(function(){}) } else { v.pause() }
-  }
-
-  var handleTimeUpdate = function() {
-    var v = videoRef.current
-    if (!v) return
-    setCurrentTime(v.currentTime)
-    if (v.buffered.length > 0 && v.duration > 0) {
-      setBuffered((v.buffered.end(v.buffered.length - 1) / v.duration) * 100)
-    }
-    if (v.duration && studentId && Math.floor(v.currentTime) % 5 === 0 && v.currentTime > 0) {
-      fetch('/api/video-progress', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentId, videoId, watchedSeconds: v.currentTime, totalSeconds: v.duration }),
-      }).catch(function(){})
-    }
-  }
-
-  var handleEnded = function() {
-    setPlaying(false)
-    setShowControls(true)
-    if (studentId) {
-      fetch('/api/video-progress', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentId, videoId, watchedSeconds: 999999, totalSeconds: 1 }),
-      }).catch(function(){})
-      onWatch()
-    }
-  }
-
-  var handleSeek = function(e: React.MouseEvent | React.TouchEvent) {
-    var bar = progressRef.current
-    var v = videoRef.current
-    if (!bar || !v || !v.duration) return
-    var rect = bar.getBoundingClientRect()
-    var clientX = 'touches' in e ? e.changedTouches[0].clientX : (e as React.MouseEvent).clientX
-    var ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
-    v.currentTime = ratio * v.duration
-  }
-
-  var handleFullscreen = function(e: React.MouseEvent | React.TouchEvent) {
-    if (e) { e.preventDefault(); e.stopPropagation() }
-    var d = document as any
-    if (d.fullscreenElement) { d.exitFullscreen().catch(function(){}) ; return }
-    if (d.webkitFullscreenElement) { d.webkitExitFullscreen() ; return }
-    if (fakeFs) { setFakeFs(false) ; return }
-    /* ملء الشاشة على الكونتينر نفسه — الووترمارك وعناصر التحكم جواه فتفضل
-       ظاهرة. ممنوع webkitEnterFullscreen (مشغّل أبل الأصلي بيلغي الووترمارك
-       — دي كانت المشكلة) — آيفون بياخد fake fullscreen بالـ CSS */
-    var c = containerRef.current as any
-    if (c && c.requestFullscreen) {
-      var pr = c.requestFullscreen()
-      if (pr && pr.catch) pr.catch(function(){})
-    } else if (c && c.webkitRequestFullscreen) {
-      c.webkitRequestFullscreen()
-    } else {
-      setFakeFs(true)
-    }
-  }
-
-  var formatTime = function(sec: number) {
-    if (!sec || !isFinite(sec)) return '0:00'
-    var m = Math.floor(sec / 60)
-    var s = Math.floor(sec % 60)
-    return m + ':' + String(s).padStart(2, '0')
-  }
-
-  var progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0
-
-  var fsActive = isFullscreen || fakeFs
-
-  return (
-    <div
-      ref={containerRef}
-      className={
-        'video-protected select-none bg-black overflow-hidden ' +
-        (fsActive ? 'fixed inset-0 z-[150]' : 'w-full h-full relative')
-      }
-      onClick={togglePlay}
-      onTouchStart={function() { setShowControls(true) }}
-      onContextMenu={function(e) { e.preventDefault() }}
-      onDragStart={function(e) { e.preventDefault() }}
-    >
-      <video
-        ref={videoRef}
-        className="w-full h-full object-contain"
-        src={src}
-        poster={poster}
-        preload="metadata"
-        playsInline
-        disablePictureInPicture
-        disableRemotePlayback
-        controlsList="nodownload noremoteplayback noplaybackrate"
-        onPlay={function() { setPlaying(true) }}
-        onPause={function() { setPlaying(false) }}
-        onTimeUpdate={handleTimeUpdate}
-        onEnded={handleEnded}
-        onLoadedMetadata={function() { if (videoRef.current) setDuration(videoRef.current.duration) }}
-      />
-
-      {/* ووترمارك الطالب — أي تسجيل للشاشة يطلع فيه اسمه ورقمه */}
-      <VideoWatermark name={studentName} phone={studentPhone} />
-
-      {!playing && (
-        <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
-          <div className="w-16 h-16 rounded-full bg-white/90 flex items-center justify-center shadow-2xl">
-            <svg className="h-8 w-8 text-gray-800" style={{ marginLeft: '3px' }} fill="currentColor" viewBox="0 0 24 24">
-              <path d="M8 5v14l11-7z"/>
-            </svg>
-          </div>
-        </div>
-      )}
-
-      <div
-        className={
-          'absolute bottom-0 left-0 right-0 z-20 transition-opacity duration-300 ' +
-          (showControls || !playing ? 'opacity-100' : 'opacity-0 pointer-events-none')
-        }
-        onClick={function(e) { e.stopPropagation() }}
-      >
-        <div
-          ref={progressRef}
-          className="w-full h-1 bg-white/30 cursor-pointer group"
-          onClick={handleSeek}
-          onTouchEnd={function(e) { e.preventDefault(); e.stopPropagation(); handleSeek(e) }}
-        >
-          <div className="absolute top-0 left-0 h-full bg-white/40 pointer-events-none" style={{ width: buffered + '%' }} />
-          <div className="absolute top-0 left-0 h-full bg-primary group-hover:h-1.5 transition-all pointer-events-none" style={{ width: progressPercent + '%' }} />
-        </div>
-
-        <div className="flex items-center gap-1 px-3 py-2 bg-gradient-to-t from-black/80 to-transparent">
-          <button
-            className="w-9 h-9 flex items-center justify-center text-white hover:text-primary transition-colors shrink-0"
-            onClick={togglePlay}
-            onTouchEnd={function(e) { e.preventDefault(); e.stopPropagation(); togglePlay() }}
-          >
-            {playing ? (
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
-            ) : (
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-            )}
-          </button>
-
-          <span className="text-white text-xs tabular-nums" dir="ltr">
-            {formatTime(currentTime)} / {formatTime(duration)}
-          </span>
-
-          <button
-            className="w-9 h-9 flex items-center justify-center text-white hover:text-primary transition-colors shrink-0"
-            onClick={handleFullscreen}
-            onTouchEnd={function(e) { e.preventDefault(); e.stopPropagation(); handleFullscreen(e) }}
-            aria-label="تكبير"
-          >
-            {fsActive ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 /* ========== HOMEWORK TAB ========== */
 function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { homework: Homework[]; studentId: string; completedHwIds: Set<string>; onHwSubmitted: (hwId: string) => void }) {
   const [expandedHw, setExpandedHw] = useState<string | null>(null)

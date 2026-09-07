@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
       ]
     }
     if (keyword) {
-      where.OR = where.OR ? [...where.OR, { title: { contains: keyword } }] : [{ title: { contains: keyword } }]
+      where.OR = where.OR ? [...(where.OR as unknown[]), { title: { contains: keyword } }] : [{ title: { contains: keyword } }]
     }
 
     const [exams, total] = await Promise.all([
