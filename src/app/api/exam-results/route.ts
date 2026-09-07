@@ -1,7 +1,9 @@
 // @ts-nocheck
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { db } from '@/lib/db'
 import { gradeImageAnswer, gradeTextAnswer, extractImageMediaIds } from '@/lib/ai-image-grader'
+import { regradeExamResult, gradesLookPending, questionsHaveWriting } from '@/lib/regrade-core'
+import { gradeFallbackDecisive } from '@/lib/smart-grader'
 
 // GET /api/exam-results?studentId=xxx&examId=yyy - Student pre-submit check (raw SQL)
 // GET /api/exam-results?studentId=xxx - Student: all exam results
@@ -25,6 +27,30 @@ export async function GET(request: NextRequest) {
         try { wg = r.writingGrades ? JSON.parse(r.writingGrades) : [] } catch (e) { wg = [] }
         return { id: r.id, examId: r.examId, studentId: r.studentId, score: r.score, maxScore: r.maxScore, submittedAt: r.submittedAt, writingGrades: wg }
       })
+
+      // self-heal: نتايج قديمة ناقصة التصحيح → إعادة تصحيح تلقائي بالذكاء الاصطناعي
+      // في الخلفية بعد الرد — الطالب يحدّث الصفحة يلاقي درجته اتحطت
+      try {
+        var pendingIds: string[] = []
+        var qMap: Record<string, string> = {}
+        try {
+          var qRows = await db.$queryRawUnsafe('SELECT er.id AS rid, e.questions AS qs FROM ExamResult er INNER JOIN Exam e ON e.id = er.examId WHERE er.studentId = ?', studentId)
+          ;(qRows || []).forEach(function(qr: any) { qMap[qr.rid] = qr.qs })
+        } catch (e) {}
+        for (var pi = 0; pi < (rows || []).length; pi++) {
+          var rid = rows[pi].id
+          if (gradesLookPending(rows[pi].writingGrades) && questionsHaveWriting(qMap[rid])) pendingIds.push(rid)
+        }
+        if (pendingIds.length > 0) {
+          var healIds = pendingIds.slice(0, 10)
+          after(async function() {
+            for (var hi = 0; hi < healIds.length; hi++) {
+              try { await regradeExamResult(healIds[hi]) } catch (e) {}
+            }
+          })
+        }
+      } catch (e) {}
+
       return NextResponse.json({ results: withGrades })
     } catch (error) {
       console.error('Student exam results error:', error)
@@ -296,8 +322,17 @@ export async function GET(request: NextRequest) {
           aiFeedback = 'لم يجب الطالب'
           aiExtracted = '(فارغ)'
         } else if (!modelAnswer) {
-          // No model answer — admin will grade manually
-          needsGrading = true
+          // المستر: مفيش حاجة اسمها تصحيح يدوي — حتى من غير إجابة نموذجية السؤال بياخد حكم نهائي
+          try {
+            var fbGrade = gradeFallbackDecisive({ question: qText, answer: studentText, modelAnswer: '', acceptedAnswers: acceptedAnswers, points: pts })
+            aiExtracted = studentText || '(فارغ)'
+            aiIsCorrect = fbGrade.isCorrect === true
+            aiFeedback = fbGrade.feedback || 'تم التصحيح آلياً'
+            textGraded = true
+          } catch (e) {
+            aiFeedback = 'لم يتم الإجابة'
+            aiExtracted = '(فارغ)'
+          }
         } else {
           var mediaIds = extractImageMediaIds(studentText)
 
@@ -483,6 +518,24 @@ export async function GET(request: NextRequest) {
     var avgScore = results.length > 0
       ? (results.reduce(function(sum, r) { return sum + r.score }, 0) / results.length).toFixed(1)
       : '—'
+
+    // self-heal: النتايج اللي مالهاش درجات مخزنة بتتصحح في الخلفية بعد الرد
+    // (التسليمات القديمة قبل ما التصحيح الفوري يبقى موجود)
+    try {
+      var healIds2: string[] = []
+      var examHasWritingQs = questionsHaveWriting(examInfo.questions)
+      for (var hi2 = 0; hi2 < rawResults.length; hi2++) {
+        if (examHasWritingQs && gradesLookPending(rawResults[hi2].writingGrades)) healIds2.push(rawResults[hi2].id)
+      }
+      if (healIds2.length > 0) {
+        var healBatch = healIds2.slice(0, 10)
+        after(async function() {
+          for (var hi3 = 0; hi3 < healBatch.length; hi3++) {
+            try { await regradeExamResult(healBatch[hi3]) } catch (e) {}
+          }
+        })
+      }
+    } catch (e) {}
 
     return NextResponse.json({
       results,

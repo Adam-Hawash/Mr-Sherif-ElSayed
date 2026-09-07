@@ -67,6 +67,15 @@ export async function DELETE(
       return NextResponse.json({ error: '考试不存在' }, { status: 404 })
     }
 
+    // حذف الامتحان من المنصة = حذف كل حاجة تخصه (نتايج الطلاب + تصحيحات الـ AI)
+    // عشان مفيش نتيجة تفضل ظاهرة لامتحان اتحذف — نفس منطق حذف الواجب
+    try {
+      await db.$executeRawUnsafe('DELETE FROM ExamResult WHERE examId = ?', id)
+    } catch (e) {
+      console.error('حذف نتايج الامتحان فشل:', e)
+      try { await db.examResult.deleteMany({ where: { examId: id } }) } catch (e2) {}
+    }
+
     await db.exam.delete({ where: { id } })
 
     return NextResponse.json({ message: '考试删除成功' })

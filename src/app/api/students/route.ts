@@ -14,6 +14,21 @@ export async function GET(request: NextRequest) {
     if (phone) {
       var password = searchParams.get('password') || ''
       var deviceId = searchParams.get('deviceId') || ''
+      // بصمة الجهاز — نسخ متعددة من نفس الجهاز (localStorage + cookie + بصمة ثابتة
+      // محسوبة من خصائص الجهاز). أي نسخة تطابق الحساب تعدي — كده لو الطالب مسح
+      // بيانات المتصفح أو دخل من لينك بدومين مختلف، الجهاز بيفضل متعرف عليه
+      // والحساب مايتقفلش بالغلط (المستر: "أنت كده البيانات كلها هتضيع").
+      var candidates: string[] = []
+      try {
+        var rawIds = JSON.parse(searchParams.get('deviceIds') || '[]')
+        if (Array.isArray(rawIds)) {
+          for (var ci = 0; ci < rawIds.length; ci++) {
+            if (typeof rawIds[ci] === 'string' && rawIds[ci] && candidates.indexOf(rawIds[ci]) === -1) candidates.push(rawIds[ci])
+          }
+        }
+      } catch (e) {}
+      if (deviceId && candidates.indexOf(deviceId) === -1) candidates.unshift(deviceId)
+      var primaryDevice = candidates[0] || deviceId || ''
       try {
         var student = await db.student.findFirst({
           where: { phone },
@@ -26,13 +41,20 @@ export async function GET(request: NextRequest) {
         if (!password || student.password !== password) {
           return NextResponse.json({ students: [], total: 0, page: 1, pageSize: 1, totalPages: 0 })
         }
+        // IDs بايظة من إصدارات قديمة (اتخزنت كنص "null" مثلاً) → نعتبرها زي ما تكون فاضية
+        var LEGACY_IDS = ['null', 'undefined', 'dev_null', 'none', '']
+        var storedId = (student as any).deviceId || ''
+        var storedIsBroken = LEGACY_IDS.indexOf(storedId) !== -1
+        var deviceTrusted = !storedIsBroken && !!storedId && candidates.indexOf(storedId) !== -1
         // ===== ربط الجهاز =====
-        // الحساب مربوط بجهاز معين + المستر ماسمحش بكل الأجهزة + الجهاز الحالي مختلف → مرفوض
+        // الحساب مربوط بجهاز معين + المستر ماسمحش بكل الأجهزة + الجهاز الحالي
+        // مش من الأجهزة المعروفة → مرفوض
         if (
-          student.deviceId &&
-          !student.allowAllDevices &&
-          deviceId &&
-          student.deviceId !== deviceId
+          storedId &&
+          !storedIsBroken &&
+          !deviceTrusted &&
+          !(student as any).allowAllDevices &&
+          candidates.length > 0
         ) {
           return NextResponse.json(
             {
@@ -43,13 +65,22 @@ export async function GET(request: NextRequest) {
             { status: 403 }
           )
         }
-        // أول تسجيل دخول من أي جهاز (حساب عمله الأدمن مثلاً) → الجهاز ده بيتسجل كجهاز الحساب
-        if (!student.deviceId && deviceId) {
+        // أول تسجيل دخول (حساب عمله الأدمن مثلاً) أو ربط قديم بايظ → الجهاز ده بيتسجل
+        if ((!storedId || storedIsBroken) && primaryDevice) {
           try {
-            await db.student.update({ where: { id: student.id }, data: { deviceId } })
-            student = { ...student, deviceId }
+            await db.student.update({ where: { id: student.id }, data: { deviceId: primaryDevice } })
+            ;(student as any).deviceId = primaryDevice
           } catch (bindErr) {
             console.error('Device bind error:', bindErr)
+          }
+        } else if (!deviceTrusted && (student as any).allowAllDevices && primaryDevice) {
+          // المستر عمل سماح للطالب → أول جهاز يدخل بيه بيبقى جهاز الحساب الجديد
+          // (كده لو المستر شال السماح بعدين، الطالب يفضل شغال على جهازه)
+          try {
+            await db.student.update({ where: { id: student.id }, data: { deviceId: primaryDevice } })
+            ;(student as any).deviceId = primaryDevice
+          } catch (bindErr) {
+            console.error('Device rebind error:', bindErr)
           }
         }
         return NextResponse.json({ students: [{ ...student, watchedVideoCount: 0 }], total: 1, page: 1, pageSize: 1, totalPages: 1 })
@@ -121,7 +152,9 @@ export async function POST(request: NextRequest) {
     var parentPhone = body.parentPhone || body.motherPhone || ''
     var password = body.password || ''
     // بصمة الجهاز: الحساب بيتقيد على الجهاز اللي اتعمل بيه
-    var deviceId = typeof body.deviceId === 'string' ? body.deviceId : ''
+    // (نتعامل مع "null" النصية القديمة كأنها فاضية)
+    var rawDeviceId = typeof body.deviceId === 'string' ? body.deviceId : ''
+    var deviceId = ['null', 'undefined', 'dev_null', 'none'].indexOf(rawDeviceId) !== -1 ? '' : rawDeviceId
 
     if (!name || !phone || !grade) {
       return NextResponse.json({ error: 'الاسم ورقم الهاتف والصف مطلوبين' }, { status: 400 })

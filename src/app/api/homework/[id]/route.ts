@@ -67,6 +67,16 @@ export async function DELETE(
       return NextResponse.json({ error: '作业不存在' }, { status: 404 })
     }
 
+    // المستر طلب: حذف الواجب من المنصة = حذف كل حاجة تخصه
+    // (تسليمات الطالب + درجاته + تصحيحات الـ AI — عشان مفيش "واجب محذوف" يفضل ظاهر بدرجة)
+    // الفورين كي مش مفروض على داتابيز الإنتاج (اتعملت بـ raw SQL) فبنمسح يدوي.
+    try {
+      await db.$executeRawUnsafe('DELETE FROM HomeworkResult WHERE homeworkId = ?', id)
+    } catch (e) {
+      console.error('حذف تسليمات الواجب فشل:', e)
+      try { await db.homeworkResult.deleteMany({ where: { homeworkId: id } }) } catch (e2) {}
+    }
+
     await db.homework.delete({ where: { id } })
 
     return NextResponse.json({ message: '作业删除成功' })

@@ -120,6 +120,32 @@ export function AdminDashboard() {
 
   useEffect(() => { fetchStats() }, [])
 
+  // التصحيح التلقائي الشامل: أول ما الأدمن يفتح اللوحة بنضف النتايج اليتيمة
+  // (واجبات/امتحانات اتحذفت ودرجاتها فضلت) وبنصحح أي نتيجة قديمة ناقصة
+  // بالذكاء الاصطناعي — لحد ما مفيش "يحتاج تصحيح يدوي" خالص. المستر يقدر
+  // يعدّل أي درجة بعدها عادي من زرار التعديل.
+  const sweepRanRef = useRef(false)
+  useEffect(() => {
+    if (sweepRanRef.current) return
+    sweepRanRef.current = true
+    ;(async () => {
+      let sweptAny = false
+      try {
+        for (let i = 0; i < 40; i++) {
+          const res = await fetch('/api/grading/sweep', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ limit: 5 }),
+          })
+          const data = await res.json()
+          if (data && (data.fixed > 0 || (data.cleanedOrphans && (data.cleanedOrphans.homework > 0 || data.cleanedOrphans.exam > 0)))) sweptAny = true
+          if (!data || data.done || data.remaining === 0) break
+        }
+      } catch { /* silent — التنضيف بيتعمل كمان من routes تانية */ }
+      if (sweptAny) fetchStats()
+    })()
+  }, [])
+
   const openSettings = async () => {
     setShowSettings(true)
     setSettingsLoading(true)
@@ -1467,7 +1493,7 @@ function ExamTrackingPanel({ onViewImage }: { onViewImage?: (src: string) => voi
                                             }`}>
                                               {aq.type === 'writing'
                                                 ? (aq.needsGrading
-                                                    ? 'يحتاج تصحيح يدوي'
+                                                    ? 'بيتصحح بالذكاء الاصطناعي…'
                                                     : (aq.aiIsCorrect === true ? 'AI: صح' : 'AI: غلط'))
                                                 : aq.isCorrect ? 'Correct' : 'Wrong'}
                                             </span>
@@ -2080,7 +2106,7 @@ function MyStudentsPanel({ onViewImage }: { onViewImage?: (src: string) => void 
                                         ? (aq.isCorrect ? 'صح (يدوي ✓)' : 'غلط (يدوي ✗)')
                                         : aq.type === 'writing'
                                           ? (aq.needsGrading
-                                              ? 'يحتاج تصحيح يدوي'
+                                              ? 'بيتصحح بالذكاء الاصطناعي…'
                                               : (aq.aiIsCorrect === true ? 'AI: صح' : 'AI: غلط'))
                                           : aq.isCorrect ? 'Correct' : 'Wrong'}
                                     </span>
@@ -2212,7 +2238,7 @@ function MyStudentsPanel({ onViewImage }: { onViewImage?: (src: string) => void 
                                         ? (aq.isCorrect ? 'صح (يدوي ✓)' : 'غلط (يدوي ✗)')
                                         : aq.type === 'writing'
                                           ? (aq.needsGrading
-                                              ? 'يحتاج تصحيح يدوي'
+                                              ? 'بيتصحح بالذكاء الاصطناعي…'
                                               : (aq.aiIsCorrect === true ? 'AI: صح' : 'AI: غلط'))
                                           : aq.isCorrect ? 'Correct' : 'Wrong'}
                                     </span>
@@ -2300,7 +2326,7 @@ function MyStudentsPanel({ onViewImage }: { onViewImage?: (src: string) => void 
                                 <div className="mt-2 space-y-1">
                                   <p className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1">
                                     <FileText className="h-3 w-3" />
-                                    إجابات مقالية ({hr.writingAnswers.length}) - تحتاج تصحيح يدوي:
+                                    إجابات مقالية ({hr.writingAnswers.length}) - التصحيح بالذكاء الاصطناعي:
                                   </p>
                                   {hr.writingAnswers.map((wa: any, wi: number) => (
                                     <div key={wi} className="text-[10px] p-2 rounded bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 space-y-1">
