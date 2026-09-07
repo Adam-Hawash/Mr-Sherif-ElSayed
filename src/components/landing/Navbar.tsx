@@ -49,7 +49,9 @@ export function Navbar() {
   } = useAppStore()
 
   const cfg = siteConfig
-  const instructorPhoto = cfg.instructor_photo || ''
+  /* البروفايل: صورة المستر الافتراضية (sherif-profile.png) — والأدمن يقدر يغيرها من لوحة التحكم (profile_photo)
+     مستقلة تمامًا عن صورة الهيرو (instructor_photo) عشان الصورة الأصلية تفضل زي ما هي */
+  const instructorPhoto = cfg.profile_photo || '/images/sherif-profile.png'
   const youtubeLink = cfg.social_youtube || ''
   const navBrand = cfg.navbar_brand || 'منصة مستر شريف السيد'
   const navSubtitle = cfg.navbar_subtitle || 'الرياضيات بقت أسهل'

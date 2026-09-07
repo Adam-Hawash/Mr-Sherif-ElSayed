@@ -195,7 +195,8 @@ interface ImageSlot {
 
 var IMAGE_SLOTS: ImageSlot[] = [
   { configKey: 'hero_bg_image', label: 'صورة البانر (الخلفية)', labelEn: 'Hero Banner Image', shape: 'wide' },
-  { configKey: 'instructor_photo', label: 'صورة المعلم', labelEn: 'Instructor Photo', shape: 'circle' },
+  { configKey: 'instructor_photo', label: 'صورة المعلم (الهيرو)', labelEn: 'Instructor Photo (Hero)', shape: 'circle' },
+  { configKey: 'profile_photo', label: 'صورة البروفايل (فوق في النافبار)', labelEn: 'Profile Photo (Navbar)', shape: 'circle' },
   { configKey: 'site_logo', label: 'شعار الموقع', labelEn: 'Site Logo', shape: 'wide' },
   { configKey: 'tip1_image', label: 'صورة نصيحة 1', labelEn: 'Tip 1 Image', shape: 'square' },
   { configKey: 'tip2_image', label: 'صورة نصيحة 2', labelEn: 'Tip 2 Image', shape: 'square' },

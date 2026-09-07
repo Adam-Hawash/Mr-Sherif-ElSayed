@@ -36,6 +36,7 @@ var DEFAULTS = {
   instructor_name_en: 'MR. Sherif ElSayed',
   instructor_title: 'مدرس رياضيات | Math Teacher',
   instructor_photo: '',
+  profile_photo: '',
 
   // === Features Section ===
   features_title: 'ليه تختارنا؟',

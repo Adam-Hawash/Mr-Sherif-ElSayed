@@ -7,9 +7,9 @@
 //     وبيتفك في الذاكرة لحظة التشغيل بس، فمفيش ID في مصدر الصفحة
 //     ولا في الـ DOM ولا في أي console.log.
 //  2) الملفات المرفوعة بتتخدم بتوكن موقّع قصير العمر مرتبط بالطالب.
-//  3) ووترمارك (مواصفات المستر): أسود بالكامل — 6 شِپات على الحواف بتدور
-//     دورة ناعمة مستمرة + ووترمارك كبير في نص الخلفية شفاف بحواف سودة وبالعرض
-//     + كارت اسم الطالب (بالاسم الكامل من غير قص حروف) بيطير على الحواف بس
+//  3) ووترمارك (مواصفات المستر النهائية): أسود بالكامل — 8 شِپات سابتين في مكانهم
+//     (3 فوق + 2 في النص + 3 تحت) + ووترمارك كبير في نص الخلفية شفاف بحواف سودة وبالعرض
+//     — ثابت تمامًا — والكارت (الاسم الكامل + الرقم) هو البس اللي بيتحرك على الحواف
 //     + بيرجع يرسم لوحه نفسه لو اتمسح + شغال جوه ملء الشاشة.
 //  4) حماية فحص: كليك يمين مقفول + F12/Ctrl+Shift+I/J/C/Ctrl+U مقفولين
 //     بتنبيه لطيف + لو أدوات المطور اتفتحت الفيديو بيوقف مؤقتًا.
@@ -202,15 +202,21 @@ const PLAYER_PAGE = `<!doctype html>
     font-weight:900;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
     font-size:clamp(20px,5.6vw,72px);line-height:1.3;
     unicode-bidi:plaintext;letter-spacing:0}
-  #wmBig .dx{animation:wmDriftX 17s ease-in-out infinite alternate}
-  #wmBig .dy{animation:wmDriftY 11.5s ease-in-out infinite alternate-reverse}
   #wmBig .b1{display:block;color:rgba(0,0,0,.13);
     -webkit-text-stroke:1.8px rgba(0,0,0,.5);paint-order:stroke fill;
     text-shadow:0 0 18px rgba(255,255,255,.22)}
   #wmBig .b2{display:block;font-size:.36em;font-weight:800;direction:ltr;unicode-bidi:plaintext;letter-spacing:0;
     color:rgba(0,0,0,.13);-webkit-text-stroke:1.2px rgba(0,0,0,.45);paint-order:stroke fill}
-  @keyframes wmDriftX{0%{transform:translateX(-1.1em)}100%{transform:translateX(1.1em)}}
-  @keyframes wmDriftY{0%{transform:translateY(-.6em)}100%{transform:translateY(.6em)}}
+  /* flying card - the ONLY moving element (drifts along edges + gentle float) */
+  .wmCard{position:absolute;z-index:46;
+    transition:top 3.2s ease-in-out,left 3.2s ease-in-out,transform 3.2s ease-in-out}
+  .wmCard .in{display:inline-block;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.28);
+    color:#fff;border-radius:14px;padding:7px 18px;text-align:center;direction:rtl;
+    box-shadow:0 8px 26px rgba(0,0,0,.55);animation:cardFloat 3.4s ease-in-out infinite alternate}
+  .wmCard .nm{display:block;font-size:clamp(11px,1.5vw,15px);font-weight:800;unicode-bidi:plaintext;letter-spacing:0;white-space:nowrap;
+    text-shadow:0 1px 2px rgba(0,0,0,.8)}
+  .wmCard .ph{display:block;font-size:clamp(9.5px,1.2vw,12px);font-weight:700;direction:ltr;unicode-bidi:plaintext;letter-spacing:0;opacity:.85;margin-top:2px}
+  @keyframes cardFloat{0%{margin-top:-3px}100%{margin-top:3px}}
   /* الشِپات الصغيرة — سابتين في مكانهم، مفيش أي حركة خالص */
   .wmChip{position:absolute;z-index:44;direction:rtl;text-align:center}
   .wmChip .in{display:inline-block;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.20);
@@ -298,13 +304,34 @@ function deobfuscate(b64, key){
    • الاسم كامل 100% من غير قص أي حرف — ممنوع letter-spacing
      وpaint-order:stroke عشان الحواف السودة متاكلش الحروف */
 var WM_SPOTS = [
-  {t:'2.4%', l:'50%',   tx:'-50%',  ty:'0%'},   /* 1) منتصف الخط العلوي */
-  {t:'2.4%', l:'1.8%',  tx:'0%',    ty:'0%'},   /* 2) الزاوية فوق شمال */
-  {t:'50%',  l:'1.8%',  tx:'0%',    ty:'-50%'}, /* 3) منتصف الخط الشمال */
-  {t:'50%',  l:'98.2%', tx:'-100%', ty:'-50%'}, /* 4) منتصف الخط اليمين */
-  {b:'2.4%', l:'50%',   tx:'-50%',  ty:'0%'},   /* 5) منتصف الخط السفلي */
-  {b:'2.4%', l:'98.2%', tx:'-100%', ty:'0%'}    /* 6) الزاوية تحت يمين */
+  {t:'2.4%', l:'50%',   tx:'-50%',  ty:'0%'},   /* 1) top-center */
+  {t:'2.4%', l:'1.8%',  tx:'0%',    ty:'0%'},   /* 2) top-left */
+  {t:'2.4%', l:'98.2%', tx:'-100%', ty:'0%'},   /* 3) top-right (NEW) */
+  {t:'50%',  l:'1.8%',  tx:'0%',    ty:'-50%'}, /* 4) mid-left */
+  {t:'50%',  l:'98.2%', tx:'-100%', ty:'-50%'}, /* 5) mid-right */
+  {b:'2.4%', l:'1.8%',  tx:'0%',    ty:'0%'},   /* 6) bottom-left (NEW) */
+  {b:'2.4%', l:'50%',   tx:'-50%',  ty:'0%'},   /* 7) bottom-center */
+  {b:'2.4%', l:'98.2%', tx:'-100%', ty:'0%'}    /* 8) bottom-right */
 ];
+/* flying-card stops - the ONLY moving element (lands on edges, every 8s) */
+var WM_CARD_STEPS = [
+  {t:'7%',  l:'50%',  tx:'-50%',  ty:'0%'},
+  {t:'7%',  l:'93%',  tx:'-100%', ty:'0%'},
+  {t:'47%', l:'93%',  tx:'-100%', ty:'-50%'},
+  {t:'86%', l:'93%',  tx:'-100%', ty:'-100%'},
+  {t:'86%', l:'50%',  tx:'-50%',  ty:'-100%'},
+  {t:'86%', l:'7%',   tx:'0%',    ty:'-100%'},
+  {t:'47%', l:'7%',   tx:'0%',    ty:'-50%'},
+  {t:'7%',  l:'7%',   tx:'0%',    ty:'0%'}
+];
+var wmCardEl = null, wmCardStep = 0, wmCardTimer = null;
+function wmCardApply(){
+  if(!wmCardEl || !wmCardEl.parentNode) return;
+  var p = WM_CARD_STEPS[wmCardStep % WM_CARD_STEPS.length];
+  wmCardStep++;
+  wmCardEl.style.top = p.t; wmCardEl.style.left = p.l;
+  wmCardEl.style.transform = 'translate(' + p.tx + ',' + p.ty + ')';
+}
 var chipEls = [];
 var wmName = String(CFG.wm.name || '').trim();
 var wmPhone = String(CFG.wm.phone || '').trim();
@@ -328,7 +355,7 @@ function buildWm(){
   if(bigLine1){
     var big = document.createElement('div');
     big.id = 'wmBig';
-    big.innerHTML = '<div class="dx"><div class="dy"><span class="b1">' + esc(bigLine1) + '</span>' + (bigLine2 ? '<span class="b2">' + esc(bigLine2) + '</span>' : '') + '</div></div>';
+    big.innerHTML = '<span class="b1">' + esc(bigLine1) + '</span>' + (bigLine2 ? '<span class="b2">' + esc(bigLine2) + '</span>' : '');
     big.style.opacity = String(Math.min(1, (Number(CFG.wm.opacity) || 0.55) * 1.15));
     layer.appendChild(big);
   }
@@ -338,7 +365,7 @@ function buildWm(){
     for(var ci = 0; ci < WM_SPOTS.length; ci++){
       var chip = document.createElement('div');
       /* على الموبايل الشِپات الجانبية والزوايا تعرض الرقم بس عشان مفيش تداخل */
-      chip.className = 'wmChip' + ((ci !== 0 && ci !== 4) ? ' compact' : '');
+      chip.className = 'wmChip' + ((ci !== 0 && ci !== 6) ? ' compact' : '');
       applySpot(chip, WM_SPOTS[ci]);
       chip.style.opacity = String(Math.min(1, (Number(CFG.wm.opacity) || 0.55) + 0.05));
       var inner = document.createElement('span');
@@ -348,6 +375,20 @@ function buildWm(){
       layer.appendChild(chip);
       chipEls.push(chip);
     }
+  }
+  /* 3) flying card - the ONLY moving element (full name + phone) */
+  if(chipText){
+    var card = document.createElement('div');
+    card.className = 'wmCard';
+    card.innerHTML = '<div class="in"><span class="nm">' + esc(bigLine1) + '</span>' + (bigLine2 ? '<span class="ph">' + esc(bigLine2) + '</span>' : '') + '</div>';
+    layer.appendChild(card);
+    wmCardEl = card;
+    wmCardApply();
+    if(wmCardTimer) clearInterval(wmCardTimer);
+    wmCardTimer = setInterval(wmCardApply, 8000);
+  } else {
+    wmCardEl = null;
+    if(wmCardTimer){ clearInterval(wmCardTimer); wmCardTimer = null; }
   }
   wrap.appendChild(layer);
 }
