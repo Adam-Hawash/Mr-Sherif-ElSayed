@@ -54,8 +54,8 @@ export function Footer() {
   var primeUrl = cfg.prime_developer_url || FALLBACK_PORTFOLIO_URL
   var heroDevLabel = cfg.hero_developer_label || 'Hero Developer'
   var madeByLabel = cfg.footer_made_by_label || 'Made by Adam Hawash'
-  var brandName = cfg.footer_brand || 'منصة مستر شريف السيد'
-  var copyrightText = cfg.footer_copyright || 'جميع الحقوق محفوظة لمنصة مستر شريف السيد'
+  var brandName = cfg.footer_brand || 'Mr. Sherif ElSayed'
+  var copyrightText = cfg.footer_copyright || 'جميع الحقوق محفوظة — Mr. Sherif ElSayed'
 
   var fb = cfg.social_facebook || ''
   var wa = cfg.social_whatsapp_channel || ''

@@ -115,7 +115,7 @@ export default function HeroSection() {
             {/* Title — glossy orange */}
             <h1 className="text-5xl font-extrabold tracking-tight sm:text-6xl lg:text-7xl text-white leading-[1.15]">
               <span className="block shine-text drop-shadow-[0_4px_24px_rgba(249,115,22,0.35)]">
-                {cfg.hero_title_line1 || 'مستر شريف السيد'}
+                {cfg.hero_title_line1 || 'Mr. Sherif ElSayed'}
               </span>
               <span className="block mt-2 text-xl sm:text-2xl lg:text-3xl font-semibold text-white/75">
                 {cfg.hero_title_line2 || 'منصة الرياضيات المتكاملة'}
@@ -265,7 +265,7 @@ export default function HeroSection() {
               {/* Name badge overlay — English name under the photo */}
               <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 bg-[#12121F] border border-[#F97316]/45 rounded-full px-6 py-2.5 shadow-[0_8px_30px_rgba(0,0,0,0.45),0_0_24px_rgba(249,115,22,0.25)]">
                 <p className="shine-text font-extrabold text-base sm:text-lg tracking-wide whitespace-nowrap" dir="ltr">
-                  {cfg.instructor_name_en || 'MR. Sherif ElSayed'}
+                  {cfg.instructor_name_en || 'Mr. Sherif ElSayed'}
                 </p>
               </div>
 
