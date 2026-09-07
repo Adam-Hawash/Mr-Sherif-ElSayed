@@ -32,8 +32,9 @@ export function VideoWatermark({ name, phone }: { name?: string; phone?: string 
   }, [])
 
   // الرقم المسجل بيه الطالب هو المهم — بنقدمه الأول وبأبرز شكل
+  // طلب المستر: الاسم الطويل ناخد أول اسمين بس — الرقم والاسم يبانوا كاملين
   const num = (phone || '').trim()
-  const nm = (name || '').trim()
+  const nm = (name || '').trim().split(/\s+/).slice(0, 2).join(' ')
   if (!num && !nm) return null
   const tileLabel = [nm, num].filter(Boolean).join(' • ')
 
@@ -46,12 +47,12 @@ export function VideoWatermark({ name, phone }: { name?: string; phone?: string 
   ]
   const pos = corners[tick % corners.length]
 
-  // تيل متكرر: نص أصغر (14px) في مربع أكبر (520×300) → تكرار أقل بكثير
-  // + الاسم الطويل بياخد مساحة كافية فمش بيتقطع أبدًا
+  // تيل متكرر: نص أصغر (11px) في مربع أطول (640×520) → نسخ أقل بكتير
+  // + الاسم (أول اسمين) والرقم يبانوا كاملين ومش بيغطوا الفيديو
   const esc = function (s: string) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }
   const svgTile = encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" width="520" height="300">' +
-      '<text x="26" y="150" font-size="13.5" font-weight="bold" fill="rgba(255,255,255,0.5)" stroke="rgba(0,0,0,0.5)" stroke-width="2" paint-order="stroke" transform="rotate(-18 260 150)" font-family="sans-serif">' +
+    '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="520">' +
+      '<text x="28" y="260" font-size="11" font-weight="bold" fill="rgba(255,255,255,0.5)" stroke="rgba(0,0,0,0.5)" stroke-width="1.8" paint-order="stroke" transform="rotate(-18 320 260)" font-family="sans-serif">' +
         esc(tileLabel) +
       '</text>' +
     '</svg>'
@@ -79,14 +80,14 @@ export function VideoWatermark({ name, phone }: { name?: string; phone?: string 
       >
         {num && (
           <p
-            className="text-xs sm:text-sm font-extrabold text-white leading-tight"
+            className="text-[11px] sm:text-xs font-extrabold text-white leading-tight"
             style={{ textShadow: '0 1px 3px rgba(0,0,0,0.95)', direction: 'ltr', unicodeBidi: 'plaintext' }}
           >
             {num}
           </p>
         )}
         {nm && (
-          <p className="text-[9px] sm:text-[11px] font-bold text-white/90 leading-tight max-w-[150px] sm:max-w-[180px] truncate" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.9)' }}>
+          <p className="text-[8px] sm:text-[9.5px] font-bold text-white/90 leading-tight max-w-[130px] sm:max-w-[150px] truncate" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.9)' }}>
             {nm}
           </p>
         )}

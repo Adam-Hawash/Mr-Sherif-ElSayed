@@ -62,9 +62,19 @@ export async function GET(request: NextRequest) {
           )
         }
         // ===== قفل الجهاز الصارم (شغال دايمًا — من غير مفتاح) =====
-        // المستر قال صراحة: "جهاز واحد اللي هو عامل منه الحساب من الأول".
-        // الربط مزدوج: هوية فريدة (dev_) + بصمة ناتج الجهاز (dv3_) —
-        // ومفيش أي جهاز تاني بيدخل غير لو المستر عمل "سماح" للحساب.
+        // المستر قال صراحة (4 مرات): "جهاز واحد بس — الجهاز اللي اتعمل بيه
+        // الحساب هو اللي يقدر يدخل". يعني أي جهاز تاني (حتى لو موبايل من
+        // نفس الموديل) لازم يتمنع فورًا ويظهر له رسالة حمراء.
+        //
+        // الدرس اللي اتاخد: المطابقة بالبصمة (dv3_) كانت بتفتح الحساب من أي
+        // موبايل شبهه — لأن موبايلين من نفس الموديل بيطلعوا نفس البصمة
+        // (نفس الشاشة + نفس الكانفس + نفس كارت الشاشة). فالمطابقة دلوقتي
+        // **بالهمية الفريدة (dev_) بس** — مفيش جهازين في الدنيا ليهم نفس الـ ID.
+        // البصمة (dv3_) بتتحفظ للتشخيص عند المستر بس، ومبتفتحش حاجة.
+        //
+        // الاستثناء الوحيد: الحسابات القديمة جدًا المربوطة ببصمة dv2_ بس
+        // (قبل نظام الهوية الفريدة) — أول ما تدخل من جهازها بترتبط بالهوية
+        // الفريدة الجديدة وترجع مقفولة زي أي حساب (ترقية لمرة واحدة).
         var storedId = ((student as any).deviceId || '').trim()
         var storedFp = ((student as any).deviceFp || '').trim()
         // إصدارات قديمة: "null" نصية → فاضية
@@ -76,21 +86,35 @@ export async function GET(request: NextRequest) {
           if (!storedFp) storedFp = storedId
           storedId = ''
         }
-        // المطابقة: الهوية الفريدة أو البصمة — واحدة تكفي (نفس الجهاز)
+        // المطابقة الصارمة: الهوية الفريدة (dev_) بس هي اللي بتفتح.
         var uuidOk = !!storedId && !!current.uuid && current.uuid === storedId
-        var fpOk = !!storedFp && !!current.fp && current.fp === storedFp
-        var deviceTrusted = uuidOk || fpOk
+        // ترقية الحسابات القديمة (مربوطة ببصمة dv2_ من غير هوية فريدة):
+        // أول جهاز يجيب نفس بصمة dv2_ بيتقيد عليه نهائيًا بالهوية الفريدة.
+        var legacyUpgrade = !storedId && !!storedFp && storedFp.indexOf('dv2_') === 0 && !!current.fp && current.fp === storedFp
+        var deviceTrusted = uuidOk || legacyUpgrade
         var hasBinding = !!storedId || !!storedFp
-        // الجهاز الحالي مش جهاز الحساب → مرفوض (حتى لو المتصفح مبعتش قيم)
+        // الجهاز الحالي مش جهاز الحساب → مرفوض فورًا (حتى لو المتصفح مبعتش قيم)
         if (hasBinding && !deviceTrusted && !(student as any).allowAllDevices) {
           return NextResponse.json(
             {
               students: [],
               deviceBlocked: true,
-              error: 'الحساب ده مربوط بجهاز واحد بس (الجهاز اللي اتعمل بيه). الدخول من الجهاز ده محتاج المستر يعمل لك سماح من لوحة التحكم.',
+              error: '🚫 لازم تدخل من الجهاز اللي انت عملت بيه الحساب — الحساب ده مربوط بجهاز واحد بس. لو جهازك اتغيّر، كلمن المستر يعمل لك سماح من لوحة التحكم.',
             },
             { status: 403 }
           )
+        }
+        // ترقية الحساب القديم: بيتقفل على الهوية الفريدة للجهاز ده نهائيًا
+        if (legacyUpgrade && current.uuid) {
+          try {
+            await db.student.update({
+              where: { id: student.id },
+              data: { deviceId: current.uuid, deviceFp: current.fp },
+            })
+            ;(student as any).deviceId = current.uuid
+          } catch (upErr) {
+            console.error('Device legacy upgrade error:', upErr)
+          }
         }
         // أول تسجيل دخول (حساب عمله الأدمن) → الجهاز ده بيتسجل بشكل دائم
         if (!hasBinding && (current.uuid || current.fp)) {
