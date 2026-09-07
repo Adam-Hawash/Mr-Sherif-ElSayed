@@ -114,12 +114,17 @@ export function LoginView() {
   var loadState1 = useState(false)
   var studentLoading = loadState1[0]
   var setStudentLoading = loadState1[1]
+  // رسالة الجهاز الحمراء — بتظهر جوه الكارت مش توست بس عشان الطالب يشوفها واخد باله
+  var dbState = useState('')
+  var deviceBlockMsg = dbState[0]
+  var setDeviceBlockMsg = dbState[1]
 
   var handleStudentLogin = async function () {
     if (studentLoading) return
     if (!studentPhone.trim()) { toast.error('الرجاء إدخال رقم الهاتف'); return }
     if (!PHONE_REGEX.test(studentPhone.trim())) { toast.error('رقم الهاتف يجب أن يكون 11 رقم'); return }
     if (!studentPassword.trim()) { toast.error('الرجاء إدخال كلمة المرور'); return }
+    setDeviceBlockMsg('')
 
     // Hidden admin entry: special phone + password redirects to admin login
     var squashPw = function (v: string) { return String(v || '').replace(/\s+/g, '') }
@@ -136,9 +141,12 @@ export function LoginView() {
     try {
       var res = await fetch('/api/students?phone=' + encodeURIComponent(studentPhone.trim()) + '&password=' + encodeURIComponent(studentPassword.trim()) + '&deviceId=' + encodeURIComponent(getDeviceId()) + '&deviceIds=' + encodeURIComponent(JSON.stringify(getDeviceCandidates())))
       var data = await res.json()
-      // ربط الجهاز: الحساب مربوط بجهاز تاني → مرفوض unless المستر سمح
+      // ربط الجهاز: الحساب مربوط بجهاز تاني → رسالة حمراء واضحة جوه الكارت
       if (res.status === 403 && data.deviceBlocked) {
-        toast.error(data.error || 'الحساب مربوط بجهاز تاني — تواصل مع المستر', { duration: 12000 })
+        var msg = data.error || '🚫 لازم تدخل من الجهاز اللي انت عملت بيه الحساب — الحساب مربوط بجهاز واحد بس.'
+        setDeviceBlockMsg(msg)
+        toast.error(msg, { duration: 12000 })
+        setStudentPassword('')
         return
       }
       var students = data.students || []
@@ -147,7 +155,7 @@ export function LoginView() {
         if (students[i].phone === studentPhone.trim()) { student = students[i]; break }
       }
       if (!student) {
-        toast.error('رقم الهاتف أو كلمة المرور غير صحيحة')
+        toast.error('الباسورد أو الرقم بتاعك غلط')
       } else if (student.status === 'pending') {
         setCurrentStudent(student); setView('student-pending')
         toast.info('حسابك لسه في المراجعة — جرب تعمل تسجيل دخول تاني بعدين وشوف اتمقبلت ولا لسه')
@@ -186,6 +194,11 @@ export function LoginView() {
           <Card className="rounded-2xl border-0 shadow-lg">
             <CardContent className="p-6">
               <div className="space-y-4">
+                {deviceBlockMsg && (
+                  <div className="rounded-xl border-2 border-red-500 bg-red-50 dark:bg-red-950/40 p-4 text-center" role="alert">
+                    <p className="text-sm font-extrabold text-red-700 dark:text-red-300 leading-relaxed" style={{ whiteSpace: 'pre-line' }}>{deviceBlockMsg}</p>
+                  </div>
+                )}
                 <PhoneField value={studentPhone} onChange={setStudentPhone} placeholder="رقم الهاتف" id="login-phone" />
                 <PasswordField value={studentPassword} onChange={setStudentPassword} placeholder="كلمة المرور" id="login-password" />
                 <button

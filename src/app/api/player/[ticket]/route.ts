@@ -194,10 +194,10 @@ const PLAYER_PAGE = `<!doctype html>
   .tileA{animation:wmFade 4.8s step-end infinite}
   .tileB{animation:wmFade 4.8s step-end infinite reverse}
   #wmBadge{position:absolute;z-index:45;pointer-events:none;user-select:none;direction:rtl;text-align:center;
-    padding:5px 10px;border-radius:10px;background:rgba(0,0,0,.62);border:1.5px solid rgba(255,255,255,.78);
-    box-shadow:0 2px 12px rgba(0,0,0,.65);transition:all .9s ease;max-width:70%}
-  #wmBadge .num{color:#fff;font-weight:800;font-size:13px;line-height:1.25;text-shadow:0 1px 3px rgba(0,0,0,.95);direction:ltr;unicode-bidi:plaintext}
-  #wmBadge .nm{color:rgba(255,255,255,.92);font-weight:700;font-size:10px;line-height:1.3;text-shadow:0 1px 3px rgba(0,0,0,.9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:170px}
+    padding:3px 8px;border-radius:8px;background:rgba(0,0,0,.62);border:1px solid rgba(255,255,255,.78);
+    box-shadow:0 1px 8px rgba(0,0,0,.6);transition:all .9s ease;max-width:60%}
+  #wmBadge .num{color:#fff;font-weight:800;font-size:12px;line-height:1.25;text-shadow:0 1px 3px rgba(0,0,0,.95);direction:ltr;unicode-bidi:plaintext}
+  #wmBadge .nm{color:rgba(255,255,255,.92);font-weight:700;font-size:9px;line-height:1.3;text-shadow:0 1px 3px rgba(0,0,0,.9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
   #fsBtn{position:absolute;bottom:10px;left:10px;z-index:50;width:40px;height:40px;border-radius:10px;border:0;cursor:pointer;
     background:rgba(0,0,0,.55);color:#fff;display:flex;align-items:center;justify-content:center;opacity:.75}
   #fsBtn:hover{opacity:1;background:rgba(0,0,0,.75)}
@@ -240,18 +240,19 @@ function deobfuscate(b64, key){
 
 /* ===== الووترمارك الذكي ===== */
 var WM_POS = [
-  {top:'6%', left:'5%'},{top:'6%', right:'5%'},
-  {top:'42%', left:'5%'},{top:'42%', right:'5%'},
-  {bottom:'14%', left:'5%'},{bottom:'14%', right:'5%'}
+  {top:'6%', left:'5%'},{top:'6%', right:'5%'},{bottom:'14%', right:'5%'}
 ];
 var wmTick = 0;
+/* طلب المستر: الاسم الطويل ناخد منه أول اسمين بس — عشان الرقم والاسم يبانوا كاملين مش مقطوعين */
+function shortName(n){ var p = String(n||'').trim().split(/\s+/); return p.slice(0,2).join(' '); }
 function wmSvg(colorFill, colorStroke){
-  var label = (CFG.wm.phone || '') + ((CFG.wm.phone && CFG.wm.name) ? ' • ' : '') + (CFG.wm.name || '');
+  var label = (CFG.wm.phone || '') + ((CFG.wm.phone && CFG.wm.name) ? ' • ' : '') + shortName(CFG.wm.name);
   if(!label) return '';
-  // طلب المستر: ووترمارك أقل عدداً وأصغر — والاسم والرقم يبانوا كاملين
-  // (مربع تكرار أكبر 620×360 + خط أصغر 13.5 → تكرار أقل بكتير والاسم مش بيتقطع)
-  var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="620" height="360">' +
-    '<text x="30" y="180" font-size="13.5" font-weight="bold" font-family="sans-serif" fill="' + colorFill + '" stroke="' + colorStroke + '" stroke-width="2.2" paint-order="stroke" transform="rotate(-18 310 180)">' + esc(label) + '</text></svg>';
+  // طلب المستر (التحديث الأخير): الووترمارك يشيل منهم اتنين ويبقى أصغر —
+  // مربع تكرار أطول (640×520 بدل 620×360) → نسخ أقل بكتير على الشاشة،
+  // وخط أصغر (11px بدل 13.5) عشان الرقم والاسم يبانوا من غير ما يغطوا الفيديو
+  var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="520">' +
+    '<text x="28" y="260" font-size="11" font-weight="bold" font-family="sans-serif" fill="' + colorFill + '" stroke="' + colorStroke + '" stroke-width="1.8" paint-order="stroke" transform="rotate(-18 320 260)">' + esc(label) + '</text></svg>';
   return 'url("data:image/svg+xml,' + encodeURIComponent(svg) + '")';
 }
 function buildWm(){
@@ -266,7 +267,7 @@ function buildWm(){
   layer.appendChild(tA); layer.appendChild(tB);
   var badge = document.createElement('div');
   badge.id='wmBadge';
-  badge.innerHTML = (CFG.wm.phone ? '<div class="num">' + esc(CFG.wm.phone) + '</div>' : '') + (CFG.wm.name ? '<div class="nm">' + esc(CFG.wm.name) + '</div>' : '');
+  badge.innerHTML = (CFG.wm.phone ? '<div class="num">' + esc(CFG.wm.phone) + '</div>' : '') + (CFG.wm.name ? '<div class="nm">' + esc(shortName(CFG.wm.name)) + '</div>' : '');
   applyBadgePos(badge);
   layer.appendChild(badge);
   wrap.appendChild(layer);
@@ -294,6 +295,16 @@ try{ new MutationObserver(ensureWm).observe(wrap, {childList:true, subtree:true}
 
 /* ===== ملء الشاشة (الووترمارك جوه العنصر فبيفضل ظاهر) ===== */
 var isFakeFs = false;
+var parentFs = false;
+/* لو الإناء جوه صفحة المدرسة (iframe) → الأب هو اللي بيكبّر الصندوق على
+   الشاشة كلها (حقيقي أو وهمي على آيفون) — إحنا بنبعت له رسالة بس. ده بيخلي
+   الفيديو يبان بالعرض 16:9 مالي الشاشة على أي موبايل، من غير حتت سودة */
+var EMBEDDED = false;
+try { EMBEDDED = !!(window.parent && window.parent !== window); } catch(e) { EMBEDDED = true; }
+window.addEventListener('message', function(ev){
+  var d = ev.data;
+  if(d && d.type === 'mg_fs_state'){ parentFs = !!d.on; layoutWrap(); }
+});
 function isFs(){ var d=document; return !!(d.fullscreenElement || d.webkitFullscreenElement); }
 /* قفل الدوران على العرض — لو اشتغل الجهاز هيلف لوحده، لو فشل الدوران القسري بالـ CSS بياخد مكانه */
 function tryLockLs(){ try{ var so=screen.orientation; if(so&&so.lock){ var pr=so.lock('landscape'); if(pr&&pr.catch)pr.catch(function(){}); } }catch(e){} }
@@ -303,7 +314,7 @@ function clearRot(){
   wrap.style.width=''; wrap.style.height='';
 }
 function layoutWrap(){
-  var fs = isFs() || isFakeFs;
+  var fs = isFs() || isFakeFs || parentFs;
   if(!fs){
     wrap.className='';
     clearRot();
@@ -313,6 +324,13 @@ function layoutWrap(){
     var vh = vw * 9 / 16;
     if(vh > h){ vh = h; vw = vh * 16 / 9; }
     wrap.style.width = vw + 'px'; wrap.style.height = vh + 'px';
+    return;
+  }
+  if(parentFs){
+    /* الأب هو اللي لفّ الصندوق 90° على الموبايل الطولي — إحنا بنملّي مساحة
+       الإناء بس من غير ما ندوّر تاني (الدوران المزدوج بيقلب الفيديو) */
+    wrap.className='fs';
+    clearRot();
     return;
   }
   tryLockLs();
@@ -332,6 +350,8 @@ function layoutWrap(){
   }
 }
 function toggleFs(){
+  /* جوه صفحة المدرسة → الأب هو اللي بيكبّر (يشتغل على كل المتصفحات حتى آيفون) */
+  if(EMBEDDED){ try{ window.parent.postMessage({type:'mg_fs_toggle'}, '*'); }catch(e){} return; }
   var d=document;
   if(isFs()){ (d.exitFullscreen||d.webkitExitFullscreen||function(){}).call(d); if(isFakeFs){ isFakeFs=false; wrap.className=''; } setTimeout(layoutWrap,80); return; }
   if(isFakeFs){ isFakeFs=false; wrap.className=''; layoutWrap(); return; }
