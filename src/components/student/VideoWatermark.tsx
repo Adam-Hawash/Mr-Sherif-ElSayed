@@ -2,54 +2,76 @@
 // ============================================================
 // VideoWatermark — ووترمارك الطالب فوق الفيديو (اسمه كامل + رقمه)
 // ============================================================
-// مواصفات المستر النهائية (محدّثة):
-//  1) 6 ووترمارك على الحواف **سابتين في مكانهم مفيش حاجة بتتحرك**:
-//     • 4 على الخطوط: منتصف فوق + منتصف تحت + منتصف شمال + منتصف يمين
-//     • 2 في الزوايا (شكل السنبوكس): الزاوية اليمانية فوق + اليمانية تحت
+// مواصفات المستر النهائية (2026):
+//  1) 8 شِپات على الحواف **سابتين في مكانهم مفيش حاجة بتتحرك**:
+//     • 3 فوق: فوق شمال + منتصف فوق + فوق يمين
+//     • 2 في النص: منتصف شمال + منتصف يمين
+//     • 3 تحت: تحت شمال + منتصف تحت + تحت يمين
 //     • كل واحدة في مسافة كافية عن التانية — البيانات جوه كلها باينة
 //       ومفيش تداخل خالص.
-//  2) ووترمارك كبير واحد بس في نص الخلفية: شفاف بحواف سودة وبالعرض،
-//     وهو **البس** اللي بيتحرك (نطفة ناعمة زي الجري) — محتوى الفيديو
-//     تحته باين عادي.
-//  3) الاسم كامل 100% من غير قص أي حرف:
+//  2) ووترمارك كبير واحد بس في نص الخلفية: شفاف بحواف سودة وبالعرض
+//     — **ثابت تمامًا** (من غير أي حركة).
+//  3) الكارت (الاسم الكامل + الرقم) هو **البس** اللي بيتحرك:
+//     بيقف على الحواف في 8 محطات وينتقل ناعم كل 8 ثواني + تعويم خفيف.
+//  4) الاسم كامل 100% من غير قص أي حرف:
 //     • ممنوع letter-spacing نهائيًا (بيقطع اتصال الحروف العربية)
 //     • paintOrder: 'stroke' عشان الحواف السودة متاكلش الحروف
 //     • النص الكبير بيلف لو طويل بدل ما يتقص
-//  4) على الموبايل: الشِپات الجانبية والزوايا بتعرض الرقم بس عشان
+//  5) على الموبايل: الشِپات الجانبية والزوايا بتعرض الرقم بس عشان
 //     مفيش تداخل — الاسم كامل باين في الشِپين العلوي والسفلي وفي
-//     الووترمارك الكبير.
-//  5) pointer-events-none → مش بيمنع أي تفاعل مع الفيديو.
-//  6) بيفضل ظاهر في ملء الشاشة (جوه عنصر الـ fullscreen نفسه).
-//  7) لو حد شال الطبقة من الـ DOM بـ devtools → بترجع لوحده كل 6 ثواني.
+//     الووترمارك الكبير وفي الكارت.
+//  6) pointer-events-none → مش بيمنع أي تفاعل مع الفيديو.
+//  7) بيفضل ظاهر في ملء الشاشة (جوه عنصر الـ fullscreen نفسه).
+//  8) لو حد شال الطبقة من الـ DOM بـ devtools → بترجع لوحده كل 6 ثواني.
 // ============================================================
 import { useEffect, useRef, useState } from 'react'
 
-// الأماكن الثابتة الستة — 4 على الخطوط (منتصفات الحواف) + 2 زوايا قطرية
+// الأماكن الثابتة الثمانية — 3 فوق + 2 في النص + 3 تحت
 var CHIP_SPOTS: Array<Record<string, string>> = [
-  { top: '2.4%', left: '50%', transform: 'translateX(-50%)' },   // 1) منتصف الخط العلوي
-  { top: '2.4%', left: '1.8%' },                                  // 2) الزاوية فوق شمال
-  { top: '50%', left: '1.8%', transform: 'translateY(-50%)' },    // 3) منتصف الخط الشمال
-  { top: '50%', right: '1.8%', transform: 'translateY(-50%)' },   // 4) منتصف الخط اليمين
-  { bottom: '2.4%', left: '50%', transform: 'translateX(-50%)' }, // 5) منتصف الخط السفلي
-  { bottom: '2.4%', right: '1.8%' },                              // 6) الزاوية تحت يمين
+  { top: '2.4%', left: '50%', transform: 'translateX(-50%)' },    // 1) منتصف الخط العلوي
+  { top: '2.4%', left: '1.8%' },                                   // 2) فوق شمال
+  { top: '2.4%', right: '1.8%' },                                  // 3) فوق يمين
+  { top: '50%', left: '1.8%', transform: 'translateY(-50%)' },     // 4) منتصف الخط الشمال
+  { top: '50%', right: '1.8%', transform: 'translateY(-50%)' },    // 5) منتصف الخط اليمين
+  { bottom: '2.4%', left: '1.8%' },                                // 6) تحت شمال
+  { bottom: '2.4%', left: '50%', transform: 'translateX(-50%)' },  // 7) منتصف الخط السفلي
+  { bottom: '2.4%', right: '1.8%' },                               // 8) تحت يمين
+]
+
+// محطات الكارت الطائر (8 محطات على الحواف) — هو البس اللي بيتحرك
+var CARD_STEPS: Array<{ top: string; left: string; transform: string }> = [
+  { top: '7%', left: '50%', transform: 'translate(-50%, 0%)' },
+  { top: '7%', left: '93%', transform: 'translate(-100%, 0%)' },
+  { top: '47%', left: '93%', transform: 'translate(-100%, -50%)' },
+  { top: '86%', left: '93%', transform: 'translate(-100%, -100%)' },
+  { top: '86%', left: '50%', transform: 'translate(-50%, -100%)' },
+  { top: '86%', left: '7%', transform: 'translate(0%, -100%)' },
+  { top: '47%', left: '7%', transform: 'translate(0%, -50%)' },
+  { top: '7%', left: '7%', transform: 'translate(0%, 0%)' },
 ]
 
 export function VideoWatermark({ name, phone }: { name?: string; phone?: string }) {
   const layerRef = useRef<HTMLDivElement>(null)
   const [, setTick] = useState(0)
+  const [cardStep, setCardStep] = useState(0)
 
   useEffect(function () {
     // إعادة رسم لو حد شال الطبقة من الـ DOM (حماية من التلاعب)
     const healTimer = setInterval(function () {
       if (layerRef.current && !document.body.contains(layerRef.current)) setTick(function (t) { return t + 1 })
     }, 6000)
-    return function () { clearInterval(healTimer) }
+    // الكارت الطائر — بيتنقل محطة كل 8 ثواني بنعومة
+    const cardTimer = setInterval(function () { setCardStep(function (s) { return s + 1 }) }, 8000)
+    return function () { clearInterval(healTimer); clearInterval(cardTimer) }
   }, [])
 
   const num = (phone || '').trim()
   const nm = (name || '').trim()
   if (!num && !nm) return null
   const chipText = [num, nm].filter(Boolean).join('  •  ')
+  const bigLine1 = nm || num
+  const bigLine2 = nm && num ? num : ''
+  const card = CARD_STEPS[cardStep % CARD_STEPS.length]
 
   return (
     <div
@@ -59,11 +81,8 @@ export function VideoWatermark({ name, phone }: { name?: string; phone?: string 
       aria-hidden="true"
     >
       <style>{`
-        /* نطفة الووترمارك الكبير — هو بس اللي بيتحرك، ناعم ومستمر */
-        @keyframes wmDriftX { 0% { transform: translateX(-1.1em) } 100% { transform: translateX(1.1em) } }
-        @keyframes wmDriftY { 0% { transform: translateY(-0.65em) } 100% { transform: translateY(0.65em) } }
-        .wm-drift-x { animation: wmDriftX 17s ease-in-out infinite alternate; }
-        .wm-drift-y { animation: wmDriftY 11.5s ease-in-out infinite alternate-reverse; }
+        /* الكارت: تعويم خفيف مستمر — هو البس اللي بيتحرك جوه محطته */
+        @keyframes wmCardFloat { 0% { margin-top: -3px } 100% { margin-top: 3px } }
 
         /* الشِپات: سابتة — مفيش أي أنيميشن على الحواف خالص */
         .wm-chip { white-space: nowrap; }
@@ -73,56 +92,49 @@ export function VideoWatermark({ name, phone }: { name?: string; phone?: string 
           /* على الموبايل: الجانبية والزوايا تعرض الرقم بس عشان مفيش تداخل */
           .wm-compact .wm-full { display: none; }
           .wm-compact .wm-short { display: inline; }
-          /* النطفة الكبيرة على الموبايل أخف */
-          .wm-drift-x { animation-duration: 14s; }
-          .wm-drift-y { animation-duration: 9.5s; }
         }
       `}</style>
 
-      {/* الووترمارك الكبير في نص الخلفية — شفاف بحواف سودة وبالعرض — هو بس اللي بيتحرك */}
+      {/* الووترمارك الكبير في نص الخلفية — شفاف بحواف سودة وبالعرض — ثابت تمامًا */}
       <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-        <div className="wm-drift-x">
-          <div className="wm-drift-y">
-            <div
-              className="text-center font-black leading-tight"
+        <div
+          className="text-center font-black leading-tight"
+          style={{
+            direction: 'rtl',
+            maxWidth: '86%',
+            fontSize: 'clamp(20px, 5.6vw, 72px)',
+            color: 'rgba(0,0,0,0.13)',
+            WebkitTextStroke: '1.8px rgba(0,0,0,0.50)',
+            paintOrder: 'stroke',
+            unicodeBidi: 'plaintext',
+            // هالة بيضاء خفيفة جدًا عشان الحواف السودة تبان حتى على مشهد غامق
+            textShadow: '0 0 18px rgba(255,255,255,0.22)',
+            letterSpacing: 0,
+          }}
+        >
+          {bigLine1}
+          {bigLine2 && (
+            <span
+              className="block font-extrabold"
               style={{
-                direction: 'rtl',
-                maxWidth: '86%',
-                fontSize: 'clamp(20px, 5.6vw, 72px)',
-                color: 'rgba(0,0,0,0.13)',
-                WebkitTextStroke: '1.8px rgba(0,0,0,0.50)',
-                paintOrder: 'stroke',
+                fontSize: '0.36em',
+                direction: 'ltr',
                 unicodeBidi: 'plaintext',
-                // هالة بيضاء خفيفة جدًا عشان الحواف السودة تبان حتى على مشهد غامق
-                textShadow: '0 0 18px rgba(255,255,255,0.22)',
+                WebkitTextStroke: '1.2px rgba(0,0,0,0.45)',
+                paintOrder: 'stroke',
                 letterSpacing: 0,
               }}
             >
-              {nm || num}
-              {nm && num && (
-                <span
-                  className="block font-extrabold"
-                  style={{
-                    fontSize: '0.36em',
-                    direction: 'ltr',
-                    unicodeBidi: 'plaintext',
-                    WebkitTextStroke: '1.2px rgba(0,0,0,0.45)',
-                    paintOrder: 'stroke',
-                    letterSpacing: 0,
-                  }}
-                >
-                  {num}
-                </span>
-              )}
-            </div>
-          </div>
+              {bigLine2}
+            </span>
+          )}
         </div>
       </div>
 
-      {/* الست شِپات على الحواف — سابتين في مكانهم بالظبط، مفيش حركة */}
+      {/* 8 شِپات على الحواف (3 فوق + 2 نص + 3 تحت) — سابتين في مكانهم بالظبط */}
       {CHIP_SPOTS.map(function (spot, i) {
-        // الشِپات الجانبية والزوايا (2,3,4,6) على الموبايل تعرض الرقم بس
-        var compact = i !== 0 && i !== 4
+        // الشِپات الجانبية والزوايا على الموبايل تعرض الرقم بس
+        var compact = i !== 0 && i !== 6
         return (
           <div key={i} className={'absolute' + (compact ? ' wm-compact' : '')} style={spot as any}>
             <span
@@ -148,6 +160,62 @@ export function VideoWatermark({ name, phone }: { name?: string; phone?: string 
           </div>
         )
       })}
+
+      {/* الكارت الطائر — هو البس اللي بيتحرك (الاسم الكامل + الرقم) */}
+      <div
+        className="absolute z-[61]"
+        style={{
+          top: card.top,
+          left: card.left,
+          transform: card.transform,
+          transition: 'top 3.2s ease-in-out, left 3.2s ease-in-out, transform 3.2s ease-in-out',
+        }}
+      >
+        <div
+          style={{
+            display: 'inline-block',
+            background: 'rgba(0,0,0,0.72)',
+            border: '1px solid rgba(255,255,255,0.28)',
+            color: '#fff',
+            borderRadius: 14,
+            padding: '7px 18px',
+            textAlign: 'center',
+            direction: 'rtl',
+            boxShadow: '0 8px 26px rgba(0,0,0,0.55)',
+            animation: 'wmCardFloat 3.4s ease-in-out infinite alternate',
+          }}
+        >
+          <span
+            style={{
+              display: 'block',
+              fontSize: 'clamp(11px, 1.5vw, 15px)',
+              fontWeight: 800,
+              unicodeBidi: 'plaintext',
+              letterSpacing: 0,
+              whiteSpace: 'nowrap',
+              textShadow: '0 1px 2px rgba(0,0,0,0.8)',
+            }}
+          >
+            {bigLine1}
+          </span>
+          {bigLine2 && (
+            <span
+              style={{
+                display: 'block',
+                fontSize: 'clamp(9.5px, 1.2vw, 12px)',
+                fontWeight: 700,
+                direction: 'ltr',
+                unicodeBidi: 'plaintext',
+                letterSpacing: 0,
+                opacity: 0.85,
+                marginTop: 2,
+              }}
+            >
+              {bigLine2}
+            </span>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
