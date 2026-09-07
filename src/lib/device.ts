@@ -2,20 +2,20 @@
 // PURPOSE: بصمة الجهاز للطالب — كل جهاز ليه ID ثابت. الطالب بيسجل دخول
 // من الجهاز اللي عمل بيه الحساب بس، وأي جهاز تاني محتاج سماح من المستر.
 //
-// المشكلة القديمة: الـ ID كان عشوائي ومتخزن في localStorage/cookie —
-// أول ما الطالب يمسح بيانات المتصفح (أو يدخل من لينك بدومين مختلف)
-// الـ ID بيضيع والحساب بيتقفل وكأنه جهاز جديد. المستر قال صراحة:
-// "أنت أحفظ بيانات الجهاز — كده البيانات كلها هتضيع".
+// المشكلة اللي اتكشفت في الإصدار السابق: البصمة كانت متحسوبة من خصائص
+// مشتركة بس (مقاس الشاشة + اللغة + النسخة مسحوبة من الـ UA) — فموبايلين
+// من نفس الفئة (آيفون على آيفون / سامسونج متشابهين) بيطلعوا **نفس البصمة**
+// فالحساب كان بيفتح من أي جهاز شبهه! المستر قال صراحة: "أنا أقدر أدخل
+// من أي جهاز — عاوزها من جهاز واحد بس اللي عملت بيه الحساب".
 //
-// الحل الجديد (ثلاث طبقات):
-//   1) localStorage — أسرع مصدر
-//   2) cookie — احتياطي لو الـ localStorage اتمسح
-//   3) بصمة ثابتة محسوبة من خصائص الجهاز والمتصفح (UA ممنوع فيه أرقام
-//      الإصدارات + اللغة + المنصة + مقاس الشاشة + الـ DPR + المعالج +
-//      الذاكرة + التوقيت) — دي بتترسم من الأول بنفس القيمة حتى لو كل
-//      التخزين اتمسح، فالجهاز بيفضل هو هو.
-// والمتصدّر (getDeviceCandidates) بيبعت كل القيم المحتملة للسيرفر —
-// لو أي واحدة فيهم مطابقة للحساب، الدخول بيمشي.
+// الحل الجديد (بصمة أقوى + هوية فريدة):
+//   1) UUID عشوائي فريد — مبيتكررش بين جهازين أبدًا (مخزن localStorage +
+//      cookie) — ده هوية الجهاز الأساسية في الربط.
+//   2) بصمة "ناتج الجهاز" dv3 — مدعّمة بمصادر تفريق قوية:
+//      كانفس (رسم GPU) + كارت الشاشة WebGL + مقاس الشاشة المتاح + اللمس
+//      + الـ UA من غير إصدارات — عشان موبايلين متشابهين يطلعوا بصمات مختلفة.
+// المتصدّر (getDeviceCandidates) بيبعت كل القيم للسيرفر — السيرفر هو اللي
+// بيقفل الحساب على جهاز إنشاء الحساب بس.
 
 const DEVICE_KEY = 'mg_device_id'
 const FP_KEY = 'mg_device_fp'
@@ -53,6 +53,23 @@ function randomId(): string {
   return 'dev_' + rnd
 }
 
+/** هوية فريدة للجهاز — بتتولد مرة واحدة وبتتحفظ localStorage + cookie */
+function ensureUniqueId(): string {
+  try {
+    var a = window.localStorage.getItem(DEVICE_KEY)
+    if (a && a.indexOf('dev_') === 0) return a
+  } catch (e) {}
+  var c = fromCookie()
+  if (c && c.indexOf('dev_') === 0) {
+    try { window.localStorage.setItem(DEVICE_KEY, c) } catch (e) {}
+    return c
+  }
+  var id = randomId()
+  try { window.localStorage.setItem(DEVICE_KEY, id) } catch (e) {}
+  saveCookie(id)
+  return id
+}
+
 // بنشيل أرقام الإصدارات من الـ UA عشان تحديث المتصفح أو النظام ما يكسرش البصمة
 function maskVersions(s: string): string {
   return s.replace(/\d+(\.\d+)*/g, 'X')
@@ -68,22 +85,76 @@ function fnv1a(str: string, seed: number): number {
   return h >>> 0
 }
 
-/** بصمة محسوبة من خصائص الجهاز — نفس الجهاز + نفس المتصفح = نفس القيمة دايماً */
+/* بصمة الكانفس — بترسم نص وأشكال وتعمل hash للنتيجة.
+   بتفرّق بين الأجهزة حسب الـ GPU وتفاصيل العرض حتى لو المواصفات متطابقة */
+function canvasFingerprint(): string {
+  try {
+    var cv = document.createElement('canvas')
+    cv.width = 220
+    cv.height = 60
+    var ctx = cv.getContext('2d')
+    if (!ctx) return 'nocanvas'
+    ctx.textBaseline = 'top'
+    ctx.font = '16px "Arial"'
+    ctx.fillStyle = '#f60'
+    ctx.fillRect(0, 0, 110, 30)
+    ctx.fillStyle = '#069'
+    ctx.fillText('Maths-Genius- fingerprint \ud83d\ude00', 2, 12)
+    ctx.fillStyle = 'rgba(102,204,0,0.7)'
+    ctx.fillText('بصمة الجهاز 12345', 4, 30)
+    ctx.beginPath()
+    ctx.arc(180, 30, 22, 0, Math.PI * 2)
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)'
+    ctx.stroke()
+    var data = cv.toDataURL()
+    // hash على شطتين عشان ناخد أكبر قدر من التفاصيل
+    var half = Math.floor(data.length / 2)
+    var h1 = fnv1a(data.slice(0, half), 0x811c9dc5)
+    var h2 = fnv1a(data.slice(half), 0x01000193)
+    return 'c' + h1.toString(36) + h2.toString(36)
+  } catch (e) {
+    return 'cerr'
+  }
+}
+
+/* كارت الشاشة (WebGL) — اسم الـ GPU بيفرق بين فئات الأجهزة المختلفة */
+function webglFingerprint(): string {
+  try {
+    var cv = document.createElement('canvas')
+    var gl = (cv.getContext('webgl') || cv.getContext('experimental-webgl')) as any
+    if (!gl) return 'nogl'
+    var ext = gl.getExtension('WEBGL_debug_renderer_info')
+    var vendor = ext ? String(gl.getParameter(ext.UNMASKED_VENDOR_WEBGL) || '') : String(gl.getParameter(gl.VENDOR) || '')
+    var renderer = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) || '') : String(gl.getParameter(gl.RENDERER) || '')
+    return fnv1a(vendor + '~' + renderer, 0x01993311).toString(36)
+  } catch (e) {
+    return 'glerr'
+  }
+}
+
+/** بصمة "ناتج الجهاز" dv3 — مصادر تفريق أقوى عشان مفيش جهازين يطلعوا نفس القيمة */
 function traitsFingerprint(): string {
   var raw = ''
   try {
     var n = navigator as any
     var langs = ''
     try { langs = (n.languages || []).slice(0, 3).join(',') } catch (e) {}
+    var orient = ''
+    try { orient = (screen.orientation && screen.orientation.type) || '' } catch (e) {}
     var parts = [
       maskVersions(n.userAgent || ''),
       n.language || '',
       langs,
       n.platform || '',
       (screen && screen.width ? screen.width : 0) + 'x' + (screen && screen.height ? screen.height : 0) + 'x' + (screen && screen.colorDepth ? screen.colorDepth : 24),
+      (screen && screen.availWidth ? screen.availWidth : 0) + 'x' + (screen && screen.availHeight ? screen.availHeight : 0),
+      orient,
       String(window.devicePixelRatio || 1),
       String(n.hardwareConcurrency || 0),
       String(n.deviceMemory || ''),
+      String(n.maxTouchPoints || 0),
+      canvasFingerprint(),
+      webglFingerprint(),
     ]
     try { parts.push(Intl.DateTimeFormat().resolvedOptions().timeZone || '') } catch (e) { parts.push('') }
     raw = parts.join('|')
@@ -91,41 +162,44 @@ function traitsFingerprint(): string {
     raw = 'fallback'
   }
   var h1 = fnv1a(raw, 0x811c9dc5)
-  var h2 = fnv1a(raw + '#v2', 0x01000193)
-  return 'dv2_' + h1.toString(36) + h2.toString(36)
+  var h2 = fnv1a(raw + '#v3', 0x01000193)
+  var h3 = fnv1a(raw + '#deep', 0x09e711)
+  return 'dv3_' + h1.toString(36) + h2.toString(36) + h3.toString(36)
 }
 
 /**
- * الـ ID الأساسي: بصمة "ناتج الجهاز" الثابتة (dv2).
- * المستر طلب صراحة: "خليها مرتبطة بناتج الجهاز بس" — فالربط بقى على
- * البصمة المحسوبة من خصائص الجهاز نفسه: نفس الجهاز = نفس القيمة دايمًا
- * حتى لو بيانات المتصفح اتمسحت بالكامل.
+ * الـ ID الأساسي: هوية فريدة عشوائية (dev_) — مبيتكررش بين جهازين.
+ * وبنكتب البصمة الثابتة (dv3) جنبها احتياطي.
+ * السيرفر بيربط الحساب بالهوية الفريدة + البصمة معًا، والقفل صارم:
+ * جهاز إنشاء الحساب بس — وأي جهاز تاني محتاج "سماح" من المستر.
  */
 export function getDeviceId(): string {
   if (typeof window === 'undefined') return ''
-  var id = traitsFingerprint()
-  try { window.localStorage.setItem(FP_KEY, id) } catch (e) {}
-  saveCookie(id)
+  var id = ensureUniqueId()
+  try {
+    var fp = traitsFingerprint()
+    window.localStorage.setItem(FP_KEY, fp)
+    saveCookie(fp)
+  } catch (e) {}
   return id
 }
 
 /**
- * كل القيم اللي ممكن تمثل الجهاز ده — بنبعتها كلها للسيرفر وقت الدخول،
- * وأي واحدة تطابق الحساب تعدي:
- *  1) البصمة المحفوظة (mg_device_fp) — هي هي دايمًا
- *  2) الـ ID القديم (mg_device_id) — عشان الطلاب المربوطين بإصدارات قديمة ميتقفلوش
- *  3) الكوكي — احتياطي
- *  4) بصمة ناتج الجهاز محسوبة لحظيًا — موجودة دايمًا حتى بعد مسح كل حاجة
+ * كل القيم اللي ممكن تمثل الجهاز ده — بنبعتها كلها للسيرفر وقت الدخول:
+ *  1) الهوية الفريدة (dev_) — الأساسية في الربط
+ *  2) البصمة المحسوبة (dv3_) — بتتعرف على نفس الجهاز حتى لو التخزين اتمسح
+ *  3) البصمات القديمة المخزنة (dv2_ من إصدارات سابقة + الكوكي)
+ * السيرفر بيفضّل dv3_/dv2_ كاحتياطي و dev_ كهوية أساسية.
  */
 export function getDeviceCandidates(): string[] {
   if (typeof window === 'undefined') return []
   var ids: string[] = []
-  try { var f = window.localStorage.getItem(FP_KEY); if (f) ids.push(f) } catch (e) {}
   try { var a = window.localStorage.getItem(DEVICE_KEY); if (a) ids.push(a) } catch (e) {}
-  var c = fromCookie()
-  if (c) ids.push(c)
   var t = traitsFingerprint()
   ids.push(t)
+  try { var f = window.localStorage.getItem(FP_KEY); if (f) ids.push(f) } catch (e) {}
+  var c = fromCookie()
+  if (c) ids.push(c)
   var unique: string[] = []
   for (var i = 0; i < ids.length; i++) {
     if (ids[i] && unique.indexOf(ids[i]) === -1) unique.push(ids[i])

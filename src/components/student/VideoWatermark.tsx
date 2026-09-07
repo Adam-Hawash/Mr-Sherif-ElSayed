@@ -2,15 +2,16 @@
 // ============================================================
 // VideoWatermark — ووترمارك الطالب فوق الفيديو (رقم الطالب المسجل + اسمه)
 // ============================================================
-// طلب المستر:
-//  1) الووترمارك تبقى واضحة على أي خلفية — حتى السبورة البيضاء.
-//     الحل: النص أبيض بحدود سوداء سميكة (outline) → على خلفية بيضاء يبان
-//     الحد الأسود، وعلى خلفية غامقة يبان النص الأبيض. مقروء دايمًا في أي
-//     تسجيل شاشة. + رفعنا وضوح الطبقة (كانت 26% → دلوقتي 55%).
-//  2) تفضل ظاهرة في وضع ملء الشاشة — المكون ده بيتحط جوه عنصر الـ
-//     fullscreen نفسه في المشغّلين (YouTube + الملفات المرفوعة).
-//  3) رقم الطالب اللي متسجل بيه هو الأول والأبرز (مش اسمه بس).
-// - 3 طبقات: تيل متكرر + شريط متحرك بين الأركان كل 14 ثانية
+// طلب المستر (آخر تحديث):
+//  1) عدد الووترمارك أقل — مش كتير قوي (كبّرنا المسافة بين التكرارات).
+//  2) الحجم أصغر — عشان ميفضهماش على الفيديو.
+//  3) أهم حاجة: الاسم والرقم يبانوا **كاملين** — كبّرنا مربع التكرار
+//     والخط أصغر فالاسم الطويل مش بيتقطع.
+//  4) واضح على أي خلفية — أبيض بحدود سوداء (على الأبيض يبان الحد الأسود،
+//     وعلى الغامق يبان النص الأبيض).
+//  5) تفضل ظاهرة في وضع ملء الشاشة — المكون جوه عنصر الـ fullscreen نفسه.
+//  6) رقم الطالب المسجل بيه هو الأول والأبرز.
+// - تيل متكرر + شريط متحرك بين الأركان كل 14 ثانية
 // - pointer-events-none فمش بيمنع أي تفاعل مع الفيديو
 // - بيرجع يترسم كل 6 ثواني لو حد شاله من الـ DOM بالـ devtools
 // ============================================================
@@ -45,12 +46,12 @@ export function VideoWatermark({ name, phone }: { name?: string; phone?: string 
   ]
   const pos = corners[tick % corners.length]
 
-  // تيل متكرر: نص أبيض بحد سوداء سميك → مقروء على أي خلفية (سبورة بيضاء/شاشة غامقة)
-  // paint-order:stroke يخلي الحدود ترسم ورا النص فالشكل يفضل نضيف
+  // تيل متكرر: نص أصغر (14px) في مربع أكبر (520×300) → تكرار أقل بكثير
+  // + الاسم الطويل بياخد مساحة كافية فمش بيتقطع أبدًا
   const esc = function (s: string) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }
   const svgTile = encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" width="340" height="200">' +
-      '<text x="14" y="100" font-size="19" font-weight="bold" fill="rgba(255,255,255,0.55)" stroke="rgba(0,0,0,0.55)" stroke-width="2.6" paint-order="stroke" transform="rotate(-18 170 100)" font-family="sans-serif">' +
+    '<svg xmlns="http://www.w3.org/2000/svg" width="520" height="300">' +
+      '<text x="26" y="150" font-size="13.5" font-weight="bold" fill="rgba(255,255,255,0.5)" stroke="rgba(0,0,0,0.5)" stroke-width="2" paint-order="stroke" transform="rotate(-18 260 150)" font-family="sans-serif">' +
         esc(tileLabel) +
       '</text>' +
     '</svg>'
@@ -66,7 +67,7 @@ export function VideoWatermark({ name, phone }: { name?: string; phone?: string 
     >
       {/* الشريط المتحرك — رقم الطالب فوق واسمه تحته، خلفية معتمة + حدود فتبان على أي لون */}
       <div
-        className="absolute px-3 py-1.5 rounded-lg text-center"
+        className="absolute px-2.5 py-1 rounded-lg text-center"
         style={{
           ...pos,
           transition: 'all 700ms ease',
@@ -78,14 +79,14 @@ export function VideoWatermark({ name, phone }: { name?: string; phone?: string 
       >
         {num && (
           <p
-            className="text-sm sm:text-base font-extrabold text-white leading-tight"
+            className="text-xs sm:text-sm font-extrabold text-white leading-tight"
             style={{ textShadow: '0 1px 3px rgba(0,0,0,0.95)', direction: 'ltr', unicodeBidi: 'plaintext' }}
           >
             {num}
           </p>
         )}
         {nm && (
-          <p className="text-[10px] sm:text-xs font-bold text-white/90 leading-tight" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.9)' }}>
+          <p className="text-[9px] sm:text-[11px] font-bold text-white/90 leading-tight max-w-[150px] sm:max-w-[180px] truncate" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.9)' }}>
             {nm}
           </p>
         )}

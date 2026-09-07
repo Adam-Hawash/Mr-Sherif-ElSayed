@@ -194,10 +194,10 @@ const PLAYER_PAGE = `<!doctype html>
   .tileA{animation:wmFade 4.8s step-end infinite}
   .tileB{animation:wmFade 4.8s step-end infinite reverse}
   #wmBadge{position:absolute;z-index:45;pointer-events:none;user-select:none;direction:rtl;text-align:center;
-    padding:7px 12px;border-radius:12px;background:rgba(0,0,0,.62);border:1.5px solid rgba(255,255,255,.78);
+    padding:5px 10px;border-radius:10px;background:rgba(0,0,0,.62);border:1.5px solid rgba(255,255,255,.78);
     box-shadow:0 2px 12px rgba(0,0,0,.65);transition:all .9s ease;max-width:70%}
-  #wmBadge .num{color:#fff;font-weight:800;font-size:15px;line-height:1.25;text-shadow:0 1px 3px rgba(0,0,0,.95);direction:ltr;unicode-bidi:plaintext}
-  #wmBadge .nm{color:rgba(255,255,255,.92);font-weight:700;font-size:11px;line-height:1.3;text-shadow:0 1px 3px rgba(0,0,0,.9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #wmBadge .num{color:#fff;font-weight:800;font-size:13px;line-height:1.25;text-shadow:0 1px 3px rgba(0,0,0,.95);direction:ltr;unicode-bidi:plaintext}
+  #wmBadge .nm{color:rgba(255,255,255,.92);font-weight:700;font-size:10px;line-height:1.3;text-shadow:0 1px 3px rgba(0,0,0,.9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:170px}
   #fsBtn{position:absolute;bottom:10px;left:10px;z-index:50;width:40px;height:40px;border-radius:10px;border:0;cursor:pointer;
     background:rgba(0,0,0,.55);color:#fff;display:flex;align-items:center;justify-content:center;opacity:.75}
   #fsBtn:hover{opacity:1;background:rgba(0,0,0,.75)}
@@ -248,8 +248,10 @@ var wmTick = 0;
 function wmSvg(colorFill, colorStroke){
   var label = (CFG.wm.phone || '') + ((CFG.wm.phone && CFG.wm.name) ? ' • ' : '') + (CFG.wm.name || '');
   if(!label) return '';
-  var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="360" height="190">' +
-    '<text x="16" y="98" font-size="19" font-weight="bold" font-family="sans-serif" fill="' + colorFill + '" stroke="' + colorStroke + '" stroke-width="2.8" paint-order="stroke" transform="rotate(-18 180 95)">' + esc(label) + '</text></svg>';
+  // طلب المستر: ووترمارك أقل عدداً وأصغر — والاسم والرقم يبانوا كاملين
+  // (مربع تكرار أكبر 620×360 + خط أصغر 13.5 → تكرار أقل بكتير والاسم مش بيتقطع)
+  var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="620" height="360">' +
+    '<text x="30" y="180" font-size="13.5" font-weight="bold" font-family="sans-serif" fill="' + colorFill + '" stroke="' + colorStroke + '" stroke-width="2.2" paint-order="stroke" transform="rotate(-18 310 180)">' + esc(label) + '</text></svg>';
   return 'url("data:image/svg+xml,' + encodeURIComponent(svg) + '")';
 }
 function buildWm(){
@@ -293,26 +295,58 @@ try{ new MutationObserver(ensureWm).observe(wrap, {childList:true, subtree:true}
 /* ===== ملء الشاشة (الووترمارك جوه العنصر فبيفضل ظاهر) ===== */
 var isFakeFs = false;
 function isFs(){ var d=document; return !!(d.fullscreenElement || d.webkitFullscreenElement); }
+/* قفل الدوران على العرض — لو اشتغل الجهاز هيلف لوحده، لو فشل الدوران القسري بالـ CSS بياخد مكانه */
+function tryLockLs(){ try{ var so=screen.orientation; if(so&&so.lock){ var pr=so.lock('landscape'); if(pr&&pr.catch)pr.catch(function(){}); } }catch(e){} }
+function tryUnlockLs(){ try{ var so=screen.orientation; if(so&&so.unlock)so.unlock(); }catch(e){} }
+function clearRot(){
+  wrap.style.position=''; wrap.style.top=''; wrap.style.left=''; wrap.style.transform='';
+  wrap.style.width=''; wrap.style.height='';
+}
+function layoutWrap(){
+  var fs = isFs() || isFakeFs;
+  if(!fs){
+    wrap.className='';
+    clearRot();
+    tryUnlockLs();
+    var w = window.innerWidth, h = window.innerHeight;
+    var vw = Math.min(w, 1280);
+    var vh = vw * 9 / 16;
+    if(vh > h){ vh = h; vw = vh * 16 / 9; }
+    wrap.style.width = vw + 'px'; wrap.style.height = vh + 'px';
+    return;
+  }
+  tryLockLs();
+  wrap.className='fs';
+  var W = window.innerWidth, H = window.innerHeight;
+  if(H > W){
+    /* الموبايل لسه طولي (الدوران التلقائي مقفول مثلاً) → دوران قسري 90°
+       عشان الفيديو + الكنترولز + الووترمارك يبانوا بالعرض على الشاشة كلها */
+    wrap.style.position='fixed';
+    wrap.style.width = H + 'px';
+    wrap.style.height = W + 'px';
+    wrap.style.top = '50%';
+    wrap.style.left = '50%';
+    wrap.style.transform = 'translate(-50%,-50%) rotate(90deg)';
+  } else {
+    clearRot();
+  }
+}
 function toggleFs(){
   var d=document;
-  if(isFs()){ (d.exitFullscreen||d.webkitExitFullscreen||function(){}).call(d); if(isFakeFs){ isFakeFs=false; wrap.className=''; } return; }
-  if(isFakeFs){ isFakeFs=false; wrap.className=''; return; }
+  if(isFs()){ (d.exitFullscreen||d.webkitExitFullscreen||function(){}).call(d); if(isFakeFs){ isFakeFs=false; wrap.className=''; } setTimeout(layoutWrap,80); return; }
+  if(isFakeFs){ isFakeFs=false; wrap.className=''; layoutWrap(); return; }
   var req = wrap.requestFullscreen || wrap.webkitRequestFullscreen;
   if(req){ var pr = req.call(wrap); if(pr && pr.catch) pr.catch(function(){ fakeFs(); }); }
   else fakeFs();
+  /* إعادة ترتيب بعد لحظة — قفل الدوران ممكن ياخد وقت */
+  setTimeout(layoutWrap, 120);
+  setTimeout(layoutWrap, 600);
 }
-function fakeFs(){ isFakeFs = true; wrap.className='fs'; }
-function sizeWrap(){
-  if(isFs() || isFakeFs) return;
-  var w = window.innerWidth, h = window.innerHeight;
-  var vw = Math.min(w, 1280);
-  var vh = vw * 9 / 16;
-  if(vh > h){ vh = h; vw = vh * 16 / 9; }
-  wrap.style.width = vw + 'px'; wrap.style.height = vh + 'px';
-}
-window.addEventListener('resize', sizeWrap);
-document.addEventListener('fullscreenchange', function(){ setTimeout(sizeWrap, 60); });
-document.addEventListener('keydown', function(e){ if(e.key==='Escape' && isFakeFs){ isFakeFs=false; wrap.className=''; } });
+function fakeFs(){ isFakeFs = true; wrap.className='fs'; layoutWrap(); }
+window.addEventListener('resize', layoutWrap);
+window.addEventListener('orientationchange', function(){ setTimeout(layoutWrap, 60); });
+document.addEventListener('fullscreenchange', function(){ setTimeout(layoutWrap, 60); setTimeout(layoutWrap, 500); });
+document.addEventListener('keydown', function(e){ if(e.key==='Escape' && isFakeFs){ isFakeFs=false; wrap.className=''; layoutWrap(); } });
 
 /* ===== التقدم → postMessage للأب (من غير أي لينك) ===== */
 var lastCur = 0;
@@ -382,7 +416,7 @@ function mountYouTube(){
         onReady: function(ev){
           try{ if(CFG.resume > 5) ev.target.seekTo(CFG.resume, true); }catch(e){}
           try{ ev.target.setPlaybackQuality('large'); }catch(e){} // 480p — يفتح سريع ويوفر داتا
-          sizeWrap();
+          layoutWrap();
         },
         onStateChange: function(ev){
           try{
@@ -426,7 +460,7 @@ function mountFile(){
 
 /* ===== تشغيل ===== */
 buildWm();
-sizeWrap();
+layoutWrap();
 if(CFG.kind === 'youtube') mountYouTube(); else if(CFG.kind === 'file') mountFile();
 
 /* زرار ملء الشاشة ليوتيوب برضه (عشان الووترمارك يفضل ظاهر) */

@@ -56,6 +56,9 @@ export function ProtectedFilePlayer({
   const [showControls, setShowControls] = useState(true)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [fakeFs, setFakeFs] = useState(false)
+  // الدوران القسري: لو الموبايل في وضع طولي جوه ملء الشاشة → ندوّر الستيج 90°
+  const [rotated, setRotated] = useState(false)
+  const [vp, setVp] = useState({ w: 0, h: 0 })
   const hideTimerRef = useRef<any>(null)
 
   useEffect(function () { onWatchRef.current = onWatch }, [onWatch])
@@ -79,6 +82,31 @@ export function ProtectedFilePlayer({
       document.removeEventListener('webkitfullscreenchange', onFsChange)
     }
   }, [])
+
+  /* مقتص الدوران: جوه ملء الشاشة لو الشاشة طولية → ندوّر الستيج 90° عشان
+     الفيديو يبان بالعرض دايمًا حتى لو الدوران التلقائي مقفول */
+  useEffect(function () {
+    var fsActiveNow = isFullscreen || fakeFs
+    if (!fsActiveNow) { setRotated(false); return }
+    function measure() {
+      try {
+        var w = window.innerWidth || 0
+        var h = window.innerHeight || 0
+        setVp({ w: w, h: h })
+        setRotated(h > w)
+      } catch (e) {}
+    }
+    measure()
+    var t1 = setTimeout(measure, 250)
+    var t2 = setTimeout(measure, 800)
+    window.addEventListener('resize', measure)
+    window.addEventListener('orientationchange', measure)
+    return function () {
+      clearTimeout(t1); clearTimeout(t2)
+      window.removeEventListener('resize', measure)
+      window.removeEventListener('orientationchange', measure)
+    }
+  }, [isFullscreen, fakeFs])
 
   /* auto-hide controls */
   useEffect(function () {
@@ -179,6 +207,17 @@ export function ProtectedFilePlayer({
   var fsActive = isFullscreen || fakeFs
   var progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0
 
+  var stageStyle: any = null
+  if (rotated && vp.w > 0 && vp.h > 0) {
+    stageStyle = {
+      width: vp.h + 'px',
+      height: vp.w + 'px',
+      top: '50%',
+      left: '50%',
+      transform: 'translate(-50%, -50%) rotate(90deg)',
+    }
+  }
+
   return (
     <div
       ref={containerRef}
@@ -191,6 +230,11 @@ export function ProtectedFilePlayer({
       onContextMenu={function (e) { e.preventDefault() }}
       onDragStart={function (e) { e.preventDefault() }}
     >
+      {/* الستيج الدوّار — كل الطبقات جواه فالدوران يشمل الفيديو والووترمارك والكنترولز */}
+      <div
+        className={rotated ? 'absolute overflow-hidden' : 'absolute inset-0 overflow-hidden'}
+        style={stageStyle || undefined}
+      >
       <video
         ref={videoRef}
         className="w-full h-full object-contain"
@@ -267,6 +311,7 @@ export function ProtectedFilePlayer({
             {fsActive ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
           </button>
         </div>
+      </div>
       </div>
     </div>
   )
