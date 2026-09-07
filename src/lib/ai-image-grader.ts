@@ -242,13 +242,17 @@ export async function gradeImageAnswer(params: {
   prompt += 'STEP 1 — Look at the photo. Identify the STUDENT\'S OWN work: handwriting/typing produced by the student (solution steps, calculations, a final answer).\n'
   prompt += 'STEP 2 — IGNORE all pre-printed content: the question text itself, choice lists like (A) B) C) D)), headers, logos, other questions on the page. The student did not write those, and they are NOT their answer.\n'
   prompt += 'STEP 3 — TOPIC CHECK (onTopic): does the photo actually contain the student\'s OWN solution attempt to THIS exact question? If it only shows the printed question, or a different question, or nothing at all → onTopic=false.\n'
-  prompt += 'STEP 4 — Find the student\'s FINAL ANSWER. It is usually the LAST thing they wrote: after the last "=", or a boxed/circled/underlined value, or after the word ANSWER. Read it UNDERSTANDING the math — messy handwriting, crossed-out attempts and unreadable middle steps DO NOT matter. Only the final answer matters.\n'
+  prompt += 'STEP 4 — Find the student\'s FINAL ANSWER. Priority order:\n'
+  prompt += '   (a) If ANY value is written inside a BOX / frame / مربع / circled / clearly boxed at the end → THAT is the final answer. Students are taught to box their final answer — the box is the answer, ALWAYS.\n'
+  prompt += '   (b) If there is no box → the final answer is the LAST line they wrote (the value after the LAST "=").\n'
+  prompt += '   CRITICAL: every intermediate step, every middle result, every scratched-out attempt is NOT the answer. Do NOT grade an intermediate value. Many students write wrong-looking middle steps and still end with the CORRECT boxed final answer — that is CORRECT, full marks. If you compare a middle step against the model answer instead of the boxed/last value, you FAIL.\n'
+  prompt += '   Set answerSource = "boxed" if found in a box, "last-line" if from the last line, "unclear" if you truly cannot read any final value.\n'
   prompt += 'STEP 5 — Compare the student\'s final answer VALUE with the model final answer and accepted answers. You are comparing MATHEMATICAL VALUES, not strings. All of these are the SAME answer: 2^7 = 128, 1/2 = 0.5 = ½, n=6 = n = 6 = 6, x^4y^3 = y^3x^4, √50 = 5√2, 2^{n+2} = 2^n·4. Simplify BOTH sides mentally before deciding.\n'
   prompt += 'STEP 6 — A correct final answer with wrong/missing/unreadable steps is still CORRECT (full points). A genuinely DIFFERENT final value is WRONG even if the steps look nice. Never mark an answer wrong just because the handwriting is hard to read or the steps are messy — judge the final value.\n'
   prompt += 'STEP 7 — ALWAYS give a definite verdict (isCorrect true or false). Only say onTopic=false when the photo truly contains NO student work at all.\n\n'
   prompt += 'awardedPoints: an integer from 0 to ' + maxPoints + ' (' + maxPoints + ' only when isCorrect=true).\n\n'
   prompt += 'Respond with ONLY this JSON — no markdown, no extra text:\n'
-  prompt += '{"onTopic": true, "extractedAnswer": "the student\'s own work, max 3 short lines", "finalAnswer": "only the final answer", "isCorrect": true, "awardedPoints": ' + maxPoints + ', "confidence": "high", "feedback": "تعليق قصير بالعامية المصرية"}\n'
+  prompt += '{"onTopic": true, "extractedAnswer": "the student\'s own work, max 3 short lines", "finalAnswer": "only the final boxed/last value", "answerSource": "boxed", "isCorrect": true, "awardedPoints": ' + maxPoints + ', "confidence": "high", "feedback": "تعليق قصير بالعامية المصرية"}\n'
 
   var parts = [
     { text: prompt },
@@ -272,6 +276,11 @@ export async function gradeImageAnswer(params: {
   var confidence = String(parsed.confidence || 'high').toLowerCase()
   var extractedAnswer = String(parsed.extractedAnswer || '').trim()
   var finalAns = String(parsed.finalAnswer || parsed.final_answer || '').trim()
+  // لو الـ AI معملش حقل finalAnswer → نجرب نستخرجه من آخر سطر في الـ extracted
+  if (!finalAns && extractedAnswer) {
+    var fromExtract = finalPart(extractedAnswer)
+    if (fromExtract) finalAns = fromExtract
+  }
   var isCorrect = parsed.isCorrect === true
   var awardedPoints = clampPoints(parsed.awardedPoints, maxPoints)
   var feedback = String(parsed.feedback || '').trim()
@@ -314,16 +323,27 @@ export async function gradeImageAnswer(params: {
 
   // ---- GUARD 3: exact-equivalence false-negative fix (AI said wrong but the
   // final answers are EXACTLY equivalent after normalization).
+  // Candidates: model final part + ALL boxed values in the model solution
+  // (\boxed{..} / 【..】) + accepted answers.
   if (!isCorrect && finalAns) {
     var candidates: string[] = []
-    if (modelAnswer) candidates.push(finalPart(modelAnswer))
+    if (modelAnswer) {
+      candidates.push(finalPart(modelAnswer))
+      var boxedM = modelAnswer.match(/\\boxed\{([^}]+)\}/g) || []
+      for (var bi = 0; bi < boxedM.length; bi++) {
+        var inner = boxedM[bi].replace(/^\\boxed\{/, '').replace(/\}$/, '')
+        if (inner) candidates.push(inner)
+      }
+      var jpM = modelAnswer.match(/【([^】]+)】/g) || []
+      for (var ji = 0; ji < jpM.length; ji++) candidates.push(jpM[ji].replace(/[【】]/g, ''))
+    }
     acceptedAnswers.forEach(function (a) { candidates.push(a) })
     for (var ci = 0; ci < candidates.length; ci++) {
       if (candidates[ci] && exactEquivalent(finalAns, candidates[ci])) {
         isCorrect = true
         awardedPoints = maxPoints
         if (!feedback || feedback.indexOf('غلط') >= 0 || feedback.indexOf('خطأ') >= 0 || feedback.indexOf('خاطئة') >= 0) {
-          feedback = 'إجابة صحيحة — الإجابة النهائية مطابقة'
+          feedback = 'إجابة صحيحة — الإجابة النهائية (المربّعة) مطابقة للصحيحة'
         }
         break
       }
@@ -334,10 +354,20 @@ export async function gradeImageAnswer(params: {
   // AI said wrong → 0 points, period
   if (!isCorrect) awardedPoints = 0
 
-  // ---- GUARD 4: low confidence NEVER blocks the result anymore — the AI
-  // verdict stands and the teacher can still flip it from the admin panel.
-  if (confidence === 'low' && !feedback) {
-    feedback = isCorrect ? 'إجابة صحيحة (بثقة منخفضة — راجعها لو شكيت)' : 'إجابة مختلفة عن الصحيحة (بثقة منخفضة)'
+  // ---- GUARD 4: honest review when the AI says WRONG but it is not sure it
+  // even READ the final answer correctly (unreadable handwriting / no final
+  // value found). A false ZERO is the worst outcome — the teacher reviews
+  // these instead of the student losing marks unfairly.
+  if (!isCorrect && (confidence === 'low' || !finalAns)) {
+    needsGrading = true
+    awardedPoints = 0
+    if (!feedback) feedback = 'التصحيح الذكي مش متأكد إنه قري الإجابة النهائية صح من الصورة — راجعها من هنا'
+  }
+
+  // ---- GUARD 5: low confidence on a CORRECT verdict never blocks — the
+  // result stands and the teacher can still flip it from the admin panel.
+  if (confidence === 'low' && isCorrect && !feedback) {
+    feedback = 'إجابة صحيحة (بثقة منخفضة — راجعها لو شكيت)'
   }
 
   // display text: work + final answer
@@ -456,10 +486,14 @@ export async function gradeTextAnswer(params: {
   var confidence = String(parsed.confidence || 'high').toLowerCase()
   var awardedPoints = clampPoints(parsed.awardedPoints, maxPoints)
 
-  // exact-equivalence false-negative fix
+  // exact-equivalence false-negative fix (model final part + boxed values + accepted)
   if (!isCorrect) {
     var candidates: string[] = []
     candidates.push(finalPart(modelAnswer))
+    var boxedM = modelAnswer.match(/\\boxed\{([^}]+)\}/g) || []
+    for (var bi = 0; bi < boxedM.length; bi++) candidates.push(boxedM[bi].replace(/^\\boxed\{/, '').replace(/\}$/, ''))
+    var jpM = modelAnswer.match(/【([^】]+)】/g) || []
+    for (var ji = 0; ji < jpM.length; ji++) candidates.push(jpM[ji].replace(/[【】]/g, ''))
     acceptedAnswers.forEach(function (a) { candidates.push(a) })
     var studentFinal = finalPart(studentAnswer)
     for (var ci = 0; ci < candidates.length; ci++) {
@@ -479,7 +513,7 @@ export async function gradeTextAnswer(params: {
     maxPoints: maxPoints,
     feedback: String(parsed.feedback || '').trim() || (isCorrect ? 'إجابة صحيحة' : 'إجابة مختلفة عن الإجابة الصحيحة'),
     confidence: confidence,
-    // Decisive: low confidence never blocks — teacher can override in admin
-    needsGrading: false,
+    // غلط + ثقة واطية → مراجعة من الأستاذ بدل صفر ظالم
+    needsGrading: !isCorrect && confidence === 'low',
   }
 }

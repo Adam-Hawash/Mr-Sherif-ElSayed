@@ -418,12 +418,16 @@ function GalleryVideoModal({ galleryId, url, onClose }: { galleryId: string; url
       <div className="relative w-full max-w-5xl aspect-video" onClick={function(e) { e.stopPropagation() }}>
 
         {isYouTube ? (
-          <iframe
-            src={"https://www.youtube.com/embed/" + (ytId ? ytId[1] : '') + "?modestbranding=1&rel=0&playsinline=1&controls=0&showinfo=0&iv_load_policy=3&autoplay=1"}
-            className="w-full h-full rounded-xl"
-            allow="accelerometer; autoplay; encrypted-media; gyroscope"
-            allowFullScreen
-          />
+          /* iframe مكبّر ومقصوص من كل الجهات — مفيش أي عنوان/قناة/لوجو يوتيوب يبان أبدًا */
+          <div className="absolute inset-0 overflow-hidden rounded-xl">
+            <iframe
+              src={"https://www.youtube.com/embed/" + (ytId ? ytId[1] : '') + "?modestbranding=1&rel=0&playsinline=1&controls=0&showinfo=0&iv_load_policy=3&autoplay=1"}
+              className="absolute rounded-xl"
+              style={{ width: '112%', height: '126%', top: '-13%', left: '-6%' }}
+              allow="accelerometer; autoplay; encrypted-media; gyroscope"
+              allowFullScreen
+            />
+          </div>
         ) : isDirectVideo ? (
           <div
             className="w-full h-full relative select-none rounded-xl overflow-hidden bg-black"

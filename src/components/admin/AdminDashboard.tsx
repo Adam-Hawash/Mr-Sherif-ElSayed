@@ -592,11 +592,12 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
                     {s.lastLogin && <p className="text-[10px] text-muted-foreground">آخر دخول: {new Date(s.lastLogin).toLocaleDateString('ar-EG')}</p>}
                   </div>
                 </div>
-                <div className="flex items-center gap-1 shrink-0">
+                <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
                   <Button size="icon" variant="ghost" className="h-8 w-8 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20" onClick={() => loadStudentProgress(s.id)} title="تفاصيل"><BarChart3 className="h-4 w-4" /></Button>
-                  <Button size="icon" variant="ghost" className={(s as any).allowAllDevices === true ? 'h-8 w-8 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20' : 'h-8 w-8 text-muted-foreground hover:bg-muted'} onClick={() => handleDeviceAction(s.id, 'allowAll', { allowAllDevices: (s as any).allowAllDevices })} title={(s as any).allowAllDevices === true ? 'إلغاء السماح — رجّع الحساب على جهازه الأصلي بس' : 'سماح الطالب يدخل من كل الأجهزة'}><Smartphone className={'h-4 w-4 ' + ((s as any).allowAllDevices === true ? 'text-emerald-600' : '')} /></Button>
+                  {/* زرار السماح — واضح باسمه عشان المستر يلاقيه بسهولة */}
+                  <Button size="sm" variant="outline" className={(s as any).allowAllDevices === true ? 'h-8 px-2.5 text-xs border-emerald-400 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-400' : 'h-8 px-2.5 text-xs border-primary/50 text-primary hover:bg-primary/10'} onClick={() => handleDeviceAction(s.id, 'allowAll', { allowAllDevices: (s as any).allowAllDevices })} title={(s as any).allowAllDevices === true ? 'إلغاء السماح — رجّع الحساب على جهازه الأصلي بس' : 'سماح — الطالب يقدر يفتح حسابه من جهاز جديد (أول دخول بعد السماح يربط الحساب بالجهاز ده ويقفله)'}><Smartphone className="h-3.5 w-3.5" />{(s as any).allowAllDevices === true ? 'إلغاء السماح' : 'سماح / نقل جهاز'}</Button>
                   {(s as any).deviceId && (s as any).allowAllDevices !== true && (
-                    <Button size="icon" variant="ghost" className="h-8 w-8 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20" onClick={() => handleDeviceAction(s.id, 'bindOnly', {})} title="فك ربط الجهاز — الطالب يقدر يسجل من جهاز جديد وهيتربط بيه"><RotateCcw className="h-4 w-4" /></Button>
+                    <Button size="sm" variant="outline" className="h-8 px-2.5 text-xs border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-900/20 dark:text-amber-400" onClick={() => handleDeviceAction(s.id, 'bindOnly', {})} title="فك ربط الجهاز — أول جهاز يسجل دخول بعد كده هيبقى هو جهاز الحساب الجديد"><RotateCcw className="h-3.5 w-3.5" />فك الربط</Button>
                   )}
                   {s.status === 'pending' && (<>
                     <Button size="icon" variant="ghost" className="h-8 w-8 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20" onClick={() => handleAction(s.id, 'approved')} title="مقبول - مجاني"><Check className="h-4 w-4" /></Button>

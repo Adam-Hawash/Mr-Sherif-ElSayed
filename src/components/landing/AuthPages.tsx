@@ -35,7 +35,7 @@ function DeviceWarningBanner({ mode }: { mode: 'login' | 'register' }) {
           </>
         ) : (
           <>
-            <span className="font-bold">تنبيه:</span> الحساب مربوط بـ <span className="font-bold">جهاز واحد بس</span> (الجهاز اللي اتعمل بيه). الدخول من جهاز تاني مش هيشتغل غير لو المستر عمل سماح للحساب من لوحة التحكم.
+            <span className="font-bold">تنبيه:</span> الحساب مربوط بـ <span className="font-bold">جهاز واحد بس</span> (الجهاز اللي اتعمل بيه). لو حصلت معاك أي مشكلة كلم المستر.
           </>
         )}
       </p>
@@ -143,7 +143,7 @@ export function LoginView() {
       var data = await res.json()
       // ربط الجهاز: الحساب مربوط بجهاز تاني → رسالة حمراء واضحة جوه الكارت
       if (res.status === 403 && data.deviceBlocked) {
-        var msg = data.error || '🚫 لازم تدخل بالجهاز اللي انت عملت من عليه الحساب — الحساب ده مربوط بجهاز واحد بس.'
+        var msg = data.error || '🚫 لازم تدخل بالجهاز اللي انت عملت من عليه الحساب — الحساب ده مربوط بجهاز واحد بس. لو حصلت معاك أي مشكلة كلم المستر.'
         setDeviceBlockMsg(msg)
         toast.error(msg, { duration: 12000 })
         setStudentPassword('')
