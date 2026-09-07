@@ -278,15 +278,20 @@ var WM_POS = [
 var wmTick = 0;
 /* طلب المستر: الاسم الطويل ناخد منه أول اسمين بس — عشان الرقم والاسم يبانوا كاملين مش مقطوعين */
 function shortName(n){ var p = String(n||'').trim().split(/\s+/); return p.slice(0,2).join(' '); }
-function wmSvg(colorFill, colorStroke){
-  var label = (CFG.wm.phone || '') + ((CFG.wm.phone && CFG.wm.name) ? ' • ' : '') + shortName(CFG.wm.name);
-  if(!label) return '';
-  // طلب المستر (التحديث الأخير): الووترمارك بقت صغيرة أوي — رجّعنا الـ 2 اللي اتشالوا
-  // وكبّرنا الخط: مربع 500×300 (بدل 640×520) → ~6 نسخ ظاهرين بدل 3-4،
-  // وخط 14px (بدل 11) عشان الاسم والرقم يبانوا واضحين من غير ما يغطوا الفيديو
-  var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="300">' +
-    '<text x="24" y="150" font-size="14" font-weight="bold" font-family="sans-serif" fill="' + colorFill + '" stroke="' + colorStroke + '" stroke-width="1.8" paint-order="stroke" transform="rotate(-18 250 150)">' + esc(label) + '</text></svg>';
-  return 'url("data:image/svg+xml,' + encodeURIComponent(svg) + '")';
+function wmLabel(){
+  return (CFG.wm.phone || '') + ((CFG.wm.phone && CFG.wm.name) ? ' • ' : '') + shortName(CFG.wm.name);
+}
+/* التيل بقى DOM حقيقي (مش صورة SVG) — الحروف العربية بتطلع متوصلة وسليمة 100%.
+   طلب المستر: أسود شفاف على الحواف بس. الـ SVG القديم كان بيقص الحروف العربية. */
+function wmTile(label, spot){
+  var chip = document.createElement('div');
+  chip.style.cssText = 'position:absolute;top:' + spot.t + ';left:' + spot.l +
+    ';transform:translateX(' + spot.tx + ') rotate(' + spot.rot + 'deg);direction:rtl;' +
+    'background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.92);' +
+    'font-size:10px;font-weight:700;font-family:system-ui,-apple-system,sans-serif;' +
+    'padding:3px 10px;border-radius:999px;white-space:nowrap;letter-spacing:0;max-width:46%;overflow:hidden;text-overflow:ellipsis';
+  chip.textContent = label;
+  return chip;
 }
 function buildWm(){
   if(!CFG.wm.enabled) return;
@@ -295,10 +300,17 @@ function buildWm(){
   var layer = document.createElement('div');
   layer.id = 'wm'; layer.className = 'wm';
   layer.style.opacity = String(CFG.wm.opacity);
-  /* طلب المستر: الووترمارك أسود شفاف (بحواف بيضاء خفيفة عشان يبان على أي خلفية) */
-  var tA = document.createElement('div'); tA.className='tile tileA'; tA.style.backgroundImage = wmSvg('rgba(0,0,0,.82)','rgba(255,255,255,.9)');
-  var tB = document.createElement('div'); tB.className='tile tileB'; tB.style.backgroundImage = wmSvg('rgba(0,0,0,.66)','rgba(255,255,255,.75)');
-  layer.appendChild(tA); layer.appendChild(tB);
+  /* التيل على الحواف بس — حروف عربية سليمة، أسود شفاف */
+  var label = wmLabel();
+  if(label){
+    var tileSpots = [
+      {t:'4%',  l:'50%',  tx:'-50%',  rot:-14},
+      {t:'30%', l:'4%',   tx:'0%',    rot:-14},
+      {t:'62%', l:'96%',  tx:'-100%', rot:-14},
+      {t:'92%', l:'50%',  tx:'-50%',  rot:-14}
+    ];
+    for(var ti=0; ti<tileSpots.length; ti++){ layer.appendChild(wmTile(label, tileSpots[ti])); }
+  }
   var badge = document.createElement('div');
   badge.id='wmBadge';
   badge.innerHTML = (CFG.wm.phone ? '<div class="num">' + esc(CFG.wm.phone) + '</div>' : '') + (CFG.wm.name ? '<div class="nm">' + esc(shortName(CFG.wm.name)) + '</div>' : '');
@@ -465,6 +477,46 @@ setInterval(function(){
 /* ===== مشغّل يوتيوب — بدون أي شكل يوتيوب: كنترولز خاصة بينا + شاشات تغطية
    بتمنع ظهور العنوان/اللوجو نهائيًا. الـ ID بيتفك في الذاكرة بس زي ما هو ===== */
 var playerApi = null;
+/* ===== مراقب التشغيل — علاج "الفيديو مش بيفتح" =====
+   أول أمر playVideo() على الموبايل ممكن يتصفر من المتصفح. بنجرب تاني كل
+   700ms، ولو 3 محاولات فشلوا → تشغيل صامت (مسموح دايمًا) + زرار تفعيل صوت.
+   ومنع النقر المزدوج: بعض المتصفحات بتبعت touchend+click مع بعض. */
+var wdTimer = null, muteFallback = false, lastTap = 0;
+function tapOk(){ var n = Date.now(); if(n - lastTap < 350) return false; lastTap = n; return true; }
+function showUnmuteBtn(){
+  var b = document.getElementById('unmuteBtn');
+  if(!b){
+    b = document.createElement('button');
+    b.id = 'unmuteBtn'; b.type = 'button';
+    b.style.cssText = 'position:absolute;top:38%;left:50%;transform:translateX(-50%);z-index:70;direction:rtl;' +
+      'background:rgba(0,0,0,.8);border:1px solid rgba(255,255,255,.25);color:#fff;font-weight:700;' +
+      'font-size:13px;font-family:system-ui,sans-serif;padding:10px 18px;border-radius:999px;cursor:pointer;box-shadow:0 6px 22px rgba(0,0,0,.55)';
+    b.textContent = '🔊 اضغط لتفعيل الصوت';
+    b.addEventListener('click', function(e){ e.stopPropagation(); doUnmute(); });
+    b.addEventListener('touchend', function(e){ e.preventDefault(); e.stopPropagation(); doUnmute(); });
+    wrap.appendChild(b);
+  }
+  b.style.display = 'flex';
+}
+function doUnmute(){
+  try{ if(playerApi){ playerApi.unMute(); playerApi.setVolume && playerApi.setVolume(100); } }catch(e){}
+  muteFallback = false;
+  var b = document.getElementById('unmuteBtn'); if(b) b.style.display = 'none';
+}
+function startWithWatchdog(){
+  if(wdTimer){ clearInterval(wdTimer); wdTimer = null; }
+  try{ playerApi.playVideo(); }catch(e){}
+  var attempts = 0;
+  wdTimer = setInterval(function(){
+    var st = ytState();
+    if(st === 1 || st === 3){ clearInterval(wdTimer); wdTimer = null; return; }
+    attempts++;
+    if(attempts >= 3){
+      clearInterval(wdTimer); wdTimer = null;
+      try{ playerApi.mute(); muteFallback = true; showUnmuteBtn(); playerApi.playVideo(); }catch(e){}
+    } else { try{ playerApi.playVideo(); }catch(e){} }
+  }, 700);
+}
 function svgPlay(){ return '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>'; }
 function svgPause(){ return '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>'; }
 function svgFs(){ return '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>'; }
@@ -487,12 +539,14 @@ function mountYouTube(){
   var startOv = document.createElement('div');
   startOv.id='startOv';
   startOv.innerHTML = '<div class="big"><svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg></div><p>اضغط للمشاهدة</p>';
-  startOv.addEventListener('click', function(){ try{ if(playerApi&&playerApi.playVideo) playerApi.playVideo(); }catch(e){} showCtrl(true); });
+  startOv.addEventListener('click', function(){ if(!tapOk()) return; startWithWatchdog(); showCtrl(true); });
+  startOv.addEventListener('touchend', function(e){ e.preventDefault(); if(!tapOk()) return; startWithWatchdog(); showCtrl(true); });
   wrap.appendChild(startOv);
   // طبقة النقر — بتلقط التابات بدل ما توصل ليوتيوب
   var tap = document.createElement('div'); tap.id='tapLayer';
   tap.addEventListener('click', function(){
-    try{ if(playerApi&&playerApi.getPlayerState){ if(playerApi.getPlayerState()===YT.PlayerState.PLAYING) playerApi.pauseVideo(); else playerApi.playVideo(); } }catch(e){}
+    if(!tapOk()) return;
+    try{ if(playerApi&&playerApi.getPlayerState){ if(playerApi.getPlayerState()===YT.PlayerState.PLAYING) playerApi.pauseVideo(); else startWithWatchdog(); } }catch(e){}
     showCtrl(true);
   });
   wrap.appendChild(tap);
@@ -513,7 +567,7 @@ function mountYouTube(){
     '<button id="fsInBar" type="button" aria-label="ملء الشاشة">'+svgFs()+'</button>';
   wrap.appendChild(bar);
   var pp = document.getElementById('ppBtn');
-  pp.addEventListener('click', function(e){ e.stopPropagation(); try{ if(ytState()===1) playerApi.pauseVideo(); else playerApi.playVideo(); }catch(err){} showCtrl(true); });
+  pp.addEventListener('click', function(e){ e.stopPropagation(); if(!tapOk()) return; try{ if(ytState()===1) playerApi.pauseVideo(); else startWithWatchdog(); }catch(err){} showCtrl(true); });
   document.getElementById('fsInBar').addEventListener('click', function(e){ e.stopPropagation(); toggleFs(); });
   document.getElementById('replayBtn').addEventListener('click', function(e){ e.stopPropagation(); try{ playerApi.seekTo(0,true); playerApi.playVideo(); }catch(err){} });
   var seekEl = document.getElementById('seek');
@@ -545,6 +599,8 @@ function mountYouTube(){
             } else if(ev.data === YT.PlayerState.ENDED){
               setPP(false);
               var eo2=document.getElementById('endOv'); if(eo2) eo2.style.display='flex';
+              /* رجوع للبداية + وقوف → شاشة اقتراحات يوتيوب عمرها ما بتترسم */
+              try{ playerApi.seekTo(0,true); playerApi.pauseVideo(); }catch(e){}
               reportEnded();
             }
           }catch(e){}
@@ -556,6 +612,11 @@ function mountYouTube(){
         if(playerApi && playerApi.getCurrentTime){
           var cur = playerApi.getCurrentTime() || 0, dur = playerApi.getDuration() || 0;
           reportProgress(cur, dur);
+          /* حارس النهاية: لو شاشة الاقتراحات هتظهر (ENDED ماتفوتش) → غطّي فورًا */
+          if(ytState()===0){
+            var eo3=document.getElementById('endOv');
+            if(eo3 && eo3.style.display!=='flex'){ eo3.style.display='flex'; try{ playerApi.seekTo(0,true); playerApi.pauseVideo(); }catch(e){} reportEnded(); }
+          }
           if(!seekDragging){
             var se = document.getElementById('seek');
             if(se && dur) se.value = String(Math.round(cur/dur*1000));

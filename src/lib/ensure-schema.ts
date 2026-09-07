@@ -14,7 +14,7 @@ export function makeLibsqlClient() {
 
 export var SCHEMA_TABLES = [
   'CREATE TABLE IF NOT EXISTS Admin (id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, password TEXT NOT NULL, name TEXT NOT NULL DEFAULT "Admin", createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
-  'CREATE TABLE IF NOT EXISTS Student (id TEXT PRIMARY KEY, name TEXT NOT NULL, phone TEXT NOT NULL UNIQUE, password TEXT NOT NULL DEFAULT "", grade TEXT NOT NULL, status TEXT NOT NULL DEFAULT "pending", parentName TEXT NOT NULL DEFAULT "", parentPhone TEXT NOT NULL DEFAULT "", loginCount INTEGER NOT NULL DEFAULT 0, lastLogin DATETIME, isPaidAccess INTEGER NOT NULL DEFAULT 0, deviceId TEXT NOT NULL DEFAULT "", deviceFp TEXT NOT NULL DEFAULT "", allowAllDevices INTEGER NOT NULL DEFAULT 0, createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
+  'CREATE TABLE IF NOT EXISTS Student (id TEXT PRIMARY KEY, name TEXT NOT NULL, phone TEXT NOT NULL UNIQUE, password TEXT NOT NULL DEFAULT "", grade TEXT NOT NULL, status TEXT NOT NULL DEFAULT "pending", parentName TEXT NOT NULL DEFAULT "", parentPhone TEXT NOT NULL DEFAULT "", loginCount INTEGER NOT NULL DEFAULT 0, lastLogin DATETIME, isPaidAccess INTEGER NOT NULL DEFAULT 0, deviceId TEXT NOT NULL DEFAULT "", deviceFp TEXT NOT NULL DEFAULT "", creationDeviceId TEXT NOT NULL DEFAULT "", creationDeviceFp TEXT NOT NULL DEFAULT "", deviceType TEXT NOT NULL DEFAULT "", allowAllDevices INTEGER NOT NULL DEFAULT 0, createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
   'CREATE TABLE IF NOT EXISTS StudentActivity (id TEXT PRIMARY KEY, studentId TEXT NOT NULL, action TEXT NOT NULL, details TEXT DEFAULT "", createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (studentId) REFERENCES Student(id) ON DELETE CASCADE)',
   'CREATE TABLE IF NOT EXISTS Video (id TEXT PRIMARY KEY, title TEXT NOT NULL, url TEXT DEFAULT "", filePath TEXT DEFAULT "", fileType TEXT DEFAULT "", thumbnail TEXT DEFAULT "", grade TEXT NOT NULL, price REAL DEFAULT 0, createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
   'CREATE TABLE IF NOT EXISTS Homework (id TEXT PRIMARY KEY, title TEXT NOT NULL, content TEXT NOT NULL DEFAULT "", filePath TEXT DEFAULT "", fileType TEXT DEFAULT "", thumbnail TEXT DEFAULT "", answerKeyPath TEXT DEFAULT "", answerKeyType TEXT DEFAULT "", grade TEXT NOT NULL, questions TEXT DEFAULT "", createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
@@ -39,6 +39,10 @@ var SCHEMA_COLUMNS = [
   ['Student', 'parentPhone', 'TEXT', "NOT NULL DEFAULT ''"],
   ['Student', 'deviceId', 'TEXT', "NOT NULL DEFAULT ''"],
   ['Student', 'deviceFp', 'TEXT', "NOT NULL DEFAULT ''"],
+  // جهاز إنشاء الحساب — ثابت: بيتكتب وقت التسجيل بس والدخول بيتحقق ضده حصريًا
+  ['Student', 'creationDeviceId', 'TEXT', "NOT NULL DEFAULT ''"],
+  ['Student', 'creationDeviceFp', 'TEXT', "NOT NULL DEFAULT ''"],
+  ['Student', 'deviceType', 'TEXT', "NOT NULL DEFAULT ''"],
   ['Student', 'allowAllDevices', 'INTEGER', 'NOT NULL DEFAULT 0'],
   ['Video', 'price', 'REAL', 'DEFAULT 0'],
   ['Video', 'fileType', 'TEXT', "DEFAULT ''"],
@@ -83,6 +87,14 @@ var SCHEMA_FIXES = [
   'UPDATE Student SET isPaidAccess = 0 WHERE isPaidAccess IS NULL',
   'UPDATE Student SET deviceId = \'\' WHERE deviceId IS NULL',
   'UPDATE Student SET deviceFp = \'\' WHERE deviceFp IS NULL',
+  'UPDATE Student SET creationDeviceId = \'\' WHERE creationDeviceId IS NULL',
+  'UPDATE Student SET creationDeviceFp = \'\' WHERE creationDeviceFp IS NULL',
+  'UPDATE Student SET deviceType = \'\' WHERE deviceType IS NULL',
+  // ===== ترحيل لمرة واحدة (idempotent) =====
+  // الحسابات الموجودة اللي ملهاش ربط إنشاء: نثبّت الربط الحالي كـ"جهاز إنشاء"
+  // عشان مفيش حساب يتحجب فجأة بعد الترقية. الربط ده بعدها **ثابت** — أي جهاز
+  // غريب بيتمنع، والمستر يقدر يعمل "فك الربط" من لوحة التحكم لأي طالب.
+  "UPDATE Student SET creationDeviceId = deviceId, creationDeviceFp = deviceFp WHERE (creationDeviceId IS NULL OR creationDeviceId = '') AND ((deviceId IS NOT NULL AND deviceId != '' AND deviceId NOT IN ('null','undefined','dev_null','none')) OR (deviceFp IS NOT NULL AND deviceFp != '' AND deviceFp NOT IN ('null','undefined')))",
   'UPDATE Student SET allowAllDevices = 0 WHERE allowAllDevices IS NULL',
   'UPDATE Video SET price = 0 WHERE price IS NULL',
   'UPDATE Exam SET passScore = 50 WHERE passScore IS NULL',

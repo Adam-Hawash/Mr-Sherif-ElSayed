@@ -3,24 +3,23 @@ import { db } from '@/lib/db'
 import { makeLibsqlClient, ensureSchema } from '@/lib/ensure-schema'
 
 // ===== إصلاح ذاتي للجدول (مهم للإنتاج) =====
-// لو عمود ناقص في قاعدة Turso (زي deviceFp بعد الترقية)، أي استعلام طالب
-// كان بيفشل صامتةً والدخول كان بيبان كأن "الباسورد غلط" لكل الناس من كل
-// الأجهزة. الدالة دي بتشتغل مرة واحدة لكل سيرفر: بتجرب استعلام خفيف، ولو
-// فشلت بتشغّل ensureSchema الكاملة وبتصلّح الجدول فورًا.
+// الدالة دي بتشتغل مرة واحدة كل تشغيل سيرفر: بتشغّل ensureSchema الكاملة —
+// بتضيف الأعمدة الناقصة في Turso (زي أعمدة جهاز الإنشاء بعد الترقية) وبينفّذ
+// الترحيلات (تثبيت ربط الإنشاء للحسابات الموجودة) وترتيبات الـ NULL — كلها
+// idempotent فمفيش أي ضرر من إعادة التنفيذ.
 var schemaReady: Promise<void> | null = null
 function ensureStudentSchema(): Promise<void> {
   if (!schemaReady) {
     schemaReady = (async function () {
+      // بنشغّل الإصلاح الذاتي + الترحيل **مرة كل تشغيل سيرفر** دايمًا (مش بس
+      // لما الاستعلام يفشل) — عشان الترحيلات الجديدة (زي أعمدة جهاز الإنشاء)
+      // تتنفذ على قواعد بيانات من غير أعمدة جديدة من أول تشغيل بعد النشر.
       try {
-        await db.$queryRawUnsafe('SELECT deviceFp, deviceId, allowAllDevices FROM Student LIMIT 1')
-      } catch (e) {
-        try {
-          var client = makeLibsqlClient()
-          if (client) {
-            try { await ensureSchema(client) } finally { try { await client.close() } catch (e2) {} }
-          }
-        } catch (e2) {}
-      }
+        var client = makeLibsqlClient()
+        if (client) {
+          try { await ensureSchema(client) } finally { try { await client.close() } catch (e2) {} }
+        }
+      } catch (e) {}
     })()
   }
   return schemaReady
@@ -41,8 +40,17 @@ function pickDeviceIds(candidates: string[]): { uuid: string; fp: string } {
 
 var LEGACY_IDS = ['null', 'undefined', 'dev_null', 'none', '']
 
+// أنواع الأجهزة المسموح تخزينها (من المتصفح): موبايل/تابلت/كمبيوتر
+var DEVICE_TYPES = ['mobile', 'tablet', 'computer']
+function pickDeviceType(v: any): string {
+  return typeof v === 'string' && DEVICE_TYPES.indexOf(v) !== -1 ? v : ''
+}
+
 export async function GET(request: NextRequest) {
   try {
+    // الإصلاح الذاتي + الترحيل أول حاجة في **أي** استدعاء للـ API
+    // (مرة واحدة كل تشغيل سيرفر) — عشان أول طلب بعد النشر يلاقي الجدول كامل
+    await ensureStudentSchema()
     var searchParams = new URL(request.url).searchParams
     var phone = searchParams.get('phone')
     var grade = searchParams.get('grade')
@@ -97,45 +105,54 @@ export async function GET(request: NextRequest) {
             { status: 403 }
           )
         }
-        // ===== قفل الجهاز الصارم (شغال دايمًا — من غير مفتاح) =====
-        // المستر قال صراحة (4 مرات): "جهاز واحد بس — الجهاز اللي اتعمل بيه
-        // الحساب هو اللي يقدر يدخل". يعني أي جهاز تاني (حتى لو موبايل من
-        // نفس الموديل) لازم يتمنع فورًا ويظهر له رسالة حمراء.
+        // ===== قفل الجهاز الصارم — جهاز إنشاء الحساب فقط (ثابت لا يتغير) =====
+        // المشكلة اللي اتحلّت هنا: كان الربط بيتخزن في أعمدة عادية (deviceId/deviceFp)
+        // وبيتعاد كتابته في مسارات كتير (إنقاذ بالبصمة / السماح / أول دخول) — فآخر
+        // جهاز كسب السباق كان بيبقى "جهاز الحساب" حتى لو مش جهاز الإنشاء!
+        // (وده اللي كان بيخلي: حساب اتعمل على اللابتوب يفتح من الموبايل ويحجب
+        // اللابتوب نفسه — والعكس في حسابات تانية).
         //
-        // الدرس اللي اتاخد: المطابقة بالبصمة (dv3_) كانت بتفتح الحساب من أي
-        // موبايل شبهه — لأن موبايلين من نفس الموديل بيطلعوا نفس البصمة
-        // (نفس الشاشة + نفس الكانفس + نفس كارت الشاشة). فالمطابقة دلوقتي
-        // **بالهمية الفريدة (dev_) بس** — مفيش جهازين في الدنيا ليهم نفس الـ ID.
-        // البصمة (dv3_) بتتحفظ للتشخيص عند المستر بس، ومبتفتحش حاجة.
-        //
-        // الاستثناء الوحيد: الحسابات القديمة جدًا المربوطة ببصمة dv2_ بس
-        // (قبل نظام الهوية الفريدة) — أول ما تدخل من جهازها بترتبط بالهوية
-        // الفريدة الجديدة وترجع مقفولة زي أي حساب (ترقية لمرة واحدة).
+        // الحل الجذري: أعمدة creationDeviceId/creationDeviceFp **ثابتة** بتتكتب
+        // مرة واحدة وقت التسجيل فقط، والدخول بيتحقق ضدهم حصريًا:
+        //   1) الهوية الفريدة (dev_) لجهاز الإنشاء — الأساس
+        //   2) بصمة dv3 لجهاز الإنشاء — إنقاذ لو بيانات المتصفح اتمسحت على نفس الجهاز
+        //   3) بصمة dv2 — ترقية الحسابات القديمة جدًا (مرة واحدة)
+        // ومفيش أي مسار في الدخول بيكتب في أعمدة الإنشاء — إلا المستر نفسه
+        // من لوحة التحكم (فك الربط / سماح ونقل جهاز).
         var storedId = ((student as any).deviceId || '').trim()
         var storedFp = ((student as any).deviceFp || '').trim()
+        var creationId = ((student as any).creationDeviceId || '').trim()
+        var creationFp = ((student as any).creationDeviceFp || '').trim()
         // إصدارات قديمة: "null" نصية → فاضية
         if (LEGACY_IDS.indexOf(storedId) !== -1) storedId = ''
         if (LEGACY_IDS.indexOf(storedFp) !== -1) storedFp = ''
-        // هجرة قديمة: حسابات اتربطت ببصمة dv2_ في خانة deviceId (إصدار سابق)
-        // → نعاملها كبصمة مش كهوية فريدة
+        if (LEGACY_IDS.indexOf(creationId) !== -1) creationId = ''
+        if (LEGACY_IDS.indexOf(creationFp) !== -1) creationFp = ''
+        // هجرة قديمة: بصمة مخزنة في خانة الهوية → نعاملها كبصمة مش كهوية
+        if (creationId.indexOf('dv2_') === 0 || creationId.indexOf('dv3_') === 0) {
+          if (!creationFp) creationFp = creationId
+          creationId = ''
+        }
         if (storedId.indexOf('dv2_') === 0 || storedId.indexOf('dv3_') === 0) {
           if (!storedFp) storedFp = storedId
           storedId = ''
         }
-        // المطابقة الصارمة + مسارات إنقاذ محدودة (الكل بيقفل الحساب على جهاز واحد في الآخر):
-        // 1) الهوية الفريدة (dev_) — الطريق الأساسي
-        var uuidOk = !!storedId && !!current.uuid && current.uuid === storedId
-        // 2) إنقاذ بالبصمة dv3_: نفس الجهاز الفعلي بس مسح بيانات المتصفح
-        //    (الهوية بتتولد من جديد لكن البصمة ثابتة) → بنسمح ونعيد الربط
-        //    بالهوية الجديدة فالحساب يفضل مقفول على نفس الجهاز الفعلي.
-        var fpOk = !!storedFp && storedFp.indexOf('dv3_') === 0 && !!current.fp && current.fp === storedFp && !uuidOk
-        // 3) ترقية dv2_: حسابات عصر البصمة القديمة لسه بيبعت نفس القيمة
-        //    (من غير أي ربط تلقائي — لو القيمة مش مطابقة يبقى جهاز غريب)
-        var legacyUpgrade = !storedId && !!storedFp && storedFp.indexOf('dv2_') === 0 && !!current.fp && current.fp === storedFp
-        var deviceTrusted = uuidOk || fpOk || legacyUpgrade
-        var hasBinding = !!storedId || !!storedFp
-        // الجهاز الحالي مش جهاز الحساب → مرفوض فورًا (حتى لو المتصفح مبعتش قيم)
-        if (hasBinding && !deviceTrusted && !(student as any).allowAllDevices) {
+        var allowAll = !!(student as any).allowAllDevices
+        // نوع جهاز الدخول الحالي (موبايل/تابلت/كمبيوتر) — للتسجيل وللحسابات
+        // القديمة اللي اتعملت قبل ما نبدأ نحفظ النوع
+        var inDeviceType = pickDeviceType(searchParams.get('deviceType'))
+
+        // التحقق ضد **ربط الإنشاء الثابت** الأول، ولو فاضي (حساب قديم قبل الترحيل)
+        // ضد الربط العادي — ومن غير أي إعادة ربط للأجهزة الغريبة في الحالتين
+        var checkId = creationId || storedId
+        var checkFp = creationFp || storedFp
+        var uuidOk = !!checkId && checkId.indexOf('dev_') === 0 && !!current.uuid && current.uuid === checkId
+        var fpOk = !!checkFp && checkFp.indexOf('dv3_') === 0 && !!current.fp && current.fp === checkFp && !uuidOk
+        var legacyOk = !!checkFp && checkFp.indexOf('dv2_') === 0 && !!current.fp && current.fp === checkFp && !uuidOk && !fpOk
+        var hasAnyBinding = !!(creationId || creationFp || storedId || storedFp)
+        var deviceTrusted = uuidOk || fpOk || legacyOk
+        // الجهاز الحالي مش جهاز إنشاء الحساب → مرفوض فورًا (حتى لو المتصفح مبعتش قيم)
+        if (hasAnyBinding && !deviceTrusted && !allowAll) {
           return NextResponse.json(
             {
               students: [],
@@ -145,66 +162,108 @@ export async function GET(request: NextRequest) {
             { status: 403 }
           )
         }
-        // ترقية الحساب القديم: بيتقفل على هوية الجهاز ده نهائيًا
-        if (legacyUpgrade && (current.uuid || current.fp)) {
+        // المستر عمل سماح والجهاز مش جهاز الحساب → الجهاز ده بيبقى جهاز الإنشاء
+        // الجديد نهائيًا (نقل جهاز) والسماح بيتقفل لوحده (مرة واحدة بس)
+        if (allowAll && !deviceTrusted && (current.uuid || current.fp)) {
           try {
             await db.student.update({
               where: { id: student.id },
-              data: { deviceId: current.uuid || current.fp, deviceFp: current.fp || storedFp },
-            })
-            ;(student as any).deviceId = current.uuid || current.fp
-            try {
-              await db.studentActivity.create({
-                data: { studentId: student.id, action: 'device_rebound', details: 'ترقية ربط الحساب القديم (dv2) لجهازه نهائيًا' },
-              })
-            } catch (aErr) {}
-          } catch (upErr) {
-            console.error('Device legacy upgrade error:', upErr)
-          }
-        }
-        // إنقاذ بالبصمة: نفس الجهاز الفعلي بعد مسح بيانات المتصفح → نعيد ربط
-        // الهوية الفريدة الجديدة عشان الدخول يفضل شغال من نفس الجهاز
-        if (fpOk && current.uuid && current.uuid !== storedId) {
-          try {
-            await db.student.update({
-              where: { id: student.id },
-              data: { deviceId: current.uuid },
-            })
-            ;(student as any).deviceId = current.uuid
-            try {
-              await db.studentActivity.create({
-                data: { studentId: student.id, action: 'device_rescued', details: 'نفس الجهاز (نفس البصمة) بعد مسح بيانات المتصفح — اتاعاد الربط تلقائيًا' },
-              })
-            } catch (aErr) {}
-          } catch (rErr) {
-            console.error('Device rescue rebind error:', rErr)
-          }
-        }
-        // أول تسجيل دخول (حساب عمله الأدمن) → الجهاز ده بيتسجل بشكل دائم
-        if (!hasBinding && (current.uuid || current.fp)) {
-          try {
-            await db.student.update({
-              where: { id: student.id },
-              data: { deviceId: current.uuid, deviceFp: current.fp },
-            })
-            ;(student as any).deviceId = current.uuid
-            ;(student as any).deviceFp = current.fp
-          } catch (bindErr) {
-            console.error('Device bind error:', bindErr)
-          }
-        } else if (!deviceTrusted && (student as any).allowAllDevices && (current.uuid || current.fp)) {
-          // المستر عمل سماح → أول جهاز يدخل بيه بيبقى جهاز الحساب الجديد
-          // والسماح بيتقفل لوحده (مرة واحدة بس) — الحساب يرجع مقفول على جهازه
-          try {
-            await db.student.update({
-              where: { id: student.id },
-              data: { deviceId: current.uuid, deviceFp: current.fp, allowAllDevices: false },
+              data: {
+                deviceId: current.uuid,
+                deviceFp: current.fp,
+                creationDeviceId: current.uuid,
+                creationDeviceFp: current.fp,
+                deviceType: inDeviceType || (student as any).deviceType || '',
+                allowAllDevices: false,
+              },
             })
             ;(student as any).deviceId = current.uuid
             ;(student as any).deviceFp = current.fp
             ;(student as any).allowAllDevices = false
+            try {
+              await db.studentActivity.create({
+                data: { studentId: student.id, action: 'device_transferred', details: 'المستر سمح بنقل الحساب لجهاز جديد — اتفقل على الجهاز ده نهائيًا' },
+              })
+            } catch (aErr) {}
           } catch (bindErr) {
-            console.error('Device rebind error:', bindErr)
+            console.error('Device transfer error:', bindErr)
+          }
+        } else {
+          // ثبيت ربط الإنشاء (مرة واحدة بس):
+          // أ) حساب قديم ملوش ربط إنشاء والجهاز اتحقق بنجاح → الربط ده بيثبت نهائي
+          // ب) حساب من غير أي ربط خالص → أول جهاز يدخل بيه بيبقى جهاز الإنشاء
+          if (!creationId && !creationFp && (current.uuid || current.fp)) {
+            try {
+              var newCId = current.uuid || (storedId && storedId.indexOf('dev_') === 0 ? storedId : '')
+              var newCFp = current.fp || storedFp
+              await db.student.update({
+                where: { id: student.id },
+                data: { creationDeviceId: newCId, creationDeviceFp: newCFp, deviceType: inDeviceType || (student as any).deviceType || '' },
+              })
+              ;(student as any).creationDeviceId = newCId
+              ;(student as any).creationDeviceFp = newCFp
+              try {
+                await db.studentActivity.create({
+                  data: { studentId: student.id, action: 'device_creation_bound', details: 'اتثبّت جهاز إنشاء الحساب نهائيًا (مرة واحدة)' },
+                })
+              } catch (aErr) {}
+            } catch (cErr) {
+              console.error('Device creation bind error:', cErr)
+            }
+          }
+          // إنقاذ مسح بيانات المتصفح: نفس جهاز الإنشاء (نفس بصمة dv3) لكن هوية جديدة
+          // → بنحدّث الهوية العادية **بس** — أعمدة الإنشاء الثابتة مبتتلمس خالص
+          if (fpOk && current.uuid && current.uuid !== storedId) {
+            try {
+              await db.student.update({
+                where: { id: student.id },
+                data: { deviceId: current.uuid },
+              })
+              ;(student as any).deviceId = current.uuid
+              try {
+                await db.studentActivity.create({
+                  data: { studentId: student.id, action: 'device_rescued', details: 'نفس جهاز الإنشاء (نفس البصمة) بعد مسح بيانات المتصفح — اتحدّثت الهوية بس' },
+                })
+              } catch (aErr) {}
+            } catch (rErr) {
+              console.error('Device rescue error:', rErr)
+            }
+          }
+          // جهاز الإنشاء نفسه (هوية مطابقة) وطلب بصمة أحدث (المتصفح اتحدّث)
+          // → بنحدّث بصمة الإنشاء عشان الإنقاذ يفضل شغال بعد تحديثات المتصفح
+          // (آمن: محتاج مطابقة الهوية الفريدة لجهاز الإنشاء نفسه)
+          if (uuidOk && creationId && current.fp && current.fp !== creationFp) {
+            try {
+              await db.student.update({
+                where: { id: student.id },
+                data: { creationDeviceFp: current.fp, deviceFp: current.fp },
+              })
+              ;(student as any).creationDeviceFp = current.fp
+              ;(student as any).deviceFp = current.fp
+            } catch (uErr) {
+              console.error('Device fp refresh error:', uErr)
+            }
+          }
+          // ترقية الحساب القديم (dv2): نخزّن الهوية الفريدة الجديدة في الأعمدة العادية
+          if (legacyOk && current.uuid && current.uuid !== storedId) {
+            try {
+              await db.student.update({
+                where: { id: student.id },
+                data: { deviceId: current.uuid, deviceFp: current.fp },
+              })
+              ;(student as any).deviceId = current.uuid
+              ;(student as any).deviceFp = current.fp
+            } catch (upErr) {
+              console.error('Device legacy upgrade error:', upErr)
+            }
+          }
+          // حساب قديم من غير نوع جهاز مسجل → نسجّل نوع جهاز الدخول الناجح
+          // (بعد ما يتحقق — فمفيش أي طريقة حاجة غريبة تحطم النوع بالغلط)
+          if (deviceTrusted && inDeviceType && !(student as any).deviceType) {
+            try {
+              await db.student.update({ where: { id: student.id }, data: { deviceType: inDeviceType } })
+              ;(student as any).deviceType = inDeviceType
+            } catch (dtErr) {}
           }
         }
         return NextResponse.json({ students: [{ ...student, watchedVideoCount: 0 }], total: 1, page: 1, pageSize: 1, totalPages: 1 })
@@ -285,6 +344,11 @@ export async function POST(request: NextRequest) {
     var rawDeviceId = typeof body.deviceId === 'string' ? body.deviceId : ''
     var deviceId = ['null', 'undefined', 'dev_null', 'none'].indexOf(rawDeviceId) !== -1 ? '' : rawDeviceId
     var deviceFp = ''
+    // نوع جهاز إنشاء الحساب (موبايل/تابلت/كمبيوتر) — يظهر للمستر في لوحة التحكم
+    var deviceType = pickDeviceType(body.deviceType)
+    // جهاز الإنشاء الثابت: بيتكتب هنا **مرة واحدة** وعمرك ما يتغير بعد كده
+    var creationDeviceId = deviceId.indexOf('dev_') === 0 ? deviceId : ''
+    var creationDeviceFp = ''
     // نوزّع قايمة المرشحين: هوية فريدة (dev_) + بصمة ناتج الجهاز (dv3_/dv2_)
     if (Array.isArray(body.deviceIds)) {
       for (var di = 0; di < body.deviceIds.length; di++) {
@@ -292,9 +356,11 @@ export async function POST(request: NextRequest) {
         if (typeof cand !== 'string' || !cand || ['null', 'undefined', 'dev_null', 'none'].indexOf(cand) !== -1) continue
         if (!deviceId && cand.indexOf('dev_') === 0) deviceId = cand
         if (!deviceFp && (cand.indexOf('dv3_') === 0 || cand.indexOf('dv2_') === 0)) deviceFp = cand
+        if (!creationDeviceId && cand.indexOf('dev_') === 0) creationDeviceId = cand
+        if (!creationDeviceFp && (cand.indexOf('dv3_') === 0 || cand.indexOf('dv2_') === 0)) creationDeviceFp = cand
       }
     }
-    // الهوية الفريدة هي الأساس — لو مش موجودة ناخد البصمة
+    // الهوية الفريدة هي الأساس — لو مش موجودة ناخد البصمة (في الأعمدة العادية)
     if (!deviceId && deviceFp) deviceId = deviceFp
 
     if (!name || !phone || !grade) {
@@ -312,6 +378,9 @@ export async function POST(request: NextRequest) {
         password: password,
         deviceId: deviceId,
         deviceFp: deviceFp,
+        deviceType: deviceType,
+        creationDeviceId: creationDeviceId,
+        creationDeviceFp: creationDeviceFp,
       },
     })
 

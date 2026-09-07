@@ -206,3 +206,29 @@ export function getDeviceCandidates(): string[] {
   }
   return unique
 }
+
+/**
+ * نوع الجهاز — بيتحفظ مع الحساب عشان المستر يشوف في لوحة التحكم الحساب
+ * اتعمل من موبايل ولا تابلت ولا كمبيوتر (لابتوب/ديسكتوب).
+ *  - mobile: موبايل (آيفون/أندرويد موبايل/ويندوز فون)
+ *  - tablet: تابلت (آيباد/أندرويد تابلت — بما فيهم آيباد الجديد اللي
+ *    بيقدم نفسه Macintosh مع لمس)
+ *  - computer: كمبيوتر — لابتوب أو ديسكتوب (مش بنفرق بينهم لأن المتصفح
+ *    مبيدلش الفرق — الاتنين بيظهروا "كمبيوتر" للمستر)
+ */
+export function getDeviceType(): string {
+  if (typeof window === 'undefined') return ''
+  try {
+    var ua = navigator.userAgent || ''
+    var touch = (navigator.maxTouchPoints || 0) > 1
+    var minSide = Math.min(screen.width || 9999, screen.height || 9999)
+    // آيباد حديثًا بيقول Macintosh + لمس → تابلت
+    var iPadOS = /Macintosh/i.test(ua) && touch && minSide >= 600
+    if (/iPad|Tablet/i.test(ua) || (/Android/i.test(ua) && !/Mobile/i.test(ua)) || iPadOS) return 'tablet'
+    if (/Mobi|iPhone|iPod|Windows Phone/i.test(ua)) return 'mobile'
+    if (/Android/i.test(ua)) return 'tablet'
+    return 'computer'
+  } catch (e) {
+    return ''
+  }
+}

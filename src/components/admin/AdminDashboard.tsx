@@ -18,7 +18,7 @@ import {
   Link2, Activity, Eye, ImagePlus, Trophy, UserX, Camera,
   PlayCircle, Pause, Film, Search, FileDown, PictureInPicture2, Save, Sparkles, Wallet,
   Video as VideoIcon,
-  ChevronLeft, CheckCircle2, Smartphone, RotateCcw, ShieldCheck
+  ChevronLeft, CheckCircle2, Smartphone, RotateCcw, ShieldCheck, Monitor, Tablet
 } from 'lucide-react'
 import { CMSPanel } from './CMSPanel'
 import { VideoProtectionSettings } from './VideoProtectionSettings'
@@ -462,6 +462,9 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
   }
 
   const statusColors: Record<string, string> = { pending: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400', approved: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400', paid: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400', rejected: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400', refused: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' }
+  // أسماء أنواع الأجهزة بالعربي — تظهر في بادج الطالب
+  const deviceTypeLabels: Record<string, string> = { mobile: 'موبايل', tablet: 'تابلت', computer: 'كمبيوتر' }
+  const deviceIcon = (t?: string) => t === 'computer' ? <Monitor className="h-2.5 w-2.5" /> : t === 'tablet' ? <Tablet className="h-2.5 w-2.5" /> : <Smartphone className="h-2.5 w-2.5" />
   const statusLabels: Record<string, string> = { pending: 'قيد المراجعة', approved: 'مقبول (مجاني)', paid: 'بفلوس', rejected: 'مرفوض', refused: 'مرفوض' }
 
   // Student Details Panel
@@ -577,8 +580,8 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
                     <Badge variant="secondary" className={`text-[10px] ${statusColors[s.status]}`}>{statusLabels[s.status]}</Badge>
                     {(s as any).allowAllDevices === true ? (
                       <Badge className="text-[9px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 flex items-center gap-0.5"><ShieldCheck className="h-2.5 w-2.5" />سماح كل الأجهزة</Badge>
-                    ) : (s as any).deviceId ? (
-                      <Badge variant="outline" className="text-[9px] border-primary/40 text-primary flex items-center gap-0.5"><Smartphone className="h-2.5 w-2.5" />مربوط بجهازه</Badge>
+                    ) : ((s as any).deviceId || (s as any).creationDeviceId) ? (
+                      <Badge variant="outline" className="text-[9px] border-primary/40 text-primary flex items-center gap-0.5">{deviceIcon((s as any).deviceType)}مقفول على جهاز الإنشاء{deviceTypeLabels[(s as any).deviceType] ? ' — ' + deviceTypeLabels[(s as any).deviceType] : ''}</Badge>
                     ) : (
                       <Badge variant="outline" className="text-[9px] text-muted-foreground">هيتربط بأول جهاز يدخل بيه</Badge>
                     )}
