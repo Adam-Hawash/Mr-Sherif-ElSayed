@@ -4,12 +4,12 @@ import { db, safeWrite } from '@/lib/db'
 
 var DEFAULTS = {
   // === Navbar ===
-  navbar_brand: 'منصة مستر شريف السيد',
+  navbar_brand: 'Mr. Sherif ElSayed',
   navbar_subtitle: 'الرياضيات بقت أسهل',
 
   // === Hero Section ===
   hero_badge: '🎓 تعلّم الرياضيات بطريقة عامة وممتعة!',
-  hero_title_line1: 'مستر شريف السيد',
+  hero_title_line1: 'Mr. Sherif ElSayed',
   hero_title_line2: 'منصة الرياضيات المتكاملة',
   hero_subtitle: 'مدرس رياضيات، بشرحلك الماث بطريقة هتفهمها من أول مرة ✨ شرح سهل، أفكار ذكية، وواجبات وامتحانات على طول — كل ده خطوة بخطوة لحد ما توصل لأعلى مجموع إن شاء الله.',
   hero_stat1_value: '5',
@@ -28,12 +28,12 @@ var DEFAULTS = {
   schedule_subtitle: 'جدول مواعيد الحصص الأسبوعية لكل الصفوف — اختار اليوم اللي يناسبك واعرف موعد حصتك',
   schedule_badge: 'جدول الحصص الأسبوعي',
   schedule_footer_note: 'كل المواعيد بتوقيت القاهرة. لو عندك أي استفسار عن موعد حصتك كلمنا على واتساب.',
-  schedule_brand: 'منصة مستر شريف السيد',
+  schedule_brand: 'Mr. Sherif ElSayed',
   schedule_data: '',
 
   // === Instructor ===
   instructor_name: 'مستر شريف السيد',
-  instructor_name_en: 'MR. Sherif ElSayed',
+  instructor_name_en: 'Mr. Sherif ElSayed',
   instructor_title: 'مدرس رياضيات | Math Teacher',
   instructor_photo: '',
   profile_photo: '',
@@ -108,8 +108,8 @@ var DEFAULTS = {
   whatsapp_number: '201017201680',
 
   // === Footer ===
-  footer_brand: 'منصة مستر شريف السيد',
-  footer_copyright: 'جميع الحقوق محفوظة لمنصة مستر شريف السيد',
+  footer_brand: 'Mr. Sherif ElSayed',
+  footer_copyright: 'جميع الحقوق محفوظة — Mr. Sherif ElSayed',
 
   // === Favicon ===
   favicon_url: '',

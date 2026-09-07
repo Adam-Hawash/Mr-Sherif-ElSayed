@@ -47,9 +47,11 @@ function pickDeviceIds(candidates: string[]): { uuid: string; fp: string; uuids:
 // ===== مطابقة مكوّنات الجهاز (المرحلة التانية من التعرف) =====
 // لو البصمات الدقيقة كلها اختلفوا (لفت الموبايل / تحديث المتصفح / مسح بيانات)
 // بنقارن مكوّنات الجهاز الخام المخزنة مع الحساب ببعتة الجهاز الحالي.
-// المكوّنات الحاكمة (الشاشة + كارت الشاشة + المنصة) لازم تتطابق — دي اللي
-// بتفصل موبايل عن موبايل — والباقي بنسبة 70%+ عشان تحديثات النظام ما تكسرش.
+// المكوّنات الحاكمة (الشاشة + المنصة) لازم تتطابق — دي اللي بتفصل موبايل عن موبايل —
+// والباقي بنسبة 70%+ عشان تحديثات النظام أو تعريف كارت الشاشة ما تكسرش.
 // **مكوّن اتجاه الشاشة (orient) مستثنى خالص** — لف الموبايل مبيغيرش هوية الجهاز.
+// **كارت الشاشة (webgl) بقى ضمن المطابقة المرنة** — تحديث تعريف الـ GPU بيغير نصه
+// وكان ده بيمنع صاحب الجهاز نفسه من الدخول (كان hard وممكن يفشل مطابقة).
 function parseTraitsJson(s: any): Record<string, string> | null {
   try {
     if (!s || typeof s !== 'string' || s.length < 10 || s.length > 4000) return null
@@ -70,18 +72,36 @@ function dimsPair(t: Record<string, string>): string {
 function traitsMatchSameDevice(stored: Record<string, string> | null, fresh: Record<string, string> | null): boolean {
   if (!stored || !fresh) return false
   if (stored.fallback === '1' || fresh.fallback === '1') return false
-  // المكوّنات الحاكمة: كارت الشاشة + المنصة (الشاشة بتتقارن من غير ترتيب فوق)
+  // المكوّنات الحاكمة: المنصة (الشاشة بتتقارن من غير ترتيب فوق)
   if (dimsPair(stored) !== dimsPair(fresh)) return false
-  var hard = ['webgl', 'platform']
+  var hard = ['platform']
   for (var i = 0; i < hard.length; i++) {
     if (String(stored[hard[i]] || '') !== String(fresh[hard[i]] || '')) return false
   }
-  var keys = ['ua', 'lang', 'langs', 'cd', 'aw', 'ah', 'cores', 'mem', 'touch', 'tz', 'canvas']
+  var keys = ['ua', 'lang', 'langs', 'cd', 'aw', 'ah', 'cores', 'mem', 'touch', 'tz', 'canvas', 'webgl']
   var hit = 0
   for (var j = 0; j < keys.length; j++) {
     if (String(stored[keys[j]] || '') === String(fresh[keys[j]] || '')) hit++
   }
   return hit / keys.length >= 0.7
+}
+
+// ===== فحص المشاركة الذكي (بدل الحجب الأعمى) =====
+// كانت دي **المشكلة اللي المستر شوفها بنفسه**: موبايل واحد عليه أكتر من حساب
+// (اتسجلوا في وقتين مختلفين بينهم مسح بيانات أو تحديث متصفح) — لما صاحب الموبايل
+// يدخل على الحساب الأقدم، الحماية القديمة كانت تلاقي الهوية مربوطة بالحساب الأحدث
+// فتحسبها "مشاركة حسابات" وتحجب **صاحب الجهاز نفسه**!
+// الحل الصح: بنقارن مكوّنات الجهاز الفيزيائية للحسابات التانية المربوطة بنفس
+// الهوية — لو متطابقة مع الجهاز الحالي يبقى ده نفس الموبايل فعلًا (موبايل واحد
+// بأكتر من حساب) ومش مشاركة. المشاركة الحقيقية = جهاز تاني فعلًا (مكوّنات مختلفة).
+function checkOthersSamePhysicalDevice(others: Array<{ deviceTraits?: string | null }>, fresh: Record<string, string> | null): boolean {
+  if (!fresh) return false
+  for (var i = 0; i < others.length; i++) {
+    var ot = parseTraitsJson(others[i].deviceTraits || '')
+    // حساب تاني مربوط بنفس الهوية لكن مكوّناته الفيزيائية مختلفة → مشاركة حقيقية
+    if (!ot || !traitsMatchSameDevice(ot, fresh)) return false
+  }
+  return true
 }
 
 var LEGACY_IDS = ['null', 'undefined', 'dev_null', 'none', '']
@@ -188,6 +208,8 @@ export async function GET(request: NextRequest) {
         // تتعرف على نفس الجهاز لو البصمات الدقيقة اختلفوا (لف الشاشة/تحديث المتصفح)
         var freshTraits = parseTraitsJson(searchParams.get('deviceTraits') || '')
         var freshTraitsStr = freshTraits ? JSON.stringify(freshTraits) : ''
+        // مكوّنات الجهاز المخزنة مع الحساب (بتتحمل هنا عشان التشخيص تحت يستخدمها)
+        var storedTraits: Record<string, string> | null = parseTraitsJson((student as any).deviceTraits || '')
         // نوع جهاز الدخول الحالي (موبايل/تابلت/كمبيوتر) — للتسجيل وللحسابات
         // القديمة اللي اتعملت قبل ما نبدأ نحفظ النوع
         var inDeviceType = pickDeviceType(searchParams.get('deviceType'))
@@ -208,29 +230,32 @@ export async function GET(request: NextRequest) {
         // البصمات اختلفوا بسبب لف الشاشة أو تحديث المتصفح أو مسح بيانات التصفح)
         // بحماية ضد المشاركة: الهوية الجديدة ممنوع تكون مربوطة بحساب تاني.
         if (hasAnyBinding && !deviceTrusted && !allowAll) {
-          var storedTraits = parseTraitsJson((student as any).deviceTraits || '')
           var sameDevice = false
           if (traitsMatchSameDevice(storedTraits, freshTraits) && current.uuid) {
             try {
-              var other = await db.student.findFirst({
+              var others = await db.student.findMany({
                 where: { id: { not: student.id }, OR: [{ deviceId: current.uuid }, { creationDeviceId: current.uuid }] },
-                select: { id: true },
+                select: { id: true, deviceTraits: true },
               })
-              sameDevice = !other
+              // نفس الموبايل ممكن يكون عليه أكتر من حساب (اتسجلوا في وقتين مختلفين
+              // بينهم مسح بيانات/تحديث متصفح) — بنقارن مكوّنات الحسابات التانية
+              // الفيزيائية: كلها متطابقة = نفس الجهاز فعلًا (مش مشاركة)
+              sameDevice = checkOthersSamePhysicalDevice(others, freshTraits)
             } catch (gErr) { sameDevice = false }
           }
           // حساب قديم اتسجل قبل نظام المكوّنات خالص (مكوّنات فاضية) ومفيش أي
           // هوية/بصمة مطابقة — مفيش أي طريقة نتحقق بيها من الجهاز ده نهائيًا،
           // ومن غير الحركة دي الحساب بيفضل محجوب للأبد على صاحبه نفسه!
           // أول حد يدخل بالباسورد الصح بيبقى جهاز الحساب (نفس فلسفة فك الربط)
-          // وحماية ضد المشاركة: الجهاز ممنوع يكون مربوط بحساب تاني
+          // وحماية ضد المشاركة: لو الهوية مربوطة بحساب تاني، بنقارن المكوّنات
+          // الفيزيائية — متطابقة = نفس الموبايل (مسموح) / مختلفة = مشاركة (ممنوع)
           if (!sameDevice && !storedTraits && current.uuid) {
             try {
-              var other2 = await db.student.findFirst({
+              var others2 = await db.student.findMany({
                 where: { id: { not: student.id }, OR: [{ deviceId: current.uuid }, { creationDeviceId: current.uuid }] },
-                select: { id: true },
+                select: { id: true, deviceTraits: true },
               })
-              if (!other2) {
+              if (others2.length === 0 || checkOthersSamePhysicalDevice(others2, freshTraits)) {
                 await db.student.update({
                   where: { id: student.id },
                   data: {
@@ -287,11 +312,16 @@ export async function GET(request: NextRequest) {
               where: { studentId: student.id, action: 'device_blocked', createdAt: { gte: new Date(Date.now() - 60 * 60 * 1000) } },
             })
             if (blockCount < 10) {
+              // تفاصيل تشخيصية كاملة — المستر يشوف من لوحة التحكم سبب الحجب بالظبط:
+              // مين طابق ومين ما طابقش (الهوية/البصمة/مكوّنات الجهاز)
+              var diagUuid = !!checkId && checkId.indexOf('dev_') === 0 && current.uuids.indexOf(checkId) !== -1
+              var diagFp = !!checkFp && current.dv3.concat(current.dv2).indexOf(checkFp) !== -1
+              var diagTraits = String(traitsMatchSameDevice(storedTraits, freshTraits))
               await db.studentActivity.create({
                 data: {
                   studentId: student.id,
                   action: 'device_blocked',
-                  details: 'محاولة دخول من جهاز غريب — النوع: ' + (inDeviceType || 'غير معروف') + ' — الهوية: ' + (current.uuid || 'فاضية') + ' — بصمات: ' + ((current.dv3[0] || current.dv2[0] || 'فاضية').slice(0, 24)),
+                  details: 'محاولة دخول من جهاز غريب — النوع: ' + (inDeviceType || 'غير معروف') + ' — الهوية: ' + (current.uuid || 'فاضية') + ' — بصمات: ' + ((current.dv3[0] || current.dv2[0] || 'فاضية').slice(0, 24)) + ' — التطابق: هوية=' + (diagUuid ? 'نعم' : 'لا') + ' بصمة=' + (diagFp ? 'نعم' : 'لا') + ' مكوّنات=' + diagTraits,
                 },
               })
             }
@@ -374,16 +404,24 @@ export async function GET(request: NextRequest) {
             }
           }
           // جهاز الإنشاء نفسه (هوية أو بصمة مطابقة) → بنحدّث بصمة الإنشاء + المكوّنات
-          // عشان الإنقاذ يفضل شغال بعد تحديثات المتصفح أو لف الشاشة
-          // (آمن: محتاج مطابقة موثوقة لجهاز الإنشاء نفسه)
+          // عشان الإنقاذ يفضل شغال بعد تحديثات المتصفح أو لف الشاشة.
+          // **قاعدة الأمان الجديدة (بعد ما كشفت ثغرة "تسمم المكوّنات")**: المكوّنات
+          // المخزنة لازم تفضل دايمًا تمثل جهاز الإنشاء الأصلي — فبنحدّثها **فقط لو**
+          // مكوّنات الجهاز الداخل مطابقة للمخزنة (نفس الجهاز الفيزيائي فعلًا).
+          // لو جهاز مختلف (داخل بالهوية الصح من أي طريق) → بنحدّث الهوية/البصمة
+          // من غير ما نلمس المكوّنات خالص — عشان مفيش جهاز غريب يبوّظ إنقاذ صاحب
+          // الجهاز الأصلي بعد كده (دي كانت سبب حجب الحساب على موبايل صاحبه نفسه!)
           if (deviceTrusted && creationId && ((current.fp && current.fp !== creationFp) || (freshTraitsStr && freshTraitsStr !== (student as any).deviceTraits))) {
+            var samePhysicalNow = !freshTraits || traitsMatchSameDevice(storedTraits, freshTraits)
             try {
               await db.student.update({
                 where: { id: student.id },
-                data: { creationDeviceFp: current.fp || creationFp, deviceFp: current.fp || storedFp, deviceTraits: freshTraitsStr || ((student as any).deviceTraits || '') },
+                data: samePhysicalNow
+                  ? { creationDeviceFp: current.fp || creationFp, deviceFp: current.fp || storedFp, deviceTraits: freshTraitsStr || ((student as any).deviceTraits || '') }
+                  : { deviceFp: current.fp || storedFp },
               })
-              if (current.fp) { (student as any).creationDeviceFp = current.fp; (student as any).deviceFp = current.fp }
-              if (freshTraitsStr) (student as any).deviceTraits = freshTraitsStr
+              if (current.fp) { (student as any).deviceFp = current.fp; if (samePhysicalNow) (student as any).creationDeviceFp = current.fp }
+              if (samePhysicalNow && freshTraitsStr) (student as any).deviceTraits = freshTraitsStr
             } catch (uErr) {
               console.error('Device fp refresh error:', uErr)
             }

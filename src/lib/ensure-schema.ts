@@ -98,6 +98,12 @@ var SCHEMA_FIXES = [
   // عشان مفيش حساب يتحجب فجأة بعد الترقية. الربط ده بعدها **ثابت** — أي جهاز
   // غريب بيتمنع، والمستر يقدر يعمل "فك الربط" من لوحة التحكم لأي طالب.
   "UPDATE Student SET creationDeviceId = deviceId, creationDeviceFp = deviceFp WHERE (creationDeviceId IS NULL OR creationDeviceId = '') AND ((deviceId IS NOT NULL AND deviceId != '' AND deviceId NOT IN ('null','undefined','dev_null','none')) OR (deviceFp IS NOT NULL AND deviceFp != '' AND deviceFp NOT IN ('null','undefined')))",
+  // ===== ترحيل اسم المنصة بالإنجليزي (لمرة واحدة — idempotent) =====
+  // المستر طلب اسم "Mr. Sherif ElSayed" بالإنجليزي في كل أماكن الهوية —
+  // الترحيل ده يصحح القيم المخزنة في SiteConfig من النشر الأول بدون ما يلمس
+  // أي قيمة الأدمن كتبها بعدها بمفتاح تاني.
+  "UPDATE SiteConfig SET value = 'Mr. Sherif ElSayed' WHERE key IN ('navbar_brand', 'hero_title_line1', 'footer_brand', 'schedule_brand', 'instructor_name_en') AND (value LIKE '%مستر شريف%' OR value LIKE '%منصة مستر%' OR value = 'MR. Sherif ElSayed')",
+  "UPDATE SiteConfig SET value = 'جميع الحقوق محفوظة — Mr. Sherif ElSayed' WHERE key = 'footer_copyright' AND (value LIKE '%مستر شريف%' OR value LIKE '%منصة مستر%')",
   'UPDATE Student SET allowAllDevices = 0 WHERE allowAllDevices IS NULL',
   'UPDATE Video SET price = 0 WHERE price IS NULL',
   'UPDATE Exam SET passScore = 50 WHERE passScore IS NULL',

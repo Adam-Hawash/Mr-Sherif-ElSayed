@@ -49,11 +49,11 @@ export function Navbar() {
   } = useAppStore()
 
   const cfg = siteConfig
-  /* البروفايل: صورة المستر الافتراضية (sherif-profile.png) — والأدمن يقدر يغيرها من لوحة التحكم (profile_photo)
+  /* البروفايل: صورة المستر الافتراضية (sherif-profile.jpg) — والأدمن يقدر يغيرها من لوحة التحكم (profile_photo)
      مستقلة تمامًا عن صورة الهيرو (instructor_photo) عشان الصورة الأصلية تفضل زي ما هي */
-  const instructorPhoto = cfg.profile_photo || '/images/sherif-profile.png'
+  const instructorPhoto = cfg.profile_photo || '/images/sherif-profile.jpg'
   const youtubeLink = cfg.social_youtube || ''
-  const navBrand = cfg.navbar_brand || 'منصة مستر شريف السيد'
+  const navBrand = cfg.navbar_brand || 'Mr. Sherif ElSayed'
   const navSubtitle = cfg.navbar_subtitle || 'الرياضيات بقت أسهل'
 
   const isAuthenticated = !!currentStudent || isAdminLoggedIn
