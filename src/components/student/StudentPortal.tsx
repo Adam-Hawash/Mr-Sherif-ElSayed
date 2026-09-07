@@ -11,7 +11,7 @@ import {
   LogOut, Loader2, FileDown, Bell, PlayCircle, CheckCircle2,
   BookOpen, Target, TrendingUp, GraduationCap, ChevronLeft, ExternalLink,
   User, Phone, Award, Lock, X, ListTodo,
-  HelpCircle, ArrowLeft, Rocket,
+  HelpCircle, ArrowLeft, Rocket, Flag,
 } from 'lucide-react'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import Image from 'next/image'
@@ -19,6 +19,7 @@ import { toast } from 'sonner'
 import type { Video as VideoType, Homework, Exam, Announcement, Discussion, ExamResult } from '@/stores/app-store'
 import { MathKeyboard } from '@/components/student/MathKeyboard'
 import { SecurePlayerModal } from '@/components/student/SecurePlayerModal'
+import { StudentComplaints } from '@/components/student/StudentComplaints'
 import { FractionText } from '@/components/FractionText'
 
 export function StudentPortal() {
@@ -274,6 +275,7 @@ export function StudentPortal() {
     { id: 'exams', label: 'الامتحانات', icon: FileText },
     { id: 'announcements', label: 'التنبيهات', icon: Megaphone },
     { id: 'discussions', label: 'المجتمع', icon: MessageSquare },
+    { id: 'complaints', label: 'الشكاوي', icon: Flag },
   ]
 
   return (
@@ -317,6 +319,7 @@ export function StudentPortal() {
         {activeTab === 'exams' && <ExamsTab exams={dashboardData.exams} results={dashboardData.examResults} completedExamIds={completedExamIds} onExamSubmitted={(id) => setCompletedExamIds(prev => new Set([...prev, id]))} studentId={studentId} />}
         {activeTab === 'announcements' && <AnnouncementsTab announcements={dashboardData.announcements} />}
         {activeTab === 'discussions' && <DiscussionsTab grade={grade} studentId={studentId} studentName={currentStudent?.name || ''} />}
+        {activeTab === 'complaints' && <StudentComplaints studentId={studentId} studentName={currentStudent?.name || ''} studentPhone={currentStudent?.phone || ''} grade={grade} />}
       </div>
     </div>
   )
