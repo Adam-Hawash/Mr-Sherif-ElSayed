@@ -2,16 +2,14 @@
 // ============================================================
 // VideoWatermark — ووترمارك الطالب فوق الفيديو (رقم الطالب المسجل + اسمه)
 // ============================================================
-// طلب المستر (آخر تحديث):
-//  1) عدد الووترمارك أقل — مش كتير قوي (كبّرنا المسافة بين التكرارات).
-//  2) الحجم أصغر — عشان ميفضهماش على الفيديو.
-//  3) أهم حاجة: الاسم والرقم يبانوا **كاملين** — كبّرنا مربع التكرار
-//     والخط أصغر فالاسم الطويل مش بيتقطع.
-//  4) واضح على أي خلفية — أبيض بحدود سوداء (على الأبيض يبان الحد الأسود،
-//     وعلى الغامق يبان النص الأبيض).
-//  5) تفضل ظاهرة في وضع ملء الشاشة — المكون جوه عنصر الـ fullscreen نفسه.
+// طلب المستر (التحديث الأخير):
+//  1) التيل المتكرر بقى **أسود شفاف** بحواف بيضاء خفيفة — واضح على أي خلفية.
+//  2) الكارت المتحرك (اسم + رقم) بقى أكبر وأوضح — أسود شفاف كأنه كارت.
+//  3) الكارت بيطير على **الحواف بس** — ممنوع يقف في نص الشاشة أبدًا،
+//     وبيتحرك حركة ناعمة بطيئة (شوية وشوية) كل 14 ثانية.
+//  4) الاسم الطويل بناخد منه أول اسمين بس عشان يبان كامل.
+//  5) بيفضل ظاهر في وضع ملء الشاشة — المكون جوه عنصر الـ fullscreen نفسه.
 //  6) رقم الطالب المسجل بيه هو الأول والأبرز.
-// - تيل متكرر + شريط متحرك بين الأركان كل 14 ثانية
 // - pointer-events-none فمش بيمنع أي تفاعل مع الفيديو
 // - بيرجع يترسم كل 6 ثواني لو حد شاله من الـ DOM بالـ devtools
 // ============================================================
@@ -22,7 +20,7 @@ export function VideoWatermark({ name, phone }: { name?: string; phone?: string 
   const [tick, setTick] = useState(0)
 
   useEffect(function () {
-    // حركة الشريط المتحرك
+    // حركة الكارت على الحواف — بطيئة وناعمة
     const moveTimer = setInterval(function () { setTick(function (t) { return t + 1 }) }, 14000)
     // إعادة رسم لو حد شال الطبقة من الـ DOM
     const healTimer = setInterval(function () {
@@ -38,21 +36,24 @@ export function VideoWatermark({ name, phone }: { name?: string; phone?: string 
   if (!num && !nm) return null
   const tileLabel = [nm, num].filter(Boolean).join(' • ')
 
-  // الأركان اللي بيلف عليها الشريط
-  const corners = [
-    { top: '8%', left: '6%' },
-    { top: '8%', right: '6%' },
-    { bottom: '16%', left: '6%' },
-    { bottom: '16%', right: '6%' },
+  // مواضع على الحواف بس — top-center وحسنا لأنه حافة، وممنوع المنتصف خالص
+  const spots = [
+    { top: '3.5%', left: '3%' },
+    { top: '3.5%', left: '55%', tx: '-50%' },
+    { top: '3.5%', left: '97%', tx: '-100%' },
+    { top: '72%', left: '97%', tx: '-100%' },
+    { top: '78%', left: '50%', tx: '-50%' },
+    { top: '72%', left: '3%' },
   ]
-  const pos = corners[tick % corners.length]
+  const raw = spots[tick % spots.length]
+  const pos: Record<string, string> = { top: raw.top, left: raw.left }
+  const transform = 'translateX(' + (raw.tx || '0%') + ')'
 
-  // تيل متكرر: نص أصغر (11px) في مربع أطول (640×520) → نسخ أقل بكتير
-  // + الاسم (أول اسمين) والرقم يبانوا كاملين ومش بيغطوا الفيديو
+  // تيل متكرر أسود شفاف بحواف بيضاء — طلب المستر
   const esc = function (s: string) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }
   const svgTile = encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="300">' +
-      '<text x="24" y="150" font-size="14" font-weight="bold" fill="rgba(255,255,255,0.5)" stroke="rgba(0,0,0,0.5)" stroke-width="1.8" paint-order="stroke" transform="rotate(-18 250 150)" font-family="sans-serif">' +
+      '<text x="24" y="150" font-size="14" font-weight="bold" fill="rgba(0,0,0,0.75)" stroke="rgba(255,255,255,0.8)" stroke-width="1.8" paint-order="stroke" transform="rotate(-18 250 150)" font-family="sans-serif">' +
         esc(tileLabel) +
       '</text>' +
     '</svg>'
@@ -66,28 +67,31 @@ export function VideoWatermark({ name, phone }: { name?: string; phone?: string 
       style={{ backgroundImage: 'url("data:image/svg+xml,' + svgTile + '")' }}
       aria-hidden="true"
     >
-      {/* الشريط المتحرك — رقم الطالب فوق واسمه تحته، خلفية معتمة + حدود فتبان على أي لون */}
+      {/* الكارت الطائر — أسود شفاف + حدود بيضاء خفيفة، بيتحرك على الحواف بس */}
       <div
-        className="absolute px-2.5 py-1 rounded-lg text-center"
+        className="absolute rounded-2xl text-center"
         style={{
           ...pos,
-          transition: 'all 700ms ease',
+          transform,
+          transition: 'top 1.6s cubic-bezier(.45,0,.25,1), left 1.6s cubic-bezier(.45,0,.25,1), transform 1.6s cubic-bezier(.45,0,.25,1)',
           direction: 'rtl',
-          background: 'rgba(0,0,0,0.62)',
-          border: '1.5px solid rgba(255,255,255,0.75)',
-          boxShadow: '0 2px 10px rgba(0,0,0,0.65)',
+          background: 'rgba(0,0,0,0.58)',
+          border: '1.5px solid rgba(255,255,255,0.30)',
+          boxShadow: '0 6px 22px rgba(0,0,0,0.5)',
+          padding: '9px 16px',
+          maxWidth: '56%',
         }}
       >
         {num && (
           <p
-            className="text-[11px] sm:text-xs font-extrabold text-white leading-tight"
+            className="text-[15px] sm:text-base font-black text-white leading-tight"
             style={{ textShadow: '0 1px 3px rgba(0,0,0,0.95)', direction: 'ltr', unicodeBidi: 'plaintext' }}
           >
             {num}
           </p>
         )}
         {nm && (
-          <p className="text-[8px] sm:text-[9.5px] font-bold text-white/90 leading-tight max-w-[130px] sm:max-w-[150px] truncate" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.9)' }}>
+          <p className="text-[11px] sm:text-xs font-bold text-white/95 leading-snug max-w-[170px] sm:max-w-[190px] truncate" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.9)' }}>
             {nm}
           </p>
         )}

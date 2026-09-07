@@ -193,11 +193,16 @@ const PLAYER_PAGE = `<!doctype html>
   @keyframes wmFade{0%,49.9%{opacity:1}50%,100%{opacity:0}}
   .tileA{animation:wmFade 4.8s step-end infinite}
   .tileB{animation:wmFade 4.8s step-end infinite reverse}
+  /* كارت الووترمارك — أسود شفاف + اسم الطالب ورقمه — بيتحرك على الحواف بس */
   #wmBadge{position:absolute;z-index:45;pointer-events:none;user-select:none;direction:rtl;text-align:center;
-    padding:4px 10px;border-radius:9px;background:rgba(0,0,0,.62);border:1px solid rgba(255,255,255,.78);
-    box-shadow:0 1px 8px rgba(0,0,0,.6);transition:all .9s ease;max-width:60%}
-  #wmBadge .num{color:#fff;font-weight:800;font-size:14px;line-height:1.25;text-shadow:0 1px 3px rgba(0,0,0,.95);direction:ltr;unicode-bidi:plaintext}
-  #wmBadge .nm{color:rgba(255,255,255,.92);font-weight:700;font-size:10.5px;line-height:1.3;text-shadow:0 1px 3px rgba(0,0,0,.9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:170px}
+    padding:9px 16px;border-radius:14px;background:rgba(0,0,0,.58);border:1.5px solid rgba(255,255,255,.30);
+    box-shadow:0 6px 22px rgba(0,0,0,.5);max-width:56%;
+    transition:top 1.6s cubic-bezier(.45,0,.25,1),left 1.6s cubic-bezier(.45,0,.25,1),transform 1.6s cubic-bezier(.45,0,.25,1)}
+  #wmBadge .num{color:#fff;font-weight:900;font-size:16px;line-height:1.3;text-shadow:0 1px 3px rgba(0,0,0,.95);direction:ltr;unicode-bidi:plaintext}
+  #wmBadge .nm{color:rgba(255,255,255,.95);font-weight:700;font-size:12px;line-height:1.35;text-shadow:0 1px 3px rgba(0,0,0,.9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:190px}
+  /* درع فوق بيقفل شريط عنوان يوتيوب اللي بيظهر لحظة الوقوف */
+  #topShield{position:absolute;top:0;left:0;right:0;height:60px;z-index:22;pointer-events:none;opacity:0;transition:opacity .35s;
+    background:linear-gradient(to bottom,rgba(0,0,0,.92),rgba(0,0,0,.55) 55%,rgba(0,0,0,0))}
   #fsBtn{position:absolute;bottom:10px;left:10px;z-index:50;width:40px;height:40px;border-radius:10px;border:0;cursor:pointer;
     background:rgba(0,0,0,.55);color:#fff;display:flex;align-items:center;justify-content:center;opacity:.75}
   #fsBtn:hover{opacity:1;background:rgba(0,0,0,.75)}
@@ -220,7 +225,8 @@ const PLAYER_PAGE = `<!doctype html>
   #endOv{position:absolute;inset:0;z-index:36;display:none;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(2,2,8,.94)}
   #endOv p{color:#fff;font-size:16px;font-weight:800;margin:0;font-family:system-ui,sans-serif}
   #endOv button{padding:10px 20px;border-radius:10px;border:0;background:rgba(255,255,255,.16);color:#fff;font-weight:700;font-size:14px;cursor:pointer}
-  #logoPatch{position:absolute;top:6px;left:6px;z-index:26;width:64px;height:26px;border-radius:6px;background:rgba(0,0,0,.45);pointer-events:auto}
+  /* باتش مكان لوجو يوتيوب (تحت يمين) — أسود شفاف مع كارت الطالب فوقه */
+  #logoPatch{position:absolute;bottom:8px;right:8px;z-index:26;width:110px;height:40px;border-radius:10px;background:rgba(0,0,0,.55);pointer-events:none}
   /* ===== حماية الفحص ===== */
   #devshield{position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;background:rgba(5,5,10,.92);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
   #devshield .box{text-align:center;color:#e5e7eb;direction:rtl;padding:24px}
@@ -259,8 +265,15 @@ function deobfuscate(b64, key){
 }
 
 /* ===== الووترمارك الذكي ===== */
+/* طلب المستر: الكارت بيطير على الحواف بس — ممنوع يقف في نص الشاشة أبدًا.
+   كل المواضع left/top + transform عشان الحركة تبقى متناسقة وناعمة */
 var WM_POS = [
-  {top:'6%', left:'5%'},{top:'6%', right:'5%'},{bottom:'14%', right:'5%'},{top:'38%', left:'50%'}
+  {t:'3.5%', l:'3%'},
+  {t:'3.5%', l:'55%', tx:'-50%'},
+  {t:'3.5%', l:'97%', tx:'-100%'},
+  {t:'72%', l:'97%', tx:'-100%'},
+  {t:'78%', l:'50%', tx:'-50%'},
+  {t:'72%', l:'3%'}
 ];
 var wmTick = 0;
 /* طلب المستر: الاسم الطويل ناخد منه أول اسمين بس — عشان الرقم والاسم يبانوا كاملين مش مقطوعين */
@@ -282,8 +295,9 @@ function buildWm(){
   var layer = document.createElement('div');
   layer.id = 'wm'; layer.className = 'wm';
   layer.style.opacity = String(CFG.wm.opacity);
-  var tA = document.createElement('div'); tA.className='tile tileA'; tA.style.backgroundImage = wmSvg('rgba(255,255,255,.85)','rgba(0,0,0,.85)');
-  var tB = document.createElement('div'); tB.className='tile tileB'; tB.style.backgroundImage = wmSvg('rgba(0,0,0,.85)','rgba(255,255,255,.85)');
+  /* طلب المستر: الووترمارك أسود شفاف (بحواف بيضاء خفيفة عشان يبان على أي خلفية) */
+  var tA = document.createElement('div'); tA.className='tile tileA'; tA.style.backgroundImage = wmSvg('rgba(0,0,0,.82)','rgba(255,255,255,.9)');
+  var tB = document.createElement('div'); tB.className='tile tileB'; tB.style.backgroundImage = wmSvg('rgba(0,0,0,.66)','rgba(255,255,255,.75)');
   layer.appendChild(tA); layer.appendChild(tB);
   var badge = document.createElement('div');
   badge.id='wmBadge';
@@ -292,11 +306,15 @@ function buildWm(){
   layer.appendChild(badge);
   wrap.appendChild(layer);
 }
+/* درع الشريط العلوي — بيتعمل مرة واحدة بس (حتى لو الووترمارك مطفي) */
+function ensureTopShield(){
+  if(document.getElementById('topShield')) return;
+  var ts = document.createElement('div'); ts.id='topShield'; wrap.appendChild(ts);
+}
 function applyBadgePos(b){
   var p = WM_POS[wmTick % WM_POS.length];
-  b.style.top=''; b.style.left=''; b.style.right=''; b.style.bottom='';
-  if(p.top!==undefined){ b.style.top=p.top; } if(p.bottom!==undefined){ b.style.bottom=p.bottom; }
-  if(p.left!==undefined){ b.style.left=p.left; } if(p.right!==undefined){ b.style.right=p.right; }
+  b.style.top = p.t; b.style.left = p.l;
+  b.style.transform = 'translateX(' + (p.tx || '0%') + ')';
 }
 function rotateBadge(){
   wmTick++;
@@ -333,8 +351,16 @@ function clearRot(){
   wrap.style.position=''; wrap.style.top=''; wrap.style.left=''; wrap.style.transform='';
   wrap.style.width=''; wrap.style.height='';
 }
+/* ===== قص أطراف الـ iframe — يوتيوب بيرسم أي حاجة بره المنطقة الباينة ===== */
+function applyYtCrop(fs){
+  var h = document.getElementById('ytHost');
+  if(!h) return;
+  if(fs){ h.style.width='112%'; h.style.height='132%'; h.style.top='-14%'; h.style.left='-6%'; }
+  else { h.style.width='110%'; h.style.height='120%'; h.style.top='-10%'; h.style.left='-5%'; }
+}
 function layoutWrap(){
   var fs = isFs() || isFakeFs || parentFs;
+  applyYtCrop(fs);
   if(!fs){
     wrap.className='';
     clearRot();
@@ -445,15 +471,17 @@ function svgFs(){ return '<svg width="18" height="18" viewBox="0 0 24 24" fill="
 function fmtT(s){ s=Math.max(0,Math.floor(s||0)); var h=Math.floor(s/3600),m=Math.floor((s%3600)/60),x=s%60; var ss=(x<10?'0':'')+x; return h? (h+':'+(m<10?'0':'')+m+':'+ss) : (m+':'+ss); }
 var seekDragging = false;
 function ytState(){ try{ return playerApi && playerApi.getPlayerState ? playerApi.getPlayerState() : -1; }catch(e){ return -1; } }
-function setPP(playing){ var el=document.getElementById('ppBtn'); if(el) el.innerHTML = playing? svgPause():svgPlay(); var c=document.getElementById('centerOv'); if(c) c.style.display = playing? 'none':'flex'; }
+function setPP(playing){ var el=document.getElementById('ppBtn'); if(el) el.innerHTML = playing? svgPause():svgPlay(); var c=document.getElementById('centerOv'); if(c) c.style.display = playing? 'none':'flex'; var ts=document.getElementById('topShield'); if(ts) ts.style.opacity = playing? '0':'1'; }
 var ctrlTimer = null;
 function showCtrl(autohide){ var b=document.getElementById('ytCtrl'); if(!b) return; b.className=''; if(ctrlTimer)clearTimeout(ctrlTimer); if(autohide) ctrlTimer=setTimeout(function(){ if(ytState()===1) { b=document.getElementById('ytCtrl'); if(b) b.className='hide'; } }, 3200); }
 function mountYouTube(){
   var ytId = deobfuscate(CFG.blob, CFG.key);
   if(!ytId){ wrap.innerHTML = '<p style="color:#fca5a5;font-family:sans-serif;padding:24px;direction:rtl">حصل خطأ في تحميل الفيديو</p>'; return; }
   // الطبقة الداخلية: iframe بيتعمله inject بالجافاسكريبت — مش مكتوب في مصدر الصفحة
+  // الـ iframe مكبّر ومقصوص من كل الجهات (CROP) — أي واجهة يوتيوب (عنوان/قناة/لوجو)
+  // بتترسم بره المنطقة اللي باينة خالص. المميز فوق والباتش تحت تغطية إضافية.
   var host = document.createElement('div');
-  host.id = 'ytHost'; host.style.cssText = 'position:absolute;inset:0;width:100%;height:100%';
+  host.id = 'ytHost'; host.style.cssText = 'position:absolute;width:110%;height:120%;top:-10%;left:-5%';
   wrap.appendChild(host);
   // شاشة البداية (بتغطي أي عنوان/برanding بتاع يوتيوب لحظة التحميل)
   var startOv = document.createElement('div');
@@ -566,6 +594,7 @@ function mountFile(){
 
 /* ===== تشغيل ===== */
 buildWm();
+ensureTopShield();
 layoutWrap();
 if(CFG.kind === 'youtube') mountYouTube(); else if(CFG.kind === 'file') mountFile();
 
