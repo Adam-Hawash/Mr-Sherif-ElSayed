@@ -112,6 +112,21 @@ export function AdminDashboard() {
   const [instapay, setInstapay] = useState('')
   const [fawry, setFawry] = useState('')
   const [paymentSaving, setPaymentSaving] = useState(false)
+  // عداد الشكاوى الجديدة — بيدور كل دقيقة عشان المستر يشوف الشكاوى أول بأول
+  const [newComplaints, setNewComplaints] = useState(0)
+  useEffect(function () {
+    var alive = true
+    async function loadComplaintCount() {
+      try {
+        var r = await fetch('/api/complaints?status=new')
+        var d = await r.json()
+        if (alive) setNewComplaints(Number(d.newCount || 0))
+      } catch (e) { /* صامت */ }
+    }
+    loadComplaintCount()
+    var t = setInterval(loadComplaintCount, 60000)
+    return function () { alive = false; clearInterval(t) }
+  }, [])
 
   const fetchStats = async () => {
     try {
@@ -234,7 +249,7 @@ export function AdminDashboard() {
             <TabsTrigger value="social" className="text-xs sm:text-sm gap-1"><Link2 className="h-4 w-4" /><span className="hidden sm:inline">الروابط</span></TabsTrigger>
             <TabsTrigger value="payments" className="text-xs sm:text-sm gap-1 text-amber-600 dark:text-amber-400"><Wallet className="h-4 w-4" /><span className="hidden sm:inline">المدفوعات</span></TabsTrigger>
             <TabsTrigger value="ai-extract" className="text-xs sm:text-sm gap-1 text-purple-600 dark:text-purple-400"><Sparkles className="h-4 w-4" /><span className="hidden sm:inline">استخراج AI</span></TabsTrigger>
-            <TabsTrigger value="complaints" className="text-xs sm:text-sm gap-1 text-red-600 dark:text-red-400"><Flag className="h-4 w-4" /><span className="hidden sm:inline">الشكاوي</span></TabsTrigger>
+            <TabsTrigger value="complaints" className="text-xs sm:text-sm gap-1 text-red-600 dark:text-red-400"><Flag className="h-4 w-4" /><span className="hidden sm:inline">الشكاوي</span>{newComplaints > 0 && <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold">{newComplaints}</span>}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="students"><StudentsManager onStatsRefresh={fetchStats} onViewImage={setImageModalSrc} /></TabsContent>
