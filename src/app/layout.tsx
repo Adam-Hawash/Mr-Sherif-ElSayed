@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
+import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AIAssistant } from "@/components/student/AIAssistant";
 
@@ -80,6 +81,8 @@ export default async function RootLayout({
         <ThemeProvider>{children}</ThemeProvider>
         <AIAssistant />
         <Toaster />
+        {/* Toaster بتاع sonner — كل رسائل التنبيه في المنصة بتستخدمه */}
+        <SonnerToaster position="top-center" richColors closeButton expand={false} />
       </body>
     </html>
   );
