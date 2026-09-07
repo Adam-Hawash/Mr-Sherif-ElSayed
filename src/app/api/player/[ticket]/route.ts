@@ -194,13 +194,33 @@ const PLAYER_PAGE = `<!doctype html>
   .tileA{animation:wmFade 4.8s step-end infinite}
   .tileB{animation:wmFade 4.8s step-end infinite reverse}
   #wmBadge{position:absolute;z-index:45;pointer-events:none;user-select:none;direction:rtl;text-align:center;
-    padding:3px 8px;border-radius:8px;background:rgba(0,0,0,.62);border:1px solid rgba(255,255,255,.78);
+    padding:4px 10px;border-radius:9px;background:rgba(0,0,0,.62);border:1px solid rgba(255,255,255,.78);
     box-shadow:0 1px 8px rgba(0,0,0,.6);transition:all .9s ease;max-width:60%}
-  #wmBadge .num{color:#fff;font-weight:800;font-size:12px;line-height:1.25;text-shadow:0 1px 3px rgba(0,0,0,.95);direction:ltr;unicode-bidi:plaintext}
-  #wmBadge .nm{color:rgba(255,255,255,.92);font-weight:700;font-size:9px;line-height:1.3;text-shadow:0 1px 3px rgba(0,0,0,.9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
+  #wmBadge .num{color:#fff;font-weight:800;font-size:14px;line-height:1.25;text-shadow:0 1px 3px rgba(0,0,0,.95);direction:ltr;unicode-bidi:plaintext}
+  #wmBadge .nm{color:rgba(255,255,255,.92);font-weight:700;font-size:10.5px;line-height:1.3;text-shadow:0 1px 3px rgba(0,0,0,.9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:170px}
   #fsBtn{position:absolute;bottom:10px;left:10px;z-index:50;width:40px;height:40px;border-radius:10px;border:0;cursor:pointer;
     background:rgba(0,0,0,.55);color:#fff;display:flex;align-items:center;justify-content:center;opacity:.75}
   #fsBtn:hover{opacity:1;background:rgba(0,0,0,.75)}
+  /* ===== كنترولز بتاعتنا (بدون أي شكل يوتيوب) ===== */
+  #tapLayer{position:absolute;inset:0;z-index:20;background:transparent}
+  #ytCtrl{position:absolute;bottom:0;left:0;right:0;z-index:30;display:flex;align-items:center;gap:9px;direction:rtl;
+    padding:10px 12px 12px;background:linear-gradient(to top,rgba(0,0,0,.85),rgba(0,0,0,.5) 65%,transparent);transition:opacity .3s}
+  #ytCtrl.hide{opacity:0;pointer-events:none}
+  #ppBtn,#fsInBar{width:38px;height:38px;border-radius:10px;border:0;background:rgba(255,255,255,.16);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto}
+  #ppBtn:hover,#fsInBar:hover{background:rgba(255,255,255,.26)}
+  #seek{flex:1;-webkit-appearance:none;appearance:none;height:5px;border-radius:4px;background:rgba(255,255,255,.3);outline:0;cursor:pointer;min-width:50px;margin:0}
+  #seek::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.6)}
+  #seek::-moz-range-thumb{width:15px;height:15px;border:0;border-radius:50%;background:#fff}
+  #tTime{color:#fff;font-size:12px;font-weight:600;direction:ltr;white-space:nowrap;font-family:system-ui,sans-serif;opacity:.95}
+  #centerOv{position:absolute;inset:0;z-index:25;display:none;align-items:center;justify-content:center;pointer-events:none}
+  #centerOv .big{width:72px;height:72px;border-radius:50%;background:rgba(0,0,0,.62);border:1px solid rgba(255,255,255,.28);display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:0 4px 24px rgba(0,0,0,.55)}
+  #startOv{position:absolute;inset:0;z-index:35;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:rgba(2,2,8,.92);cursor:pointer}
+  #startOv .big{width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.35);display:flex;align-items:center;justify-content:center;color:#fff}
+  #startOv p{color:#fff;font-size:14px;font-weight:700;margin:0;font-family:system-ui,sans-serif}
+  #endOv{position:absolute;inset:0;z-index:36;display:none;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(2,2,8,.94)}
+  #endOv p{color:#fff;font-size:16px;font-weight:800;margin:0;font-family:system-ui,sans-serif}
+  #endOv button{padding:10px 20px;border-radius:10px;border:0;background:rgba(255,255,255,.16);color:#fff;font-weight:700;font-size:14px;cursor:pointer}
+  #logoPatch{position:absolute;top:6px;left:6px;z-index:26;width:64px;height:26px;border-radius:6px;background:rgba(0,0,0,.45);pointer-events:auto}
   /* ===== حماية الفحص ===== */
   #devshield{position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;background:rgba(5,5,10,.92);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
   #devshield .box{text-align:center;color:#e5e7eb;direction:rtl;padding:24px}
@@ -240,7 +260,7 @@ function deobfuscate(b64, key){
 
 /* ===== الووترمارك الذكي ===== */
 var WM_POS = [
-  {top:'6%', left:'5%'},{top:'6%', right:'5%'},{bottom:'14%', right:'5%'}
+  {top:'6%', left:'5%'},{top:'6%', right:'5%'},{bottom:'14%', right:'5%'},{top:'38%', left:'50%'}
 ];
 var wmTick = 0;
 /* طلب المستر: الاسم الطويل ناخد منه أول اسمين بس — عشان الرقم والاسم يبانوا كاملين مش مقطوعين */
@@ -248,11 +268,11 @@ function shortName(n){ var p = String(n||'').trim().split(/\s+/); return p.slice
 function wmSvg(colorFill, colorStroke){
   var label = (CFG.wm.phone || '') + ((CFG.wm.phone && CFG.wm.name) ? ' • ' : '') + shortName(CFG.wm.name);
   if(!label) return '';
-  // طلب المستر (التحديث الأخير): الووترمارك يشيل منهم اتنين ويبقى أصغر —
-  // مربع تكرار أطول (640×520 بدل 620×360) → نسخ أقل بكتير على الشاشة،
-  // وخط أصغر (11px بدل 13.5) عشان الرقم والاسم يبانوا من غير ما يغطوا الفيديو
-  var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="520">' +
-    '<text x="28" y="260" font-size="11" font-weight="bold" font-family="sans-serif" fill="' + colorFill + '" stroke="' + colorStroke + '" stroke-width="1.8" paint-order="stroke" transform="rotate(-18 320 260)">' + esc(label) + '</text></svg>';
+  // طلب المستر (التحديث الأخير): الووترمارك بقت صغيرة أوي — رجّعنا الـ 2 اللي اتشالوا
+  // وكبّرنا الخط: مربع 500×300 (بدل 640×520) → ~6 نسخ ظاهرين بدل 3-4،
+  // وخط 14px (بدل 11) عشان الاسم والرقم يبانوا واضحين من غير ما يغطوا الفيديو
+  var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="300">' +
+    '<text x="24" y="150" font-size="14" font-weight="bold" font-family="sans-serif" fill="' + colorFill + '" stroke="' + colorStroke + '" stroke-width="1.8" paint-order="stroke" transform="rotate(-18 250 150)">' + esc(label) + '</text></svg>';
   return 'url("data:image/svg+xml,' + encodeURIComponent(svg) + '")';
 }
 function buildWm(){
@@ -416,8 +436,18 @@ setInterval(function(){
   }
 }, 1200);
 
-/* ===== مشغّل يوتيوب (الـ ID بيتفك في الذاكرة بس) ===== */
+/* ===== مشغّل يوتيوب — بدون أي شكل يوتيوب: كنترولز خاصة بينا + شاشات تغطية
+   بتمنع ظهور العنوان/اللوجو نهائيًا. الـ ID بيتفك في الذاكرة بس زي ما هو ===== */
 var playerApi = null;
+function svgPlay(){ return '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>'; }
+function svgPause(){ return '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>'; }
+function svgFs(){ return '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>'; }
+function fmtT(s){ s=Math.max(0,Math.floor(s||0)); var h=Math.floor(s/3600),m=Math.floor((s%3600)/60),x=s%60; var ss=(x<10?'0':'')+x; return h? (h+':'+(m<10?'0':'')+m+':'+ss) : (m+':'+ss); }
+var seekDragging = false;
+function ytState(){ try{ return playerApi && playerApi.getPlayerState ? playerApi.getPlayerState() : -1; }catch(e){ return -1; } }
+function setPP(playing){ var el=document.getElementById('ppBtn'); if(el) el.innerHTML = playing? svgPause():svgPlay(); var c=document.getElementById('centerOv'); if(c) c.style.display = playing? 'none':'flex'; }
+var ctrlTimer = null;
+function showCtrl(autohide){ var b=document.getElementById('ytCtrl'); if(!b) return; b.className=''; if(ctrlTimer)clearTimeout(ctrlTimer); if(autohide) ctrlTimer=setTimeout(function(){ if(ytState()===1) { b=document.getElementById('ytCtrl'); if(b) b.className='hide'; } }, 3200); }
 function mountYouTube(){
   var ytId = deobfuscate(CFG.blob, CFG.key);
   if(!ytId){ wrap.innerHTML = '<p style="color:#fca5a5;font-family:sans-serif;padding:24px;direction:rtl">حصل خطأ في تحميل الفيديو</p>'; return; }
@@ -425,13 +455,50 @@ function mountYouTube(){
   var host = document.createElement('div');
   host.id = 'ytHost'; host.style.cssText = 'position:absolute;inset:0;width:100%;height:100%';
   wrap.appendChild(host);
+  // شاشة البداية (بتغطي أي عنوان/برanding بتاع يوتيوب لحظة التحميل)
+  var startOv = document.createElement('div');
+  startOv.id='startOv';
+  startOv.innerHTML = '<div class="big"><svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg></div><p>اضغط للمشاهدة</p>';
+  startOv.addEventListener('click', function(){ try{ if(playerApi&&playerApi.playVideo) playerApi.playVideo(); }catch(e){} showCtrl(true); });
+  wrap.appendChild(startOv);
+  // طبقة النقر — بتلقط التابات بدل ما توصل ليوتيوب
+  var tap = document.createElement('div'); tap.id='tapLayer';
+  tap.addEventListener('click', function(){
+    try{ if(playerApi&&playerApi.getPlayerState){ if(playerApi.getPlayerState()===YT.PlayerState.PLAYING) playerApi.pauseVideo(); else playerApi.playVideo(); } }catch(e){}
+    showCtrl(true);
+  });
+  wrap.appendChild(tap);
+  // شاشة التوقف (بتغطي أي حاجة يوتيوب بيعرضها وقت الوقوف)
+  var centerOv = document.createElement('div'); centerOv.id='centerOv'; centerOv.innerHTML='<div class="big">'+svgPlay()+'</div>';
+  wrap.appendChild(centerOv);
+  // باتش صغير فوق مكان لوجو يوتيوب (لو ظهر) — شكل خفيف مش لوجو
+  var patch = document.createElement('div'); patch.id='logoPatch'; wrap.appendChild(patch);
+  // شاشة النهاية (بتغطي شاشة يوتيوب النهائية بالعنوان)
+  var endOv = document.createElement('div'); endOv.id='endOv';
+  endOv.innerHTML = '<p>🎉 خلصت الفيديو — برافو عليك!</p><button type="button" id="replayBtn">شوفه تاني ↺</button>';
+  wrap.appendChild(endOv);
+  // كنترولز بتاعتنا: تشغيل/إيقاف + شريط تقدم + الوقت + ملء الشاشة
+  var bar = document.createElement('div'); bar.id='ytCtrl';
+  bar.innerHTML = '<button id="ppBtn" type="button" aria-label="تشغيل/إيقاف">'+svgPlay()+'</button>' +
+    '<input id="seek" type="range" min="0" max="1000" step="1" value="0" aria-label="شريط التقدم">' +
+    '<span id="tTime">0:00 / 0:00</span>' +
+    '<button id="fsInBar" type="button" aria-label="ملء الشاشة">'+svgFs()+'</button>';
+  wrap.appendChild(bar);
+  var pp = document.getElementById('ppBtn');
+  pp.addEventListener('click', function(e){ e.stopPropagation(); try{ if(ytState()===1) playerApi.pauseVideo(); else playerApi.playVideo(); }catch(err){} showCtrl(true); });
+  document.getElementById('fsInBar').addEventListener('click', function(e){ e.stopPropagation(); toggleFs(); });
+  document.getElementById('replayBtn').addEventListener('click', function(e){ e.stopPropagation(); try{ playerApi.seekTo(0,true); playerApi.playVideo(); }catch(err){} });
+  var seekEl = document.getElementById('seek');
+  seekEl.addEventListener('input', function(){ seekDragging = true; try{ var d=playerApi.getDuration()||0; document.getElementById('tTime').textContent = fmtT(seekEl.value/1000*d) + ' / ' + fmtT(d); }catch(e){} });
+  seekEl.addEventListener('change', function(){ try{ var d=playerApi.getDuration()||0; if(d) playerApi.seekTo(seekEl.value/1000*d, true); }catch(e){} seekDragging=false; showCtrl(true); });
   var tag = document.createElement('script');
   tag.src = 'https://www.youtube.com/iframe_api';
   document.head.appendChild(tag);
   window.onYouTubeIframeAPIReady = function(){
     playerApi = new YT.Player('ytHost', {
       videoId: ytId,
-      playerVars: { autoplay:1, controls:1, rel:0, modestbranding:1, playsinline:1, iv_load_policy:3, fs:0, disablekb:1, enablejsapi:1, origin: location.origin },
+      // controls:0 → مفيش أي واجهة يوتيوب (لا عنوان ولا لوجو لا حاجة) — كل الكنترولز بتاعتنا
+      playerVars: { autoplay:1, controls:0, rel:0, modestbranding:1, playsinline:1, iv_load_policy:3, fs:0, disablekb:1, enablejsapi:1, origin: location.origin },
       events: {
         onReady: function(ev){
           try{ if(CFG.resume > 5) ev.target.seekTo(CFG.resume, true); }catch(e){}
@@ -442,15 +509,34 @@ function mountYouTube(){
           try{
             if(ev.data === YT.PlayerState.PLAYING){
               try{ ev.target.setPlaybackQuality('large'); }catch(e){}
+              var so=document.getElementById('startOv'); if(so) so.style.display='none';
+              var eo=document.getElementById('endOv'); if(eo) eo.style.display='none';
+              setPP(true); showCtrl(true);
+            } else if(ev.data === YT.PlayerState.PAUSED){
+              setPP(false); showCtrl(false);
+            } else if(ev.data === YT.PlayerState.ENDED){
+              setPP(false);
+              var eo2=document.getElementById('endOv'); if(eo2) eo2.style.display='flex';
+              reportEnded();
             }
-            if(ev.data === YT.PlayerState.ENDED) reportEnded();
           }catch(e){}
         }
       }
     });
     setInterval(function(){
-      try{ if(playerApi && playerApi.getCurrentTime) reportProgress(playerApi.getCurrentTime(), playerApi.getDuration() || 0); }catch(e){}
-    }, 5000);
+      try{
+        if(playerApi && playerApi.getCurrentTime){
+          var cur = playerApi.getCurrentTime() || 0, dur = playerApi.getDuration() || 0;
+          reportProgress(cur, dur);
+          if(!seekDragging){
+            var se = document.getElementById('seek');
+            if(se && dur) se.value = String(Math.round(cur/dur*1000));
+            var tt = document.getElementById('tTime');
+            if(tt) tt.textContent = fmtT(cur) + ' / ' + fmtT(dur);
+          }
+        }
+      }catch(e){}
+    }, 1000);
   };
 }
 
@@ -483,13 +569,11 @@ buildWm();
 layoutWrap();
 if(CFG.kind === 'youtube') mountYouTube(); else if(CFG.kind === 'file') mountFile();
 
-/* زرار ملء الشاشة ليوتيوب برضه (عشان الووترمارك يفضل ظاهر) */
+/* زرار ملء الشاشة للملفات (ليوتيوب الزرار جوه الكنترولز بتاعته) */
+if(CFG.kind === 'file'){
+  /* mounted جوه mountFile */
+}
 if(CFG.kind === 'youtube'){
-  var ybtn = document.createElement('button');
-  ybtn.id = 'fsBtn'; ybtn.type='button'; ybtn.setAttribute('aria-label','ملء الشاشة');
-  ybtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
-  ybtn.addEventListener('click', function(e){ e.stopPropagation(); toggleFs(); });
-  wrap.appendChild(ybtn);
   wrap.addEventListener('dblclick', function(){ toggleFs(); });
 }
 </script>

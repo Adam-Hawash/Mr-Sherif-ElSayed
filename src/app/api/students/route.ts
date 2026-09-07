@@ -130,13 +130,9 @@ export async function GET(request: NextRequest) {
         //    بالهوية الجديدة فالحساب يفضل مقفول على نفس الجهاز الفعلي.
         var fpOk = !!storedFp && storedFp.indexOf('dv3_') === 0 && !!current.fp && current.fp === storedFp && !uuidOk
         // 3) ترقية dv2_: حسابات عصر البصمة القديمة لسه بيبعت نفس القيمة
+        //    (من غير أي ربط تلقائي — لو القيمة مش مطابقة يبقى جهاز غريب)
         var legacyUpgrade = !storedId && !!storedFp && storedFp.indexOf('dv2_') === 0 && !!current.fp && current.fp === storedFp
-        // 4) استصحار حسابات dv2_: الجهاز الأصلي نفسه مش بيبعت القيمة القديمة تاني
-        //    (الكود الجديد بيكتب فوقها) فكانت بتفضل مقفولة للأبد حتى على جهازها —
-        //    أول جهاز يدخل بالرقم والباسورد الصح بياخد الربط نهائيًا، والحساب
-        //    يرجع مقفول على جهازه زي أي حساب (مرة واحدة بس).
-        var legacyClaim = !storedId && !!storedFp && storedFp.indexOf('dv2_') === 0 && (!!current.uuid || !!current.fp) && !legacyUpgrade
-        var deviceTrusted = uuidOk || fpOk || legacyUpgrade || legacyClaim
+        var deviceTrusted = uuidOk || fpOk || legacyUpgrade
         var hasBinding = !!storedId || !!storedFp
         // الجهاز الحالي مش جهاز الحساب → مرفوض فورًا (حتى لو المتصفح مبعتش قيم)
         if (hasBinding && !deviceTrusted && !(student as any).allowAllDevices) {
@@ -144,13 +140,13 @@ export async function GET(request: NextRequest) {
             {
               students: [],
               deviceBlocked: true,
-              error: '🚫 لازم تدخل بالجهاز اللي انت عملت من عليه الحساب — الحساب ده مربوط بجهاز واحد بس. لو جهازك اتغيّر، كلمن المستر يعمل لك سماح من لوحة التحكم.',
+              error: '🚫 لازم تدخل بالجهاز اللي انت عملت من عليه الحساب — الحساب ده مربوط بجهاز واحد بس.',
             },
             { status: 403 }
           )
         }
-        // ترقية/استصحار الحساب القديم: بيتقفل على هوية الجهاز ده نهائيًا
-        if ((legacyUpgrade || legacyClaim) && (current.uuid || current.fp)) {
+        // ترقية الحساب القديم: بيتقفل على هوية الجهاز ده نهائيًا
+        if (legacyUpgrade && (current.uuid || current.fp)) {
           try {
             await db.student.update({
               where: { id: student.id },
@@ -159,7 +155,7 @@ export async function GET(request: NextRequest) {
             ;(student as any).deviceId = current.uuid || current.fp
             try {
               await db.studentActivity.create({
-                data: { studentId: student.id, action: 'device_rebound', details: 'ترقية ربط الحساب القديم لجهاز جديد نهائيًا' },
+                data: { studentId: student.id, action: 'device_rebound', details: 'ترقية ربط الحساب القديم (dv2) لجهازه نهائيًا' },
               })
             } catch (aErr) {}
           } catch (upErr) {
