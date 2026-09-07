@@ -18,7 +18,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { db } from '@/lib/db'
-import { getYouTubeId, mediaIdFromPath, signVideoToken } from '@/lib/video-guard'
+import { getYouTubeId, mediaIdFromPath, signVideoToken, ensurePlayTicketTable } from '@/lib/video-guard'
 
 export const dynamic = 'force-dynamic'
 
@@ -53,7 +53,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     if (!ticket) return pageError('تذكرة التشغيل ناقصة — اقفل المشغل وافتح الفيديو من الأول.', 400)
 
-    const row = await db.playTicket.findUnique({ where: { id: ticket } })
+    // self-heal: لو جدول التذاكر ناقص بنعمله الأول عشان الاستعلام ميطقعش
+    await ensurePlayTicketTable()
+    let row: any = null
+    try {
+      row = await db.playTicket.findUnique({ where: { id: ticket } })
+    } catch (e) {
+      // محاولة أخيرة بعد التأكد من الجدول (بقوة — لو اتمسح والموقع شغال)
+      await ensurePlayTicketTable(true)
+      try { row = await db.playTicket.findUnique({ where: { id: ticket } }) } catch (e2) { row = null }
+    }
     if (!row) return pageError('تذكرة التشغيل مش موجودة — اقفل المشغل وافتح الفيديو من الأول.', 403)
     if (row.consumed) return pageError('تذكرة التشغيل اتاستخدمت خلاص — اقفل المشغل وافتح الفيديو من الأول.', 403)
     if (new Date(row.expiresAt).getTime() < Date.now()) return pageError('تذكرة التشغيل خلصت صلاحيتها — اقفل المشغل وافتح الفيديو من الأول.', 403)
@@ -220,7 +229,10 @@ function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')
 /* ===== فك تشفير معرف اليوتيوب في الذاكرة بس ===== */
 function deobfuscate(b64, key){
   try{
-    var kb = atob(key), pb = atob(b64), out = '';
+    // الإصلاح المهم: السيرفر بيعمل XOR بالبايتات الخام لنص المفتاح نفسه
+    // (المفتاح base64url — atob بترفضه وبترجع غلط فالفيديو مش بيفتح أبدًا).
+    // بنستخدم نص المفتاح زي ما هو كباد XOR — مطابق تمامًا للسيرفر.
+    var kb = String(key), pb = atob(b64), out = '';
     for(var i=0;i<pb.length;i++){ out += String.fromCharCode(pb.charCodeAt(i) ^ kb.charCodeAt(i % kb.length)); }
     return out;
   }catch(e){ return ''; }

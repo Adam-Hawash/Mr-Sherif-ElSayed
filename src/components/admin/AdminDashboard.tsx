@@ -11,7 +11,6 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
-import { Switch } from '@/components/ui/switch'
 import {
   Users, UserCheck, Clock, ClipboardList, FileText,
   Megaphone, Plus, Check, X, Trash2, LogOut, Loader2,
@@ -414,30 +413,9 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
 
   useEffect(() => { loadStudents() }, [filter, filterGrade])
 
-  // ===== مفتاح قفل الأجهزة العام (المستر يتحكم فيه) =====
-  const [deviceLock, setDeviceLock] = useState(false)
-  useEffect(function () {
-    fetch('/api/site-config').then(function (r) { return r.json() }).then(function (cfgs) {
-      var arr = Array.isArray(cfgs) ? cfgs : []
-      for (var i = 0; i < arr.length; i++) {
-        if (arr[i] && arr[i].key === 'device_lock') setDeviceLock(arr[i].value === '1')
-      }
-    }).catch(function () {})
-  }, [])
-  const toggleDeviceLock = async function (on: boolean) {
-    var prev = deviceLock
-    setDeviceLock(on)
-    try {
-      var res = await fetch('/api/site-config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'device_lock', value: on ? '1' : '0' }) })
-      if (!res.ok) throw new Error()
-      toast.success(on
-        ? 'قفل الأجهزة شغال 🔒 — الحساب بيشتغل على جهازه بس (وبصمة ناتج الجهاز فنفس الجهاز بيدخل دايمًا)'
-        : 'قفل الأجهزة مطفي — الدخول حر من أي جهاز ومفيش حاجة بتتقفل')
-    } catch {
-      setDeviceLock(prev)
-      toast.error('خطأ في تحديث إعدادات القفل')
-    }
-  }
+  // ملاحظة: قفل الأجهزة بقى صارم ودايمًا (شغال على السيرفر من غير مفتاح) —
+  // الحساب بيتقفل على الجهاز اللي اتعمل بيه بس، والتحكم بيبقى لكل طالب
+  // من زرار "سماح" في إدارة الطلاب.
 
   const loadStudentProgress = async (studentId: string) => {
     setSelectedStudentId(studentId)
@@ -583,11 +561,6 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
                 </Button>
               ))}
             </div>
-            <div className="flex items-center gap-1.5 rounded-lg border px-2 py-1" title="لما يشتغل: الحساب بيتقفل على جهاز الطالب بس (بصمة ناتج الجهاز — نفس الجهاز بيدخل حتى لو مسح بيانات المتصفح). لما يتطفي: الدخول حر من أي جهاز">
-              <Smartphone className={'h-3.5 w-3.5 ' + (deviceLock ? 'text-emerald-600' : 'text-muted-foreground')} />
-              <span className="text-[10px] font-medium text-muted-foreground">قفل الأجهزة</span>
-              <Switch checked={deviceLock} onCheckedChange={toggleDeviceLock} className="scale-90" />
-            </div>
           </div>
         </div>
       </CardHeader>
@@ -674,13 +647,7 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
   const [uploading, setUploading] = useState(false)
   const [uploadStatus, setUploadStatus] = useState('')
   const [filterGrade, setFilterGrade] = useState('')
-  const [scheduleOpen, setScheduleOpen] = useState(false)
-  const [selectedVideoForSchedule, setSelectedVideoForSchedule] = useState<Video | null>(null)
-  const [scheduleStudents, setScheduleStudents] = useState<string[]>([])
-  const [hiddenStudents, setHiddenStudents] = useState<string[]>([])
-  const [scheduleUnlockAt, setScheduleUnlockAt] = useState('')
-  const [scheduleSaving, setScheduleSaving] = useState(false)
-  const [allStudents, setAllStudents] = useState<any[]>([])
+  // ملاحظة: خاصية الجدولة (العداد/الإخفاء للفيديوهات) اتشالت خالص بطلب المستر
   const videoFileRef = useRef<HTMLInputElement>(null)
   const thumbFileRef = useRef<HTMLInputElement>(null)
 
@@ -775,68 +742,6 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
       loadVideos(false)
       onStatsRefresh()
     } catch { toast.error('خطأ في الحذف') }
-  }
-
-  const loadStudentsForSchedule = async (grade: string) => {
-    try {
-      var res = await fetch('/api/students?pageSize=200' + (grade ? '&grade=' + encodeURIComponent(grade) : ''))
-      var data = await res.json()
-      setAllStudents((data.students || []).filter(function(s: any) { return s.status === 'approved' || s.status === 'paid' }))
-    } catch { setAllStudents([]) }
-  }
-
-  const loadExistingSchedule = async (videoId: string) => {
-    try {
-      var res = await fetch('/api/video-schedule?videoId=' + videoId)
-      var data = await res.json()
-      if (data.schedules && data.schedules.length > 0) {
-        var sch = data.schedules[0]
-        setScheduleStudents(sch.studentIds || [])
-        setHiddenStudents(sch.hiddenStudentIds || [])
-        if (sch.unlockAt) {
-          var d = new Date(sch.unlockAt)
-          var local = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
-          setScheduleUnlockAt(local.toISOString().slice(0, 16))
-        } else {
-          setScheduleUnlockAt('')
-        }
-      } else {
-        setScheduleStudents([])
-        setHiddenStudents([])
-        setScheduleUnlockAt('')
-      }
-    } catch {}
-  }
-
-  const handleScheduleSave = async () => {
-    if (!selectedVideoForSchedule) return
-    if (!scheduleUnlockAt && scheduleStudents.length === 0 && hiddenStudents.length === 0) {
-      toast.error('حدد وقت أو طلاب للجدولة أو الإخفاء')
-      return
-    }
-    setScheduleSaving(true)
-    try {
-      var res = await fetch('/api/video-schedule', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          videoId: selectedVideoForSchedule.id,
-          studentIds: scheduleStudents,
-          unlockAt: scheduleUnlockAt ? new Date(scheduleUnlockAt).toISOString() : null,
-          hiddenStudentIds: hiddenStudents,
-        }),
-      })
-      if (res.ok) {
-        toast.success('تم الحفظ - الجدولة والإخفاء')
-        setScheduleOpen(false)
-        setScheduleStudents([])
-        setHiddenStudents([])
-        setScheduleUnlockAt('')
-      } else {
-        toast.error('فشل الحفظ')
-      }
-    } catch { toast.error('خطأ في الاتصال') }
-    setScheduleSaving(false)
   }
 
   const getYouTubeId = (url: string) => {
@@ -986,9 +891,6 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
                     </div>
                     <p className="text-[10px] text-muted-foreground">{new Date(v.createdAt).toLocaleDateString('ar-EG')}</p>
                     <div className="flex items-center gap-1">
-                      <Button size="sm" variant="ghost" className="flex-1 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-xs h-7" onClick={() => { setSelectedVideoForSchedule(v); setScheduleOpen(true) }}>
-                        <Clock className="h-3.5 w-3.5 mr-1" />جدولة
-                      </Button>
                       <Button size="sm" variant="ghost" className="flex-1 text-destructive hover:text-destructive hover:bg-destructive/10 text-xs h-7" onClick={() => handleDelete(v.id)}>
                         <Trash2 className="h-3.5 w-3.5 mr-1" />حذف
                       </Button>
@@ -1001,107 +903,6 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
         )}
       </CardContent>
 
-      {/* Schedule popup - select students + unlock time */}
-      {scheduleOpen && selectedVideoForSchedule && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setScheduleOpen(false)}>
-          <div className="bg-card border border-border rounded-xl p-5 shadow-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto" onClick={function(e) { e.stopPropagation() }}>
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <h3 className="font-bold text-sm">جدولة فيديو: {selectedVideoForSchedule.title}</h3>
-                <p className="text-[10px] text-muted-foreground">حدد الطلاب اللي مش هتشوف الفيديو غير بعد الوقت ده</p>
-              </div>
-              <button type="button" onClick={() => setScheduleOpen(false)} className="text-muted-foreground hover:text-foreground">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            {/* Unlock time */}
-            <div className="mb-3">
-              <Label className="text-xs font-semibold">وقت فتح الفيديو</Label>
-              <Input
-                type="datetime-local"
-                value={scheduleUnlockAt}
-                onChange={function(e) { setScheduleUnlockAt(e.target.value) }}
-                className="mt-1"
-              />
-              <p className="text-[10px] text-muted-foreground mt-1">الطلاب المحددين هيشوفوا عداد تنازلي لحد الوقت ده</p>
-            </div>
-
-            {/* Select students for scheduling */}
-            <div className="mb-3">
-              <div className="flex items-center justify-between mb-2">
-                <Label className="text-xs font-semibold">جدولة: الطلاب اللي هيشوفوا عداد ({scheduleStudents.length})</Label>
-                <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={() => { loadStudentsForSchedule(selectedVideoForSchedule.grade); loadExistingSchedule(selectedVideoForSchedule.id) }}>
-                  تحميل + عرض الموجود
-                </Button>
-              </div>
-              <div className="max-h-[150px] overflow-y-auto border rounded-md p-2 space-y-1">
-                {allStudents.length === 0 ? (
-                  <p className="text-[10px] text-muted-foreground text-center py-4">اضغط "تحميل" لعرض الطلاب</p>
-                ) : (
-                  allStudents.map(function(s) {
-                    var isSelected = scheduleStudents.includes(s.id)
-                    return (
-                      <button
-                        key={s.id}
-                        type="button"
-                        onClick={function() {
-                          if (isSelected) { setScheduleStudents(scheduleStudents.filter(function(id) { return id !== s.id })) }
-                          else { setScheduleStudents([...scheduleStudents, s.id]) }
-                        }}
-                        className={"w-full flex items-center gap-2 p-2 rounded-md text-xs transition-colors " + (isSelected ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-500/30' : 'bg-muted/30 hover:bg-muted/50')}
-                      >
-                        <div className={"h-4 w-4 rounded border-2 flex items-center justify-center " + (isSelected ? 'border-blue-500 bg-blue-500' : 'border-muted-foreground/30')}>
-                          {isSelected && <Check className="h-3 w-3 text-white" />}
-                        </div>
-                        <span className="font-medium">{s.name}</span>
-                      </button>
-                    )
-                  })
-                )}
-              </div>
-            </div>
-
-            {/* Hide video from students */}
-            <div className="mb-3">
-              <Label className="text-xs font-semibold text-red-600">إخفاء الفيديو عن طلاب ({hiddenStudents.length})</Label>
-              <p className="text-[10px] text-muted-foreground mb-2">الطلاب دول مش هيشوفوا الفيديو خالص</p>
-              <div className="max-h-[150px] overflow-y-auto border rounded-md p-2 space-y-1">
-                {allStudents.length === 0 ? (
-                  <p className="text-[10px] text-muted-foreground text-center py-4">اضغط "تحميل" فوق</p>
-                ) : (
-                  allStudents.map(function(s) {
-                    var isHidden = hiddenStudents.includes(s.id)
-                    return (
-                      <button
-                        key={'hide-' + s.id}
-                        type="button"
-                        onClick={function() {
-                          if (isHidden) { setHiddenStudents(hiddenStudents.filter(function(id) { return id !== s.id })) }
-                          else { setHiddenStudents([...hiddenStudents, s.id]) }
-                        }}
-                        className={"w-full flex items-center gap-2 p-2 rounded-md text-xs transition-colors " + (isHidden ? 'bg-red-50 dark:bg-red-900/20 border border-red-500/30' : 'bg-muted/30 hover:bg-muted/50')}
-                      >
-                        <div className={"h-4 w-4 rounded border-2 flex items-center justify-center " + (isHidden ? 'border-red-500 bg-red-500' : 'border-muted-foreground/30')}>
-                          {isHidden && <Check className="h-3 w-3 text-white" />}
-                        </div>
-                        <span className="font-medium">{s.name}</span>
-                      </button>
-                    )
-                  })
-                )}
-              </div>
-            </div>
-
-            <div className="flex gap-2">
-              <Button onClick={handleScheduleSave} disabled={scheduleSaving} className="flex-1">
-                {scheduleSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'حفظ الجدولة'}
-              </Button>
-              <Button variant="outline" onClick={() => setScheduleOpen(false)}>إلغاء</Button>
-            </div>
-          </div>
-        </div>
-      )}
     </Card>
   )
 }

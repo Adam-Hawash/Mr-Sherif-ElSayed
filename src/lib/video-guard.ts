@@ -64,6 +64,24 @@ export async function isAdmin(adminId: string | null | undefined): Promise<boole
   }
 }
 
+// ===== Self-heal لجدول تذاكر التشغيل =====
+// لو جدول PlayTicket ناقص في الداتابيز (حصل في الإنتاج بعد التحديث)
+// كل طلبات التشغيل كانت بتفشل — هنا بنعمله أوتوماتيك أول ما نحس بوجوده.
+// force=true بتتجاهل الكاش وبتعمل CREATE TABLE فعليًا — بتستخدم في
+// إعادة المحاولة بعد أي فشل (لو الجدول اتمسح والموقع شغال).
+var _ticketTableReady = false
+export async function ensurePlayTicketTable(force = false): Promise<void> {
+  if (_ticketTableReady && !force) return
+  try {
+    await db.$executeRawUnsafe(
+      'CREATE TABLE IF NOT EXISTS PlayTicket (id TEXT PRIMARY KEY, videoId TEXT NOT NULL, studentId TEXT DEFAULT "", createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, expiresAt DATETIME NOT NULL, consumed INTEGER NOT NULL DEFAULT 0)'
+    )
+    _ticketTableReady = true
+  } catch (e) {
+    console.error('ensurePlayTicketTable error:', e)
+  }
+}
+
 export async function getStudentAnyStatus(studentId: string | null | undefined) {
   if (!studentId) return null
   try {
