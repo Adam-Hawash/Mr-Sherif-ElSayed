@@ -132,39 +132,80 @@ function webglFingerprint(): string {
   }
 }
 
-/** بصمة "ناتج الجهاز" dv3 — مصادر تفريق أقوى عشان مفيش جهازين يطلعوا نفس القيمة */
-function traitsFingerprint(): string {
-  var raw = ''
+/* مكوّنات بصمة الجهاز الخام — بتيتم حسابها مرة واحدة وبتتخزن مع الحساب.
+   السيرفر بيستخدمها في "مطابقة المكوّنات" عشان يتأكد إن الجهاز هو هو
+   حتى لو التخزين اتمسح أو الموبايل اتلفت (الوضع العرضي/الطولي) */
+function rawTraits(): Record<string, string> {
+  var t: Record<string, string> = {}
   try {
     var n = navigator as any
     var langs = ''
     try { langs = (n.languages || []).slice(0, 3).join(',') } catch (e) {}
-    var orient = ''
-    try { orient = (screen.orientation && screen.orientation.type) || '' } catch (e) {}
-    var parts = [
-      maskVersions(n.userAgent || ''),
-      n.language || '',
-      langs,
-      n.platform || '',
-      (screen && screen.width ? screen.width : 0) + 'x' + (screen && screen.height ? screen.height : 0) + 'x' + (screen && screen.colorDepth ? screen.colorDepth : 24),
-      (screen && screen.availWidth ? screen.availWidth : 0) + 'x' + (screen && screen.availHeight ? screen.availHeight : 0),
-      orient,
-      String(window.devicePixelRatio || 1),
-      String(n.hardwareConcurrency || 0),
-      String(n.deviceMemory || ''),
-      String(n.maxTouchPoints || 0),
-      canvasFingerprint(),
-      webglFingerprint(),
-    ]
-    try { parts.push(Intl.DateTimeFormat().resolvedOptions().timeZone || '') } catch (e) { parts.push('') }
-    raw = parts.join('|')
+    t.ua = maskVersions(n.userAgent || '')
+    t.lang = n.language || ''
+    t.langs = langs
+    t.platform = n.platform || ''
+    t.sw = String(screen && screen.width ? screen.width : 0)
+    t.sh = String(screen && screen.height ? screen.height : 0)
+    t.cd = String(screen && screen.colorDepth ? screen.colorDepth : 24)
+    t.aw = String(screen && screen.availWidth ? screen.availWidth : 0)
+    t.ah = String(screen && screen.availHeight ? screen.availHeight : 0)
+    try { t.orient = (screen.orientation && screen.orientation.type) || '' } catch (e) { t.orient = '' }
+    t.dpr = String(window.devicePixelRatio || 1)
+    t.cores = String(n.hardwareConcurrency || 0)
+    t.mem = String(n.deviceMemory || '')
+    t.touch = String(n.maxTouchPoints || 0)
+    t.canvas = canvasFingerprint()
+    t.webgl = webglFingerprint()
+    try { t.tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '' } catch (e) { t.tz = '' }
   } catch (e) {
-    raw = 'fallback'
+    t = { fallback: '1' }
   }
+  return t
+}
+
+var _traitsCache: Record<string, string> | null = null
+function getRawTraits(): Record<string, string> {
+  if (!_traitsCache) _traitsCache = rawTraits()
+  return _traitsCache
+}
+
+/* نفس الترتيب والصيغة القديمة بالظبط — أي تغيير هنا بيكسر البصمات المخزنة! */
+function rawToDv3(t: Record<string, string>, orientOverride?: string): string {
+  var parts = [
+    t.ua || '',
+    t.lang || '',
+    t.langs || '',
+    t.platform || '',
+    (t.sw || '0') + 'x' + (t.sh || '0') + 'x' + (t.cd || '24'),
+    (t.aw || '0') + 'x' + (t.ah || '0'),
+    orientOverride !== undefined ? orientOverride : (t.orient || ''),
+    t.dpr || '1',
+    t.cores || '0',
+    t.mem || '',
+    t.touch || '0',
+    t.canvas || '',
+    t.webgl || '',
+    t.tz || '',
+  ]
+  var raw = parts.join('|')
   var h1 = fnv1a(raw, 0x811c9dc5)
   var h2 = fnv1a(raw + '#v3', 0x01000193)
   var h3 = fnv1a(raw + '#deep', 0x09e711)
   return 'dv3_' + h1.toString(36) + h2.toString(36) + h3.toString(36)
+}
+
+/** بصمة "ناتج الجهاز" dv3 — مصادر تفريق أقوى عشان مفيش جهازين يطلعوا نفس القيمة */
+function traitsFingerprint(): string {
+  return rawToDv3(getRawTraits())
+}
+
+/** بيانات مكوّنات الجهاز الخام — بتتبعت للسيرفر مع التسجيل والدخول
+ *  عشان لو البصمة الدقيقة اتغيرت (اتلفت الموبايل / تحديث المتصفح)
+ *  السيرفر يقدر يتأكد بمطابقة المكوّنات إن ده نفس الجهاز فعلًا */
+export function getDeviceTraits(): Record<string, string> {
+  if (typeof window === 'undefined') return {}
+  return getRawTraits()
 }
 
 /**
@@ -188,15 +229,21 @@ export function getDeviceId(): string {
  * كل القيم اللي ممكن تمثل الجهاز ده — بنبعتها كلها للسيرفر وقت الدخول:
  *  1) الهوية الفريدة (dev_) — الأساسية في الربط
  *  2) البصمة المحسوبة (dv3_) — بتتعرف على نفس الجهاز حتى لو التخزين اتمسح
- *  3) البصمات القديمة المخزنة (dv2_ من إصدارات سابقة + الكوكي)
- * السيرفر بيفضّل dv3_/dv2_ كاحتياطي و dev_ كهوية أساسية.
+ *  3) **نسخ dv3 بكل أوضاع الشاشة** (طولي/عرضي/بدون) — عشان لف الموبايل
+ *     ما يكسرش التعرف على الجهاز (كان ده سبب حجب حسابات على جهازها!)
+ *  4) البصمات القديمة المخزنة (dv2_ من إصدارات سابقة + الكوكي)
+ * السيرفر بيفحص **كل** القيم دي مش أول واحدة بس.
  */
 export function getDeviceCandidates(): string[] {
   if (typeof window === 'undefined') return []
   var ids: string[] = []
   try { var a = window.localStorage.getItem(DEVICE_KEY); if (a) ids.push(a) } catch (e) {}
-  var t = traitsFingerprint()
-  ids.push(t)
+  var t = getRawTraits()
+  // البصمة الحالية + كل أشكال اتجاه الشاشة — نفس الصيغة، فرق الاتجاه بس
+  ids.push(rawToDv3(t))
+  ids.push(rawToDv3(t, 'portrait-primary'))
+  ids.push(rawToDv3(t, 'landscape-primary'))
+  ids.push(rawToDv3(t, ''))
   try { var f = window.localStorage.getItem(FP_KEY); if (f) ids.push(f) } catch (e) {}
   var c = fromCookie()
   if (c) ids.push(c)

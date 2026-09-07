@@ -16,6 +16,11 @@ const ACTION_STYLES: Record<string, { label: string; color: string; icon: string
   registered: { label: 'تسجيل جديد', color: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20', icon: '📝' },
   status_changed_to_approved: { label: 'تم القبول', color: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20', icon: '✅' },
   status_changed_to_rejected: { label: 'تم الرفض', color: 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20', icon: '❌' },
+  // ===== أحداث قفل الجهاز — المستر يشوف مين حاول يدخل ومين اتعرف على جهازه =====
+  device_blocked: { label: '🚫 محاولة دخول من جهاز غريب', color: 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20', icon: '🚨' },
+  device_rescued: { label: 'تم التعرف على نفس الجهاز', color: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20', icon: '🛟' },
+  device_transferred: { label: 'نقل الحساب لجهاز جديد', color: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20', icon: '📱' },
+  device_creation_bound: { label: 'تثبيت جهاز الحساب', color: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20', icon: '🔒' },
 }
 
 export function ActivityPanel() {

@@ -32,6 +32,7 @@ model Student {
   // creationDeviceId/creationDeviceFp = جهاز إنشاء الحساب — ثابت لا يتغير أبدًا
   deviceId          String  @default("")
   deviceFp          String  @default("")
+  deviceTraits      String  @default("")
   creationDeviceId  String  @default("")
   creationDeviceFp  String  @default("")
   deviceType        String  @default("")

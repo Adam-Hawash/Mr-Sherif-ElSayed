@@ -27,15 +27,51 @@ function ensureStudentSchema(): Promise<void> {
 
 // ===== أدوات قفل الجهاز الصارم =====
 // تصنيف قيم الجهاز: هوية فريدة (dev_) وبصمة ناتج الجهاز (dv3_/dv2_)
-function pickDeviceIds(candidates: string[]): { uuid: string; fp: string } {
-  var uuid = ''
-  var fp = ''
+// **بنجمع كل القيم اللي بعتها المتصفح مش أول واحدة بس** — كانت دي حكاية
+// حجب حسابات على جهازها: المتصفح بيقبط القديمة (dv2 / بصمة بصيغة أقدم /
+// الكوكي) والسيرفر كان بيبص على أول قيمة بس فمابقاش بيتعرف على نفس الجهاز!
+function pickDeviceIds(candidates: string[]): { uuid: string; fp: string; uuids: string[]; dv3: string[]; dv2: string[] } {
+  var uuids: string[] = []
+  var dv3: string[] = []
+  var dv2: string[] = []
   for (var i = 0; i < candidates.length; i++) {
     var c = candidates[i]
-    if (!uuid && c.indexOf('dev_') === 0) uuid = c
-    if (!fp && (c.indexOf('dv3_') === 0 || c.indexOf('dv2_') === 0)) fp = c
+    if (!c) continue
+    if (c.indexOf('dev_') === 0) { if (uuids.indexOf(c) === -1) uuids.push(c) }
+    else if (c.indexOf('dv3_') === 0) { if (dv3.indexOf(c) === -1) dv3.push(c) }
+    else if (c.indexOf('dv2_') === 0) { if (dv2.indexOf(c) === -1) dv2.push(c) }
   }
-  return { uuid: uuid, fp: fp }
+  return { uuid: uuids[0] || '', fp: (dv3[0] || dv2[0] || ''), uuids: uuids, dv3: dv3, dv2: dv2 }
+}
+
+// ===== مطابقة مكوّنات الجهاز (المرحلة التانية من التعرف) =====
+// لو البصمات الدقيقة كلها اختلفوا (لفت الموبايل / تحديث المتصفح / مسح بيانات)
+// بنقارن مكوّنات الجهاز الخام المخزنة مع الحساب ببعتة الجهاز الحالي.
+// المكوّنات الحاكمة (الشاشة + كارت الشاشة + المنصة) لازم تتطابق — دي اللي
+// بتفصل موبايل عن موبايل — والباقي بنسبة 70%+ عشان تحديثات النظام ما تكسرش.
+// **مكوّن اتجاه الشاشة (orient) مستثنى خالص** — لف الموبايل مبيغيرش هوية الجهاز.
+function parseTraitsJson(s: any): Record<string, string> | null {
+  try {
+    if (!s || typeof s !== 'string' || s.length < 10 || s.length > 4000) return null
+    var o = JSON.parse(s)
+    if (!o || typeof o !== 'object' || Array.isArray(o)) return null
+    return o
+  } catch (e) { return null }
+}
+
+function traitsMatchSameDevice(stored: Record<string, string> | null, fresh: Record<string, string> | null): boolean {
+  if (!stored || !fresh) return false
+  if (stored.fallback === '1' || fresh.fallback === '1') return false
+  var hard = ['sw', 'sh', 'webgl', 'platform']
+  for (var i = 0; i < hard.length; i++) {
+    if (String(stored[hard[i]] || '') !== String(fresh[hard[i]] || '')) return false
+  }
+  var keys = ['ua', 'lang', 'langs', 'cd', 'aw', 'ah', 'cores', 'mem', 'touch', 'tz', 'canvas']
+  var hit = 0
+  for (var j = 0; j < keys.length; j++) {
+    if (String(stored[keys[j]] || '') === String(fresh[keys[j]] || '')) hit++
+  }
+  return hit / keys.length >= 0.7
 }
 
 var LEGACY_IDS = ['null', 'undefined', 'dev_null', 'none', '']
@@ -138,6 +174,10 @@ export async function GET(request: NextRequest) {
           storedId = ''
         }
         var allowAll = !!(student as any).allowAllDevices
+        // مكوّنات جهاز الدخول الحالي — بتتخزن مع الحساب عشان مطابقة المكوّنات تقدر
+        // تتعرف على نفس الجهاز لو البصمات الدقيقة اختلفوا (لف الشاشة/تحديث المتصفح)
+        var freshTraits = parseTraitsJson(searchParams.get('deviceTraits') || '')
+        var freshTraitsStr = freshTraits ? JSON.stringify(freshTraits) : ''
         // نوع جهاز الدخول الحالي (موبايل/تابلت/كمبيوتر) — للتسجيل وللحسابات
         // القديمة اللي اتعملت قبل ما نبدأ نحفظ النوع
         var inDeviceType = pickDeviceType(searchParams.get('deviceType'))
@@ -146,13 +186,72 @@ export async function GET(request: NextRequest) {
         // ضد الربط العادي — ومن غير أي إعادة ربط للأجهزة الغريبة في الحالتين
         var checkId = creationId || storedId
         var checkFp = creationFp || storedFp
-        var uuidOk = !!checkId && checkId.indexOf('dev_') === 0 && !!current.uuid && current.uuid === checkId
-        var fpOk = !!checkFp && checkFp.indexOf('dv3_') === 0 && !!current.fp && current.fp === checkFp && !uuidOk
-        var legacyOk = !!checkFp && checkFp.indexOf('dv2_') === 0 && !!current.fp && current.fp === checkFp && !uuidOk && !fpOk
+        // بنقارن ضد **كل** قيم الجهاز اللي بعتها المتصفح (مش أول واحدة بس):
+        // الهوية من التخزين أو الكوكي + البصمة الحالية أو القديمة أو dv2 القديمة
+        var uuidOk = !!checkId && checkId.indexOf('dev_') === 0 && current.uuids.indexOf(checkId) !== -1
+        var fpOk = !!checkFp && checkFp.indexOf('dv3_') === 0 && current.dv3.indexOf(checkFp) !== -1 && !uuidOk
+        var legacyOk = !!checkFp && checkFp.indexOf('dv2_') === 0 && current.dv2.indexOf(checkFp) !== -1 && !uuidOk && !fpOk
         var hasAnyBinding = !!(creationId || creationFp || storedId || storedFp)
         var deviceTrusted = uuidOk || fpOk || legacyOk
-        // الجهاز الحالي مش جهاز إنشاء الحساب → مرفوض فورًا (حتى لو المتصفح مبعتش قيم)
+        // الجهاز الحالي مش جهاز إنشاء الحساب → محاولة أخيرة: مطابقة مكوّنات الجهاز
+        // (نفس الشاشة + نفس كارت الرسومات + نفس المنصة = نفس الجهاز فعلًا حتى لو
+        // البصمات اختلفوا بسبب لف الشاشة أو تحديث المتصفح أو مسح بيانات التصفح)
+        // بحماية ضد المشاركة: الهوية الجديدة ممنوع تكون مربوطة بحساب تاني.
         if (hasAnyBinding && !deviceTrusted && !allowAll) {
+          var storedTraits = parseTraitsJson((student as any).deviceTraits || '')
+          var sameDevice = false
+          if (traitsMatchSameDevice(storedTraits, freshTraits) && current.uuid) {
+            try {
+              var other = await db.student.findFirst({
+                where: { id: { not: student.id }, OR: [{ deviceId: current.uuid }, { creationDeviceId: current.uuid }] },
+                select: { id: true },
+              })
+              sameDevice = !other
+            } catch (gErr) { sameDevice = false }
+          }
+          if (sameDevice && freshTraits) {
+            // نفس الجهاز فعلًا — نحدّث الهوية والبصمة المخزنة (جهاز واحد لسه واحد)
+            var newId2 = current.uuid || creationId || storedId
+            var newFp2 = current.fp || creationFp || storedFp
+            try {
+              await db.student.update({
+                where: { id: student.id },
+                data: {
+                  deviceId: newId2,
+                  deviceFp: newFp2,
+                  creationDeviceId: newId2,
+                  creationDeviceFp: newFp2,
+                  deviceTraits: JSON.stringify(freshTraits),
+                  deviceType: inDeviceType || (student as any).deviceType || '',
+                },
+              })
+              ;(student as any).deviceId = newId2
+              ;(student as any).creationDeviceId = newId2
+              try {
+                await db.studentActivity.create({
+                  data: { studentId: student.id, action: 'device_rescued', details: 'نفس الجهاز اتأكد منه بمطابقة مكوّنات الجهاز — اتحدّثت الهوية والبصمة' },
+                })
+              } catch (aErr2) {}
+            } catch (rErr2) { console.error('Device traits rescue error:', rErr2) }
+            deviceTrusted = true
+          }
+        }
+        if (hasAnyBinding && !deviceTrusted && !allowAll) {
+          // تسجيل محاولة الدخول المحجوبة — المستر يشوف مين حاول يفتح ومن أي جهاز
+          try {
+            var blockCount = await db.studentActivity.count({
+              where: { studentId: student.id, action: 'device_blocked', createdAt: { gte: new Date(Date.now() - 60 * 60 * 1000) } },
+            })
+            if (blockCount < 10) {
+              await db.studentActivity.create({
+                data: {
+                  studentId: student.id,
+                  action: 'device_blocked',
+                  details: 'محاولة دخول من جهاز غريب — النوع: ' + (inDeviceType || 'غير معروف') + ' — الهوية: ' + (current.uuid || 'فاضية') + ' — بصمات: ' + ((current.dv3[0] || current.dv2[0] || 'فاضية').slice(0, 24)),
+                },
+              })
+            }
+          } catch (bErr) {}
           return NextResponse.json(
             {
               students: [],
@@ -173,6 +272,7 @@ export async function GET(request: NextRequest) {
                 deviceFp: current.fp,
                 creationDeviceId: current.uuid,
                 creationDeviceFp: current.fp,
+                deviceTraits: freshTraitsStr || ((student as any).deviceTraits || ''),
                 deviceType: inDeviceType || (student as any).deviceType || '',
                 allowAllDevices: false,
               },
@@ -198,7 +298,7 @@ export async function GET(request: NextRequest) {
               var newCFp = current.fp || storedFp
               await db.student.update({
                 where: { id: student.id },
-                data: { creationDeviceId: newCId, creationDeviceFp: newCFp, deviceType: inDeviceType || (student as any).deviceType || '' },
+                data: { creationDeviceId: newCId, creationDeviceFp: newCFp, deviceTraits: freshTraitsStr || ((student as any).deviceTraits || ''), deviceType: inDeviceType || (student as any).deviceType || '' },
               })
               ;(student as any).creationDeviceId = newCId
               ;(student as any).creationDeviceFp = newCFp
@@ -213,7 +313,7 @@ export async function GET(request: NextRequest) {
           }
           // إنقاذ مسح بيانات المتصفح: نفس جهاز الإنشاء (نفس بصمة dv3) لكن هوية جديدة
           // → بنحدّث الهوية العادية **بس** — أعمدة الإنشاء الثابتة مبتتلمس خالص
-          if (fpOk && current.uuid && current.uuid !== storedId) {
+          if ((fpOk || legacyOk) && current.uuid && current.uuid !== storedId) {
             try {
               await db.student.update({
                 where: { id: student.id },
@@ -229,17 +329,17 @@ export async function GET(request: NextRequest) {
               console.error('Device rescue error:', rErr)
             }
           }
-          // جهاز الإنشاء نفسه (هوية مطابقة) وطلب بصمة أحدث (المتصفح اتحدّث)
-          // → بنحدّث بصمة الإنشاء عشان الإنقاذ يفضل شغال بعد تحديثات المتصفح
-          // (آمن: محتاج مطابقة الهوية الفريدة لجهاز الإنشاء نفسه)
-          if (uuidOk && creationId && current.fp && current.fp !== creationFp) {
+          // جهاز الإنشاء نفسه (هوية أو بصمة مطابقة) → بنحدّث بصمة الإنشاء + المكوّنات
+          // عشان الإنقاذ يفضل شغال بعد تحديثات المتصفح أو لف الشاشة
+          // (آمن: محتاج مطابقة موثوقة لجهاز الإنشاء نفسه)
+          if (deviceTrusted && creationId && ((current.fp && current.fp !== creationFp) || (freshTraitsStr && freshTraitsStr !== (student as any).deviceTraits))) {
             try {
               await db.student.update({
                 where: { id: student.id },
-                data: { creationDeviceFp: current.fp, deviceFp: current.fp },
+                data: { creationDeviceFp: current.fp || creationFp, deviceFp: current.fp || storedFp, deviceTraits: freshTraitsStr || ((student as any).deviceTraits || '') },
               })
-              ;(student as any).creationDeviceFp = current.fp
-              ;(student as any).deviceFp = current.fp
+              if (current.fp) { (student as any).creationDeviceFp = current.fp; (student as any).deviceFp = current.fp }
+              if (freshTraitsStr) (student as any).deviceTraits = freshTraitsStr
             } catch (uErr) {
               console.error('Device fp refresh error:', uErr)
             }
@@ -344,6 +444,9 @@ export async function POST(request: NextRequest) {
     var rawDeviceId = typeof body.deviceId === 'string' ? body.deviceId : ''
     var deviceId = ['null', 'undefined', 'dev_null', 'none'].indexOf(rawDeviceId) !== -1 ? '' : rawDeviceId
     var deviceFp = ''
+    // مكوّنات جهاز الإنشاء الخام — بتتخزن عشان التعرف على نفس الجهاز بعد كده
+    // حتى لو البصمة الدقيقة اتغيرت (لف الشاشة / تحديث متصفح / مسح بيانات)
+    var deviceTraits = typeof body.deviceTraits === 'string' && body.deviceTraits.length <= 4000 ? body.deviceTraits : ''
     // نوع جهاز إنشاء الحساب (موبايل/تابلت/كمبيوتر) — يظهر للمستر في لوحة التحكم
     var deviceType = pickDeviceType(body.deviceType)
     // جهاز الإنشاء الثابت: بيتكتب هنا **مرة واحدة** وعمرك ما يتغير بعد كده
@@ -378,6 +481,7 @@ export async function POST(request: NextRequest) {
         password: password,
         deviceId: deviceId,
         deviceFp: deviceFp,
+        deviceTraits: deviceTraits,
         deviceType: deviceType,
         creationDeviceId: creationDeviceId,
         creationDeviceFp: creationDeviceFp,
