@@ -210,7 +210,19 @@ export const useAppStore = create<AppState>((set) => ({
   setView: (view) => set({ currentView: view }),
 
   currentStudent: null,
-  setCurrentStudent: (student) => set({ currentStudent: student }),
+  // ربط الجلسة بين الصفحات: /videos/[id] وصفحة الدفع بيبوا على localStorage
+  // (mg_student) لأنهم routes منفصلة والـ store بيتصفّر مع كل تحميل صفحة.
+  // من غير الحفظ ده: صفحة الفيديو بتفتح من غير هوية الطالب → مفيش ووترمارك
+  // باسمه + التقدم مش بيتحفظ + الفيديوهات المدفوعة بتبان مقفولة (مش بيفتح).
+  setCurrentStudent: (student) => {
+    try {
+      if (typeof window !== 'undefined') {
+        if (student) localStorage.setItem('mg_student', JSON.stringify(student))
+        else localStorage.removeItem('mg_student')
+      }
+    } catch (e) {}
+    set({ currentStudent: student })
+  },
   currentAdmin: null,
   setCurrentAdmin: (admin) => set({ currentAdmin: admin }),
   isAdminLoggedIn: false,

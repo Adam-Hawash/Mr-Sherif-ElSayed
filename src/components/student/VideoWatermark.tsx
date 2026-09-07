@@ -1,29 +1,39 @@
 'use client'
 // ============================================================
-// VideoWatermark — ووترمارك الطالب فوق الفيديو (اسمه + الرقم المسجل بيه)
+// VideoWatermark — ووترمارك الطالب فوق الفيديو (اسمه كامل + رقمه)
 // ============================================================
 // مواصفات المستر النهائية:
-//  1) كله **أسود شفاف** — الكارت والتيل الخفيف خلفيتهم سوداء شفافة.
-//  2) كارت واضح فيه اسم الطالب + الرقم المسجل بيه — بيكبر ويوضح.
-//  3) الكارت **بيطير شوية وشوية** بين مواضع على **الحواف بس** —
-//     ممنوع يقف في نص الشاشة أبدًا. وحواليه حركة تعويم خفيفة مستمرة.
-//  4) التيل المتكرر بقى DOM حقيقي (مش صورة SVG) — عشان **الحروف العربية
-//     تطلع سليمة متوصلة** (الصورة القديمة كانت بتقطع الحروف).
-//  5) الاسم الطويل بناخد منه أول اسمين بس — يبان كامل بدون قص.
+//  1) أسود بالكامل — شِپات + كارت + ووترمارك كبير، كلهم أسود شفاف.
+//  2) 6 شِپات على الحواف كلها (فوق وتحت: أركان + منتصفات) بتدور دورة
+//     ناعمة مستمرة (الجري) + تعويم خفيف دايمًا.
+//  3) ووترمارك كبير في نص الخلفية: شفاف بحواف سودة وبالعرض —
+//     محتوى الفيديو يبان تحته عادي.
+//  4) كارت طائر أسود فيه الاسم الكامل + الرقم — بينط على الحواف بس،
+//     ممنوع يقف في نص الشاشة أبدًا.
+//  5) الاسم كامل 100% من غير قص أي حرف — DOM حقيقي فالحروف العربية
+//     متوصلة وسليمة (الصورة القديمة كانت بتقطع الحروف).
 //  6) pointer-events-none → مش بيمنع أي تفاعل مع الفيديو.
 //  7) بيفضل ظاهر في ملء الشاشة (جوه عنصر الـ fullscreen نفسه).
-//  8) لو حد شال الطبقة من الـ DOM بـ devtools → بترجع لوحدها كل 6 ثواني.
+//  8) لو حد شال الطبقة من الـ DOM بـ devtools → بترجع لوحده كل 6 ثواني.
 // ============================================================
 import { useEffect, useRef, useState } from 'react'
+
+var WM_SPOTS = [
+  { t: '3%', l: '2.5%', tx: '0%', rot: -9 },
+  { t: '3%', l: '50%', tx: '-50%', rot: 7 },
+  { t: '3%', l: '97.5%', tx: '-100%', rot: -7 },
+  { t: '91%', l: '2.5%', tx: '0%', rot: 7 },
+  { t: '91%', l: '50%', tx: '-50%', rot: -9 },
+  { t: '91%', l: '97.5%', tx: '-100%', rot: 9 },
+]
 
 export function VideoWatermark({ name, phone }: { name?: string; phone?: string }) {
   const layerRef = useRef<HTMLDivElement>(null)
   const [tick, setTick] = useState(0)
 
   useEffect(function () {
-    // حركة الكارت على الحواف — بطيئة وناعمة (شوية وشوية)
-    const moveTimer = setInterval(function () { setTick(function (t) { return t + 1 }) }, 14000)
-    // إعادة رسم لو حد شال الطبقة من الـ DOM
+    // الجري المستمر: الشِپات بتدور على الحواف + إعادة رسم لو حد شال الطبقة
+    const moveTimer = setInterval(function () { setTick(function (t) { return t + 1 }) }, 9000)
     const healTimer = setInterval(function () {
       if (layerRef.current && !document.body.contains(layerRef.current)) setTick(function (t) { return t + 1 })
     }, 6000)
@@ -31,116 +41,120 @@ export function VideoWatermark({ name, phone }: { name?: string; phone?: string 
   }, [])
 
   const num = (phone || '').trim()
-  const nm = (name || '').trim().split(/\s+/).slice(0, 2).join(' ')
+  const nm = (name || '').trim()
   if (!num && !nm) return null
-  const tileLabel = [nm, num].filter(Boolean).join(' • ')
+  const chipText = [num, nm].filter(Boolean).join(' • ')
 
-  // مواضع الكارت — على الحواف بس (أعلى/أسفل/أركان) — المنتصف ممنوع خالص
-  const spots = [
-    { top: '3.5%', left: '3%', tx: '0%' },
-    { top: '3.5%', left: '97%', tx: '-100%' },
-    { top: '88%', left: '97%', tx: '-100%' },
-    { top: '88%', left: '3%', tx: '0%' },
-    { top: '3.5%', left: '50%', tx: '-50%' },
-    { top: '88%', left: '50%', tx: '-50%' },
-  ]
-  const raw = spots[tick % spots.length]
-  const pos: Record<string, string> = { top: raw.top, left: raw.left }
+  function applySpot(el: HTMLDivElement | null, p: { t: string; l: string; tx: string; rot: number }) {
+    if (!el) return
+    el.style.top = p.t
+    el.style.left = p.l
+    el.style.transform = 'translateX(' + p.tx + ') rotate(' + p.rot + 'deg)'
+  }
 
-  // مواضع التيل الخفيف — أربع أركان + منتصفا الضلعين (كلها حواف)
-  var tiles = [
-    { top: '4%', left: '50%', tx: '-50%', rot: '-14deg' },
-    { top: '30%', left: '4%', tx: '0%', rot: '-14deg' },
-    { top: '62%', left: '96%', tx: '-100%', rot: '-14deg' },
-    { top: '92%', left: '50%', tx: '-50%', rot: '-14deg' },
-  ]
+  // الشِپات بتدور دورة: كل شِپ ياخد مكان اللي بعده — الكل على الحواف بس
+  const chipSpot = function (i: number) { return WM_SPOTS[(i + tick) % WM_SPOTS.length] }
+  const badgeSpot = WM_SPOTS[(tick * 2 + 3) % WM_SPOTS.length]
 
   return (
     <div
       ref={layerRef}
       data-wm="1"
-      className="absolute inset-0 z-[60] pointer-events-none select-none overflow-hidden wm-float-host"
+      className="absolute inset-0 z-[60] pointer-events-none select-none overflow-hidden"
       aria-hidden="true"
     >
-      {/* حركة التعويم المستمرة — CSS خفيفة شغالة محليًا */}
       <style>{`
-        @keyframes wmBob { 0% { transform: translateY(0px) } 100% { transform: translateY(-7px) } }
-        .wm-bob { animation: wmBob 3.4s ease-in-out infinite alternate; }
-        @keyframes wmBob2 { 0% { transform: translateY(0px) } 100% { transform: translateY(5px) } }
-        .wm-bob2 { animation: wmBob2 4.1s ease-in-out infinite alternate; }
+        @keyframes wmFloat2 { 0% { transform: translateY(0) } 100% { transform: translateY(-7px) } }
+        .wm-chip-in { animation: wmFloat2 4.6s ease-in-out infinite alternate; }
+        .wm-chip-in:nth-child(odd) { animation-duration: 5.8s; animation-delay: -2.4s; }
+        @media (max-width: 640px) { .wm-chip-in { font-size: 9px !important; padding: 2px 9px !important; } }
       `}</style>
 
-      {/* التيل المتكرر — DOM حقيقي بحروف عربية سليمة، أسود شفاف.
-          الـ outer للتثبيت والدوران، والـ inner لحركة التعويم المستمرة */}
-      {tiles.map(function (t, i) {
+      {/* الووترمارك الكبير في نص الخلفية — شفاف بحواف سودة وبالعرض */}
+      <div
+        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-center font-black leading-tight"
+        style={{
+          direction: 'rtl',
+          maxWidth: '92%',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          fontSize: 'clamp(26px, 6.5vw, 76px)',
+          color: 'rgba(0,0,0,0.17)',
+          WebkitTextStroke: '1.6px rgba(0,0,0,0.42)',
+          unicodeBidi: 'plaintext',
+        }}
+      >
+        {nm || num}
+        {nm && num && (
+          <span
+            className="block font-extrabold"
+            style={{ fontSize: '0.38em', letterSpacing: '0.05em', direction: 'ltr', WebkitTextStroke: '1.1px rgba(0,0,0,0.38)' }}
+          >
+            {num}
+          </span>
+        )}
+      </div>
+
+      {/* 6 شِپات على الحواف — بتتقلب أماكنها بحركة ناعمة مستمرة */}
+      {WM_SPOTS.map(function (_s, i) {
+        var spot = chipSpot(i)
         return (
           <div
             key={i}
-            className="absolute"
-            style={{ top: t.top, left: t.left, transform: 'translateX(' + t.tx + ') rotate(' + t.rot + ')' }}
+            ref={function (el) { applySpot(el, spot) }}
+            className="absolute transition-all duration-[3200ms] ease-in-out"
+            style={{ transitionProperty: 'top, left, transform', transitionTimingFunction: 'cubic-bezier(.45,0,.25,1)' }}
           >
-            <div
-              className={'rounded-full ' + (i % 2 === 0 ? 'wm-bob' : 'wm-bob2')}
+            <span
+              className="wm-chip-in inline-block rounded-full font-bold text-white/95"
               style={{
                 direction: 'rtl',
-                background: 'rgba(0,0,0,0.45)',
-                border: '1px solid rgba(255,255,255,0.22)',
-                color: 'rgba(255,255,255,0.92)',
+                background: 'rgba(0,0,0,0.55)',
+                border: '1px solid rgba(255,255,255,0.20)',
                 fontSize: '10px',
                 fontWeight: 700,
                 letterSpacing: 0,
-                padding: '3px 10px',
+                padding: '3px 11px',
                 whiteSpace: 'nowrap',
-                textShadow: 'none',
                 maxWidth: '46vw',
                 overflow: 'hidden',
-                textOverflow: 'ellipsis',
+                textShadow: '0 1px 2px rgba(0,0,0,0.8)',
               }}
             >
-              {tileLabel}
-            </div>
+              {chipText}
+            </span>
           </div>
         )
       })}
 
-      {/* الكارت الطائر — أسود شفاف بحدود بيضاء خفيفة، بيتحرك على الحواف.
-          الـ outer بيعمل الانتقال بين المواضع، والـ inner بيعمل التعويم */}
+      {/* الكارت الطائر — الاسم كامل + الرقم — على الحواف بس */}
       <div
-        className="absolute"
+        ref={function (el) { applySpot(el, badgeSpot) }}
+        className="absolute rounded-xl text-center transition-all duration-[3200ms] ease-in-out"
         style={{
-          ...pos,
-          transform: 'translateX(' + raw.tx + ')',
-          transition: 'top 1.8s cubic-bezier(.45,0,.25,1), left 1.8s cubic-bezier(.45,0,.25,1)',
+          direction: 'rtl',
+          background: 'rgba(0,0,0,0.62)',
+          border: '1.5px solid rgba(255,255,255,0.22)',
+          boxShadow: '0 6px 22px rgba(0,0,0,0.55)',
+          padding: '9px 16px',
+          maxWidth: '58%',
+          transitionProperty: 'top, left, transform',
+          transitionTimingFunction: 'cubic-bezier(.45,0,.25,1)',
         }}
       >
-        <div
-          className={'rounded-2xl text-center ' + (tick % 2 === 0 ? 'wm-bob' : 'wm-bob2')}
-          style={{
-            direction: 'rtl',
-            background: 'rgba(0,0,0,0.62)',
-            border: '1.5px solid rgba(255,255,255,0.32)',
-            boxShadow: '0 6px 22px rgba(0,0,0,0.55)',
-            padding: '10px 18px',
-            maxWidth: '62vw',
-          }}
-        >
-          {num && (
-            <p
-              className="text-base sm:text-lg font-black text-white leading-tight"
-              style={{ textShadow: '0 1px 3px rgba(0,0,0,0.95)', direction: 'ltr', unicodeBidi: 'plaintext' }}
-            >
-              {num}
-            </p>
-          )}
-          {nm && (
-            <p
-              className="text-xs sm:text-sm font-bold text-white/95 leading-snug"
-              style={{ textShadow: '0 1px 3px rgba(0,0,0,0.9)', letterSpacing: 0 }}
-            >
-              {nm}
-            </p>
-          )}
-        </div>
+        {num && (
+          <p className="text-base font-black text-white leading-tight" style={{ direction: 'ltr', unicodeBidi: 'plaintext', textShadow: '0 1px 3px rgba(0,0,0,0.95)' }}>
+            {num}
+          </p>
+        )}
+        {nm && (
+          <p
+            className="text-xs font-bold text-white/95 leading-snug break-words"
+            style={{ textShadow: '0 1px 3px rgba(0,0,0,0.9)', letterSpacing: 0, maxWidth: 240, whiteSpace: 'normal' }}
+          >
+            {nm}
+          </p>
+        )}
       </div>
     </div>
   )

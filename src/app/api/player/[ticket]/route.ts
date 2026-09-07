@@ -7,13 +7,17 @@
 //     وبيتفك في الذاكرة لحظة التشغيل بس، فمفيش ID في مصدر الصفحة
 //     ولا في الـ DOM ولا في أي console.log.
 //  2) الملفات المرفوعة بتتخدم بتوكن موقّع قصير العمر مرتبط بالطالب.
-//  3) ووترمارك ذكي: رقم الطالب بارز + تيل مكرر بيبادّل أبيض/أسود عشان
-//     يبان على أي خلفية + بيلف على الأركان (عمره ما بيغطي المحتوى) +
-//     بيرجع يرسم لوحه نفسه لو اتمسح + شغال جوه ملء الشاشة لأن ملء
-//     الشاشة بيحصل على العنصر اللي جواه الووترمارك.
+//  3) ووترمارك (مواصفات المستر): أسود بالكامل — 6 شِپات على الحواف بتدور
+//     دورة ناعمة مستمرة + ووترمارك كبير في نص الخلفية شفاف بحواف سودة وبالعرض
+//     + كارت اسم الطالب (بالاسم الكامل من غير قص حروف) بيطير على الحواف بس
+//     + بيرجع يرسم لوحه نفسه لو اتمسح + شغال جوه ملء الشاشة.
 //  4) حماية فحص: كليك يمين مقفول + F12/Ctrl+Shift+I/J/C/Ctrl+U مقفولين
 //     بتنبيه لطيف + لو أدوات المطور اتفتحت الفيديو بيوقف مؤقتًا.
 //  5) التقدم بيتقال للأب بـ postMessage كل 5 ثواني (مفيش أي لينك).
+//  6) الجودة مثبتة على 480p بحارس مستمر (يفتح سريع + واضح + يوفر داتا).
+//  7) التشغيل المضمون: مراقب متدرج (playVideo → loadVideoById → صامت)
+//     + تحميل API يوتيوب بإعادة محاولة + تسجيل طلب التشغيل قبل جهوزية الـ API
+//     + تكملة مشاهدة آمنة (من غير حلقة النهاية).
 // ============================================================
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
@@ -187,19 +191,40 @@ const PLAYER_PAGE = `<!doctype html>
   #wrap{position:relative;width:100%;max-width:100vw;background:#000;overflow:hidden}
   #wrap.fs{width:100vw;height:100vh;max-width:none}
   #yt,#fileVid{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000}
-  /* ===== الووترمارك الذكي ===== */
+  /* ===== الووترمارك (مواصفات المستر) =====
+     أسود بالكامل: 6 شِپات على الحواف كلها بتدور دورة ناعمة مستمرة
+     + ووترمارك كبير في نص الخلفية شفاف بحواف سودة وبالعرض
+     + كارت طائر أسود بينط على الحواف بس (ممنوع يقف في النص) */
   .wm{position:absolute;inset:0;z-index:40;pointer-events:none;user-select:none;overflow:hidden}
-  .wm .tile{position:absolute;inset:-60px;background-repeat:repeat}
-  @keyframes wmFade{0%,49.9%{opacity:1}50%,100%{opacity:0}}
-  .tileA{animation:wmFade 4.8s step-end infinite}
-  .tileB{animation:wmFade 4.8s step-end infinite reverse}
-  /* كارت الووترمارك — أسود شفاف + اسم الطالب ورقمه — بيتحرك على الحواف بس */
+  /* الووترمارك الكبير في النص — شفاف بحواف سودة، بالعرض، والمحتوى يبان تحته عادي */
+  #wmBig{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:41;direction:rtl;
+    text-align:center;max-width:92%;white-space:nowrap;overflow:hidden;
+    font-weight:900;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
+    font-size:clamp(26px,6.5vw,76px);line-height:1.3;
+    color:rgba(0,0,0,.17);
+    -webkit-text-stroke:1.6px rgba(0,0,0,.42);
+    paint-order:stroke fill;
+    unicode-bidi:plaintext}
+  #wmBig .b2{display:block;font-size:.38em;font-weight:800;letter-spacing:.05em;direction:ltr;unicode-bidi:plaintext;
+    -webkit-text-stroke:1.1px rgba(0,0,0,.38)}
+  /* الشِپات الصغيرة — أسود شفاف على الحواف، بتتقلب أماكنها بحركة ناعمة مستمرة */
+  .wmChip{position:absolute;z-index:44;direction:rtl;text-align:center;
+    transition:top 3.2s cubic-bezier(.45,0,.25,1),left 3.2s cubic-bezier(.45,0,.25,1),transform 3.2s cubic-bezier(.45,0,.25,1)}
+  .wmChip .in{display:inline-block;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.20);
+    color:rgba(255,255,255,.95);font-size:10px;font-weight:700;font-family:system-ui,-apple-system,sans-serif;
+    padding:3px 11px;border-radius:999px;white-space:nowrap;letter-spacing:0;max-width:46vw;overflow:hidden;
+    text-shadow:0 1px 2px rgba(0,0,0,.8);
+    animation:wmFloat 4.6s ease-in-out infinite alternate}
+  .wmChip:nth-child(odd) .in{animation-duration:5.8s;animation-delay:-2.4s}
+  @media (max-width:640px){ .wmChip .in{font-size:9px;padding:2px 9px;border-radius:999px} }
+  @keyframes wmFloat{0%{transform:translateY(0)}100%{transform:translateY(-7px)}}
+  /* كارت الووترمارك الطائر — أسود شفاف + اسم الطالب كامل ورقمه — على الحواف بس */
   #wmBadge{position:absolute;z-index:45;pointer-events:none;user-select:none;direction:rtl;text-align:center;
-    padding:9px 16px;border-radius:14px;background:rgba(0,0,0,.58);border:1.5px solid rgba(255,255,255,.30);
-    box-shadow:0 6px 22px rgba(0,0,0,.5);max-width:56%;
-    transition:top 1.6s cubic-bezier(.45,0,.25,1),left 1.6s cubic-bezier(.45,0,.25,1),transform 1.6s cubic-bezier(.45,0,.25,1)}
+    padding:9px 16px;border-radius:14px;background:rgba(0,0,0,.62);border:1.5px solid rgba(255,255,255,.22);
+    box-shadow:0 6px 22px rgba(0,0,0,.55);max-width:58%;
+    transition:top 3.2s cubic-bezier(.45,0,.25,1),left 3.2s cubic-bezier(.45,0,.25,1),transform 3.2s cubic-bezier(.45,0,.25,1)}
   #wmBadge .num{color:#fff;font-weight:900;font-size:16px;line-height:1.3;text-shadow:0 1px 3px rgba(0,0,0,.95);direction:ltr;unicode-bidi:plaintext}
-  #wmBadge .nm{color:rgba(255,255,255,.95);font-weight:700;font-size:12px;line-height:1.35;text-shadow:0 1px 3px rgba(0,0,0,.9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:190px}
+  #wmBadge .nm{color:rgba(255,255,255,.95);font-weight:700;font-size:12px;line-height:1.45;text-shadow:0 1px 3px rgba(0,0,0,.9);white-space:normal;max-width:240px;word-break:break-word}
   /* درع فوق بيقفل شريط عنوان يوتيوب اللي بيظهر لحظة الوقوف */
   #topShield{position:absolute;top:0;left:0;right:0;height:60px;z-index:22;pointer-events:none;opacity:0;transition:opacity .35s;
     background:linear-gradient(to bottom,rgba(0,0,0,.92),rgba(0,0,0,.55) 55%,rgba(0,0,0,0))}
@@ -264,58 +289,70 @@ function deobfuscate(b64, key){
   }catch(e){ return ''; }
 }
 
-/* ===== الووترمارك الذكي ===== */
-/* طلب المستر: الكارت بيطير على الحواف بس — ممنوع يقف في نص الشاشة أبدًا.
-   كل المواضع left/top + transform عشان الحركة تبقى متناسقة وناعمة */
-var WM_POS = [
-  {t:'3.5%', l:'3%'},
-  {t:'3.5%', l:'55%', tx:'-50%'},
-  {t:'3.5%', l:'97%', tx:'-100%'},
-  {t:'72%', l:'97%', tx:'-100%'},
-  {t:'78%', l:'50%', tx:'-50%'},
-  {t:'72%', l:'3%'}
+/* ===== الووترمارك (مواصفات المستر) =====
+   • أسود بالكامل — شِپات + كارت + ووترمارك كبير كلهم أسود شفاف
+   • 6 شِپات على الحواف كلها (فوق وتحت: أركان + منتصفات) بتدور دورة ناعمة مستمرة
+   • ووترمارك كبير في نص الخلفية: شفاف بحواف سودة وبالعرض — محتوى الفيديو يبان تحته عادي
+   • الكارت الطائر بينط على الحواف بس — ممنوع يقف في نص الشاشة أبدًا
+   • الاسم كامل 100% من غير قص أي حرف — DOM حقيقي فالحروف العربية متوصلة وسليمة */
+var WM_SPOTS = [
+  {t:'3%',   l:'2.5%',  tx:'0%',    rot:-9},
+  {t:'3%',   l:'50%',   tx:'-50%',  rot:7},
+  {t:'3%',   l:'97.5%', tx:'-100%', rot:-7},
+  {t:'91%',  l:'2.5%',  tx:'0%',    rot:7},
+  {t:'91%',  l:'50%',   tx:'-50%',  rot:-9},
+  {t:'91%',  l:'97.5%', tx:'-100%', rot:9}
 ];
-var wmTick = 0;
-/* طلب المستر: الاسم الطويل ناخد منه أول اسمين بس — عشان الرقم والاسم يبانوا كاملين مش مقطوعين */
-function shortName(n){ var p = String(n||'').trim().split(/\s+/); return p.slice(0,2).join(' '); }
-function wmLabel(){
-  return (CFG.wm.phone || '') + ((CFG.wm.phone && CFG.wm.name) ? ' • ' : '') + shortName(CFG.wm.name);
-}
-/* التيل بقى DOM حقيقي (مش صورة SVG) — الحروف العربية بتطلع متوصلة وسليمة 100%.
-   طلب المستر: أسود شفاف على الحواف بس. الـ SVG القديم كان بيقص الحروف العربية. */
-function wmTile(label, spot){
-  var chip = document.createElement('div');
-  chip.style.cssText = 'position:absolute;top:' + spot.t + ';left:' + spot.l +
-    ';transform:translateX(' + spot.tx + ') rotate(' + spot.rot + 'deg);direction:rtl;' +
-    'background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.92);' +
-    'font-size:10px;font-weight:700;font-family:system-ui,-apple-system,sans-serif;' +
-    'padding:3px 10px;border-radius:999px;white-space:nowrap;letter-spacing:0;max-width:46%;overflow:hidden;text-overflow:ellipsis';
-  chip.textContent = label;
-  return chip;
+var wmTick = 0, chipEls = [], badgeEl = null;
+var wmName = String(CFG.wm.name || '').trim();
+var wmPhone = String(CFG.wm.phone || '').trim();
+function wmChipText(){ return [wmPhone, wmName].filter(Boolean).join(' • '); }
+function applySpot(el, p){
+  el.style.top = p.t; el.style.left = p.l;
+  el.style.transform = 'translateX(' + (p.tx || '0%') + ') rotate(' + (p.rot || 0) + 'deg)';
 }
 function buildWm(){
   if(!CFG.wm.enabled) return;
   var old = document.getElementById('wm');
   if(old) old.parentNode.removeChild(old);
+  chipEls = []; badgeEl = null;
   var layer = document.createElement('div');
   layer.id = 'wm'; layer.className = 'wm';
-  layer.style.opacity = String(CFG.wm.opacity);
-  /* التيل على الحواف بس — حروف عربية سليمة، أسود شفاف */
-  var label = wmLabel();
-  if(label){
-    var tileSpots = [
-      {t:'4%',  l:'50%',  tx:'-50%',  rot:-14},
-      {t:'30%', l:'4%',   tx:'0%',    rot:-14},
-      {t:'62%', l:'96%',  tx:'-100%', rot:-14},
-      {t:'92%', l:'50%',  tx:'-50%',  rot:-14}
-    ];
-    for(var ti=0; ti<tileSpots.length; ti++){ layer.appendChild(wmTile(label, tileSpots[ti])); }
+  /* 1) الووترمارك الكبير في نص الخلفية — شفاف بحواف سودة وبالعرض */
+  var bigLine1 = wmName || wmPhone;
+  var bigLine2 = (wmName && wmPhone) ? wmPhone : '';
+  if(bigLine1){
+    var big = document.createElement('div');
+    big.id = 'wmBig';
+    big.innerHTML = '<span class="b1">' + esc(bigLine1) + '</span>' + (bigLine2 ? '<span class="b2">' + esc(bigLine2) + '</span>' : '');
+    big.style.opacity = String(Math.min(1, (Number(CFG.wm.opacity) || 0.55) * 1.15));
+    layer.appendChild(big);
   }
-  var badge = document.createElement('div');
-  badge.id='wmBadge';
-  badge.innerHTML = (CFG.wm.phone ? '<div class="num">' + esc(CFG.wm.phone) + '</div>' : '') + (CFG.wm.name ? '<div class="nm">' + esc(shortName(CFG.wm.name)) + '</div>' : '');
-  applyBadgePos(badge);
-  layer.appendChild(badge);
+  /* 2) الست شِپات على الحواف — بتتقلب أماكنها بحركة ناعمة (الجري المستمر) */
+  var chipText = wmChipText();
+  if(chipText){
+    for(var ci = 0; ci < WM_SPOTS.length; ci++){
+      var chip = document.createElement('div');
+      chip.className = 'wmChip';
+      applySpot(chip, WM_SPOTS[ci]);
+      chip.style.opacity = String(Math.min(1, (Number(CFG.wm.opacity) || 0.55) + 0.05));
+      var inner = document.createElement('span');
+      inner.className = 'in';
+      inner.textContent = chipText;
+      chip.appendChild(inner);
+      layer.appendChild(chip);
+      chipEls.push(chip);
+    }
+  }
+  /* 3) الكارت الطائر — الاسم كامل + الرقم — على الحواف بس */
+  if(wmPhone || wmName){
+    badgeEl = document.createElement('div');
+    badgeEl.id = 'wmBadge';
+    badgeEl.innerHTML = (wmPhone ? '<div class="num">' + esc(wmPhone) + '</div>' : '') + (wmName ? '<div class="nm">' + esc(wmName) + '</div>' : '');
+    badgeEl.style.opacity = String(Math.min(1, (Number(CFG.wm.opacity) || 0.55) + 0.12));
+    applySpot(badgeEl, WM_SPOTS[(wmTick * 2 + 3) % WM_SPOTS.length]);
+    layer.appendChild(badgeEl);
+  }
   wrap.appendChild(layer);
 }
 /* درع الشريط العلوي — بيتعمل مرة واحدة بس (حتى لو الووترمارك مطفي) */
@@ -323,24 +360,22 @@ function ensureTopShield(){
   if(document.getElementById('topShield')) return;
   var ts = document.createElement('div'); ts.id='topShield'; wrap.appendChild(ts);
 }
-function applyBadgePos(b){
-  var p = WM_POS[wmTick % WM_POS.length];
-  b.style.top = p.t; b.style.left = p.l;
-  b.style.transform = 'translateX(' + (p.tx || '0%') + ')';
-}
-function rotateBadge(){
+/* خطوة الجري: الشِپات بتدور دورة ناعمة على الحواف (كل شِپ ياخد مكان اللي بعده)
+   والكارت الطائر بينط لمكان بعيد عنها — الكل على الحواف بس، النص ممنوع */
+function wmStep(){
   wmTick++;
-  var b = document.getElementById('wmBadge');
-  if(b) applyBadgePos(b);
+  for(var i = 0; i < chipEls.length; i++){ applySpot(chipEls[i], WM_SPOTS[(i + wmTick) % WM_SPOTS.length]); }
+  if(badgeEl){ applySpot(badgeEl, WM_SPOTS[(wmTick * 2 + 3) % WM_SPOTS.length]); }
 }
 /* self-heal: الووترمارك بيرجع يترسم لو حد شاله من الـ DOM */
 function ensureWm(){
   if(!CFG.wm.enabled) return;
   if(!document.getElementById('wm')) buildWm();
-  else if(!document.getElementById('wmBadge')) buildWm();
+  else if(!document.getElementById('wmBadge') && (wmPhone || wmName)) buildWm();
+  else if(document.getElementById('wm') && chipEls.length === 0 && wmChipText()) buildWm();
 }
 setInterval(ensureWm, 4000);
-setInterval(rotateBadge, Math.max(4, CFG.wm.interval || 14) * 1000);
+setInterval(wmStep, Math.max(6, CFG.wm.interval || 14) * 1000);
 try{ new MutationObserver(ensureWm).observe(wrap, {childList:true, subtree:true}); }catch(e){}
 
 /* ===== ملء الشاشة (الووترمارك جوه العنصر فبيفضل ظاهر) ===== */
@@ -479,9 +514,14 @@ setInterval(function(){
 var playerApi = null;
 /* ===== مراقب التشغيل — علاج "الفيديو مش بيفتح" =====
    أول أمر playVideo() على الموبايل ممكن يتصفر من المتصفح. بنجرب تاني كل
-   700ms، ولو 3 محاولات فشلوا → تشغيل صامت (مسموح دايمًا) + زرار تفعيل صوت.
-   ومنع النقر المزدوج: بعض المتصفحات بتبعت touchend+click مع بعض. */
+   700ms بتدرج قوي: playVideo → playVideo → loadVideoById (ضربة قوية بتقفل
+   المشكلة نهائيًا) → playVideo → تشغيل صامت (مسموح دايمًا) + زرار تفعيل صوت.
+   ومنع النقر المزدوج: بعض المتصفحات بتبعت touchend+click مع بعض.
+   + لو الطالب دس قبل ما الـ API يجهز → الطلب بيتسجل وبيتنفذ أول ما يجهز. */
 var wdTimer = null, muteFallback = false, lastTap = 0;
+var pendingStart = false, pendingResume = 0, ytIdCached = '';
+/* قفل الجودة 480p — عدادات الحارس */
+var qMissAt = 0, qReloads = 0, lastQReload = 0;
 function tapOk(){ var n = Date.now(); if(n - lastTap < 350) return false; lastTap = n; return true; }
 function showUnmuteBtn(){
   var b = document.getElementById('unmuteBtn');
@@ -504,6 +544,12 @@ function doUnmute(){
   var b = document.getElementById('unmuteBtn'); if(b) b.style.display = 'none';
 }
 function startWithWatchdog(){
+  if(!playerApi || !playerApi.playVideo){
+    /* الـ API لسه بيتحمل — سجل الطلب وهيتشغل أول ما يجهز (بدل ما أول دوسة تضيع) */
+    pendingStart = true;
+    toast('المشغل بيتجهز… دوس تاني بعد لحظة');
+    return;
+  }
   if(wdTimer){ clearInterval(wdTimer); wdTimer = null; }
   try{ playerApi.playVideo(); }catch(e){}
   var attempts = 0;
@@ -511,7 +557,12 @@ function startWithWatchdog(){
     var st = ytState();
     if(st === 1 || st === 3){ clearInterval(wdTimer); wdTimer = null; return; }
     attempts++;
-    if(attempts >= 3){
+    if(attempts === 3){
+      /* الضربة القوية: loadVideoById بيحمّل التيار من الأول وبيشتغل فورًا —
+         أقوى بكتير من playVideo في المتصفحات العنيدة */
+      var cur = 0; try{ cur = playerApi.getCurrentTime() || 0; }catch(e){}
+      try{ playerApi.loadVideoById(ytIdCached, Math.max(0, Math.floor(cur)), 'large'); }catch(e){}
+    } else if(attempts >= 5){
       clearInterval(wdTimer); wdTimer = null;
       try{ playerApi.mute(); muteFallback = true; showUnmuteBtn(); playerApi.playVideo(); }catch(e){}
     } else { try{ playerApi.playVideo(); }catch(e){} }
@@ -573,60 +624,118 @@ function mountYouTube(){
   var seekEl = document.getElementById('seek');
   seekEl.addEventListener('input', function(){ seekDragging = true; try{ var d=playerApi.getDuration()||0; document.getElementById('tTime').textContent = fmtT(seekEl.value/1000*d) + ' / ' + fmtT(d); }catch(e){} });
   seekEl.addEventListener('change', function(){ try{ var d=playerApi.getDuration()||0; if(d) playerApi.seekTo(seekEl.value/1000*d, true); }catch(e){} seekDragging=false; showCtrl(true); });
+  /* تحميل API يوتيوب بشكل مضمون: الكولباك بيتحدد قبل حقن السكريبت (قفل
+     سباق التحميل)، ولو السكريبت فشل يتحمل (نت ضعيف) بنحقنه تاني تلقائيًا —
+     ده كان سبب حقيقي إن الفيديو مبيفتحش خالص على بعض الأجهزة */
+  ytIdCached = ytId;
+  function apiReadyNow(){ try{ buildPlayer(); }catch(e){} }
+  if(window.YT && window.YT.Player){ apiReadyNow(); return; }
+  window.onYouTubeIframeAPIReady = apiReadyNow;
   var tag = document.createElement('script');
   tag.src = 'https://www.youtube.com/iframe_api';
   document.head.appendChild(tag);
-  window.onYouTubeIframeAPIReady = function(){
-    playerApi = new YT.Player('ytHost', {
-      videoId: ytId,
-      // controls:0 → مفيش أي واجهة يوتيوب (لا عنوان ولا لوجو لا حاجة) — كل الكنترولز بتاعتنا
-      playerVars: { autoplay:1, controls:0, rel:0, modestbranding:1, playsinline:1, iv_load_policy:3, fs:0, disablekb:1, enablejsapi:1, origin: location.origin },
-      events: {
-        onReady: function(ev){
-          try{ if(CFG.resume > 5) ev.target.seekTo(CFG.resume, true); }catch(e){}
-          try{ ev.target.setPlaybackQuality('large'); }catch(e){} // 480p — يفتح سريع ويوفر داتا
-          layoutWrap();
-        },
-        onStateChange: function(ev){
-          try{
-            if(ev.data === YT.PlayerState.PLAYING){
-              try{ ev.target.setPlaybackQuality('large'); }catch(e){}
-              var so=document.getElementById('startOv'); if(so) so.style.display='none';
-              var eo=document.getElementById('endOv'); if(eo) eo.style.display='none';
-              setPP(true); showCtrl(true);
-            } else if(ev.data === YT.PlayerState.PAUSED){
-              setPP(false); showCtrl(false);
-            } else if(ev.data === YT.PlayerState.ENDED){
-              setPP(false);
-              var eo2=document.getElementById('endOv'); if(eo2) eo2.style.display='flex';
-              /* رجوع للبداية + وقوف → شاشة اقتراحات يوتيوب عمرها ما بتترسم */
-              try{ playerApi.seekTo(0,true); playerApi.pauseVideo(); }catch(e){}
-              reportEnded();
+  var apiTries = 0;
+  var apiTimer = setInterval(function(){
+    if(window.YT && window.YT.Player){ clearInterval(apiTimer); return; }
+    apiTries++;
+    if(apiTries === 14){
+      /* بعد ~7 ثواني ومفيش رد → محاولة حقن تانية للسكريبت */
+      var t2 = document.createElement('script');
+      t2.src = 'https://www.youtube.com/iframe_api?retry=1';
+      document.head.appendChild(t2);
+    }
+    if(apiTries >= 40){
+      clearInterval(apiTimer);
+      var so = document.getElementById('startOv');
+      if(so){
+        var pm = so.getElementsByTagName('p')[0];
+        if(pm) pm.textContent = 'الاتصال بطيء — اتأكد من النت ودوس تاني';
+      }
+    }
+  }, 500);
+}
+
+function buildPlayer(){
+  var ytId = ytIdCached;
+  playerApi = new YT.Player('ytHost', {
+    videoId: ytId,
+    // controls:0 → مفيش أي واجهة يوتيوب (لا عنوان ولا لوجو لا حاجة) — كل الكنترولز بتاعتنا
+    playerVars: { autoplay:1, controls:0, rel:0, modestbranding:1, playsinline:1, iv_load_policy:3, fs:0, disablekb:1, enablejsapi:1, origin: location.origin },
+    events: {
+      onReady: function(ev){
+        /* تكملة المشاهدة بنأجلها لأول لحظة تشغيل فعلية — أعلى أمان على الموبايل
+           (الـ seek قبل التشغيل كان بعلّق المشغل في حالة cued على بعض الأجهزة) */
+        try{ if(Number(CFG.resume) > 5) pendingResume = Number(CFG.resume); }catch(e){}
+        try{ ev.target.setPlaybackQuality('large'); }catch(e){} /* 480p — الجودة الثابتة */
+        if(pendingStart){ pendingStart = false; startWithWatchdog(); }
+        layoutWrap();
+      },
+      onStateChange: function(ev){
+        try{
+          if(ev.data === YT.PlayerState.PLAYING){
+            /* أول تشغيل → كمّل من آخر نقطة وصلها الطالب.
+               أمان: لو النقطة المحفوظة قربت من النهاية (حتى 999999 بتاعت "خلص") → نبدأ من الأول
+               عشان الفيديو ميفضلش بيدور في حلقة النهاية */
+            if(pendingResume > 5){
+              var rd = 0; try{ rd = playerApi.getDuration() || 0; }catch(e){}
+              var posR = pendingResume;
+              if(rd && posR >= rd - 5) posR = 0;
+              if(posR > 0){ try{ playerApi.seekTo(posR, true); }catch(e){} }
+              pendingResume = 0;
             }
-          }catch(e){}
+            try{ ev.target.setPlaybackQuality('large'); }catch(e){} /* 480p ثابتة */
+            var so=document.getElementById('startOv'); if(so) so.style.display='none';
+            var eo=document.getElementById('endOv'); if(eo) eo.style.display='none';
+            setPP(true); showCtrl(true);
+          } else if(ev.data === YT.PlayerState.PAUSED){
+            setPP(false); showCtrl(false);
+          } else if(ev.data === YT.PlayerState.ENDED){
+            setPP(false);
+            var eo2=document.getElementById('endOv'); if(eo2) eo2.style.display='flex';
+            /* رجوع للبداية + وقوف → شاشة اقتراحات يوتيوب عمرها ما بتترسم */
+            try{ playerApi.seekTo(0,true); playerApi.pauseVideo(); }catch(e){}
+            reportEnded();
+          }
+        }catch(e){}
+      }
+    }
+  });
+  setInterval(function(){
+    try{
+      if(playerApi && playerApi.getCurrentTime){
+        var cur = playerApi.getCurrentTime() || 0, dur = playerApi.getDuration() || 0;
+        reportProgress(cur, dur);
+        /* حارس النهاية: لو شاشة الاقتراحات هتظهر (ENDED ماتفوتش) → غطّي فورًا */
+        if(ytState()===0){
+          var eo3=document.getElementById('endOv');
+          if(eo3 && eo3.style.display!=='flex'){ eo3.style.display='flex'; try{ playerApi.seekTo(0,true); playerApi.pauseVideo(); }catch(e){} reportEnded(); }
+        }
+        /* قفل الجودة على 480p: لو يوتيوب نزّلها لوحده → نعيد الأمر، ولو استمر
+           → إعادة تحميل التيار عند 480p (مرتين كحد أقصى للفيديو عشان مفيش لوب) */
+        if(ytState()===1){
+          var q = '';
+          try{ q = playerApi.getPlaybackQuality() || ''; }catch(e){}
+          if(q && q !== 'large' && q !== 'auto' && q !== 'unknown'){
+            if(!qMissAt) qMissAt = Date.now();
+            if(Date.now() - qMissAt > 5000){
+              if(qReloads < 2 && Date.now() - lastQReload > 18000){
+                qReloads++; lastQReload = Date.now(); qMissAt = 0;
+                try{ playerApi.loadVideoById(ytIdCached, Math.max(0, Math.floor(playerApi.getCurrentTime() || 0)), 'large'); }catch(e){}
+              } else {
+                try{ playerApi.setPlaybackQuality('large'); }catch(e){}
+              }
+            }
+          } else { qMissAt = 0; }
+        }
+        if(!seekDragging){
+          var se = document.getElementById('seek');
+          if(se && dur) se.value = String(Math.round(cur/dur*1000));
+          var tt = document.getElementById('tTime');
+          if(tt) tt.textContent = fmtT(cur) + ' / ' + fmtT(dur);
         }
       }
-    });
-    setInterval(function(){
-      try{
-        if(playerApi && playerApi.getCurrentTime){
-          var cur = playerApi.getCurrentTime() || 0, dur = playerApi.getDuration() || 0;
-          reportProgress(cur, dur);
-          /* حارس النهاية: لو شاشة الاقتراحات هتظهر (ENDED ماتفوتش) → غطّي فورًا */
-          if(ytState()===0){
-            var eo3=document.getElementById('endOv');
-            if(eo3 && eo3.style.display!=='flex'){ eo3.style.display='flex'; try{ playerApi.seekTo(0,true); playerApi.pauseVideo(); }catch(e){} reportEnded(); }
-          }
-          if(!seekDragging){
-            var se = document.getElementById('seek');
-            if(se && dur) se.value = String(Math.round(cur/dur*1000));
-            var tt = document.getElementById('tTime');
-            if(tt) tt.textContent = fmtT(cur) + ' / ' + fmtT(dur);
-          }
-        }
-      }catch(e){}
-    }, 1000);
-  };
+    }catch(e){}
+  }, 1000);
 }
 
 /* ===== مشغّل الملفات المرفوعة (توكن موقّع قصير العمر) ===== */
