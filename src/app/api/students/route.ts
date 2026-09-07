@@ -1,5 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { makeLibsqlClient, ensureSchema } from '@/lib/ensure-schema'
+
+// ===== إصلاح ذاتي للجدول (مهم للإنتاج) =====
+// لو عمود ناقص في قاعدة Turso (زي deviceFp بعد الترقية)، أي استعلام طالب
+// كان بيفشل صامتةً والدخول كان بيبان كأن "الباسورد غلط" لكل الناس من كل
+// الأجهزة. الدالة دي بتشتغل مرة واحدة لكل سيرفر: بتجرب استعلام خفيف، ولو
+// فشلت بتشغّل ensureSchema الكاملة وبتصلّح الجدول فورًا.
+var schemaReady: Promise<void> | null = null
+function ensureStudentSchema(): Promise<void> {
+  if (!schemaReady) {
+    schemaReady = (async function () {
+      try {
+        await db.$queryRawUnsafe('SELECT deviceFp, deviceId, allowAllDevices FROM Student LIMIT 1')
+      } catch (e) {
+        try {
+          var client = makeLibsqlClient()
+          if (client) {
+            try { await ensureSchema(client) } finally { try { await client.close() } catch (e2) {} }
+          }
+        } catch (e2) {}
+      }
+    })()
+  }
+  return schemaReady
+}
 
 // ===== أدوات قفل الجهاز الصارم =====
 // تصنيف قيم الجهاز: هوية فريدة (dev_) وبصمة ناتج الجهاز (dv3_/dv2_)
@@ -42,10 +67,21 @@ export async function GET(request: NextRequest) {
       if (deviceId && candidates.indexOf(deviceId) === -1) candidates.unshift(deviceId)
       var current = pickDeviceIds(candidates)
       try {
-        var student = await db.student.findFirst({
-          where: { phone },
-          include: { _count: { select: { activities: true } } },
-        })
+        await ensureStudentSchema()
+        var student = null as any
+        try {
+          student = await db.student.findFirst({
+            where: { phone },
+            include: { _count: { select: { activities: true } } },
+          })
+        } catch (qErr: any) {
+          // لو الاستعلام فشل (عمود ناقص في الإنتاج) → صلّح الجدول وجرب مرة كمان
+          await ensureStudentSchema()
+          student = await db.student.findFirst({
+            where: { phone },
+            include: { _count: { select: { activities: true } } },
+          })
+        }
         if (!student) {
           return NextResponse.json({ students: [], total: 0, page: 1, pageSize: 1, totalPages: 0 })
         }
@@ -86,12 +122,21 @@ export async function GET(request: NextRequest) {
           if (!storedFp) storedFp = storedId
           storedId = ''
         }
-        // المطابقة الصارمة: الهوية الفريدة (dev_) بس هي اللي بتفتح.
+        // المطابقة الصارمة + مسارات إنقاذ محدودة (الكل بيقفل الحساب على جهاز واحد في الآخر):
+        // 1) الهوية الفريدة (dev_) — الطريق الأساسي
         var uuidOk = !!storedId && !!current.uuid && current.uuid === storedId
-        // ترقية الحسابات القديمة (مربوطة ببصمة dv2_ من غير هوية فريدة):
-        // أول جهاز يجيب نفس بصمة dv2_ بيتقيد عليه نهائيًا بالهوية الفريدة.
+        // 2) إنقاذ بالبصمة dv3_: نفس الجهاز الفعلي بس مسح بيانات المتصفح
+        //    (الهوية بتتولد من جديد لكن البصمة ثابتة) → بنسمح ونعيد الربط
+        //    بالهوية الجديدة فالحساب يفضل مقفول على نفس الجهاز الفعلي.
+        var fpOk = !!storedFp && storedFp.indexOf('dv3_') === 0 && !!current.fp && current.fp === storedFp && !uuidOk
+        // 3) ترقية dv2_: حسابات عصر البصمة القديمة لسه بيبعت نفس القيمة
         var legacyUpgrade = !storedId && !!storedFp && storedFp.indexOf('dv2_') === 0 && !!current.fp && current.fp === storedFp
-        var deviceTrusted = uuidOk || legacyUpgrade
+        // 4) استصحار حسابات dv2_: الجهاز الأصلي نفسه مش بيبعت القيمة القديمة تاني
+        //    (الكود الجديد بيكتب فوقها) فكانت بتفضل مقفولة للأبد حتى على جهازها —
+        //    أول جهاز يدخل بالرقم والباسورد الصح بياخد الربط نهائيًا، والحساب
+        //    يرجع مقفول على جهازه زي أي حساب (مرة واحدة بس).
+        var legacyClaim = !storedId && !!storedFp && storedFp.indexOf('dv2_') === 0 && (!!current.uuid || !!current.fp) && !legacyUpgrade
+        var deviceTrusted = uuidOk || fpOk || legacyUpgrade || legacyClaim
         var hasBinding = !!storedId || !!storedFp
         // الجهاز الحالي مش جهاز الحساب → مرفوض فورًا (حتى لو المتصفح مبعتش قيم)
         if (hasBinding && !deviceTrusted && !(student as any).allowAllDevices) {
@@ -99,21 +144,44 @@ export async function GET(request: NextRequest) {
             {
               students: [],
               deviceBlocked: true,
-              error: '🚫 لازم تدخل من الجهاز اللي انت عملت بيه الحساب — الحساب ده مربوط بجهاز واحد بس. لو جهازك اتغيّر، كلمن المستر يعمل لك سماح من لوحة التحكم.',
+              error: '🚫 لازم تدخل بالجهاز اللي انت عملت من عليه الحساب — الحساب ده مربوط بجهاز واحد بس. لو جهازك اتغيّر، كلمن المستر يعمل لك سماح من لوحة التحكم.',
             },
             { status: 403 }
           )
         }
-        // ترقية الحساب القديم: بيتقفل على الهوية الفريدة للجهاز ده نهائيًا
-        if (legacyUpgrade && current.uuid) {
+        // ترقية/استصحار الحساب القديم: بيتقفل على هوية الجهاز ده نهائيًا
+        if ((legacyUpgrade || legacyClaim) && (current.uuid || current.fp)) {
           try {
             await db.student.update({
               where: { id: student.id },
-              data: { deviceId: current.uuid, deviceFp: current.fp },
+              data: { deviceId: current.uuid || current.fp, deviceFp: current.fp || storedFp },
             })
-            ;(student as any).deviceId = current.uuid
+            ;(student as any).deviceId = current.uuid || current.fp
+            try {
+              await db.studentActivity.create({
+                data: { studentId: student.id, action: 'device_rebound', details: 'ترقية ربط الحساب القديم لجهاز جديد نهائيًا' },
+              })
+            } catch (aErr) {}
           } catch (upErr) {
             console.error('Device legacy upgrade error:', upErr)
+          }
+        }
+        // إنقاذ بالبصمة: نفس الجهاز الفعلي بعد مسح بيانات المتصفح → نعيد ربط
+        // الهوية الفريدة الجديدة عشان الدخول يفضل شغال من نفس الجهاز
+        if (fpOk && current.uuid && current.uuid !== storedId) {
+          try {
+            await db.student.update({
+              where: { id: student.id },
+              data: { deviceId: current.uuid },
+            })
+            ;(student as any).deviceId = current.uuid
+            try {
+              await db.studentActivity.create({
+                data: { studentId: student.id, action: 'device_rescued', details: 'نفس الجهاز (نفس البصمة) بعد مسح بيانات المتصفح — اتاعاد الربط تلقائيًا' },
+              })
+            } catch (aErr) {}
+          } catch (rErr) {
+            console.error('Device rescue rebind error:', rErr)
           }
         }
         // أول تسجيل دخول (حساب عمله الأدمن) → الجهاز ده بيتسجل بشكل دائم
@@ -146,7 +214,11 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ students: [{ ...student, watchedVideoCount: 0 }], total: 1, page: 1, pageSize: 1, totalPages: 1 })
       } catch (loginErr: any) {
         console.error('Student login error:', loginErr)
-        return NextResponse.json({ students: [], total: 0, page: 1, pageSize: 1, totalPages: 0 })
+        // مش بنقول "الباسورد غلط" هنا — دي مشكلة سيرفر مش بيانات غلط
+        return NextResponse.json(
+          { students: [], total: 0, page: 1, pageSize: 1, totalPages: 0, error: 'حدث خطأ مؤقت في السيرفر — جرب تاني بعد لحظات' },
+          { status: 500 }
+        )
       }
     }
 
@@ -203,6 +275,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    await ensureStudentSchema()
     var body = await request.json()
     var name = body.name || ''
     var phone = body.phone || ''
