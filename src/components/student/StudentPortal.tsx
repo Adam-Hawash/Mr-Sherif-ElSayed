@@ -336,6 +336,20 @@ export function StudentPortal() {
   )
 }
 
+// أدوات نوع الفيديو — على مستوى الملف عشان نقدر نستخدمها في الـ memo بشكل آمن
+function ytIdOf(url: string) {
+  const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/))([\w-]{11})/)
+  return match ? match[1] : null
+}
+
+function videoKindOf(v: any): 'youtube' | 'file' | 'link' | 'none' {
+  if (v.kind) return v.kind
+  if (ytIdOf(v.url || '')) return 'youtube'
+  if (v.filePath && /\.(mp4|webm|mov|avi)$/i.test(v.filePath)) return 'file'
+  if (v.url) return 'link'
+  return 'none'
+}
+
 function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, videoProgress, studentStatus, isPaidAccess, studentName, studentPhone }: { videos: VideoType[]; watchedIds: Set<string>; approvedVideoIds: Set<string>; studentId: string; grade: string; videoProgress: Record<string, number>; studentStatus?: string; isPaidAccess?: boolean; studentName?: string; studentPhone?: string }) {
   const { setView, setPendingPaymentVideo } = useAppStore()
   const [localWatched, setLocalWatched] = useState(watchedIds)
@@ -355,24 +369,60 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
     }).catch(() => {})
   }
 
-  const getYouTubeId = (url: string) => {
-    const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/))([\w-]{11})/)
-    return match ? match[1] : null
-  }
+  // نسب المشاهدة المحلية — بتتحدث أول ما المشغل يقفل عشان الأقفال تتحدث لحظيًا
+  const [progressOverrides, setProgressOverrides] = useState<Record<string, number>>({})
+  const mergedProgress = useMemo(function () {
+    return Object.assign({}, videoProgress, progressOverrides)
+  }, [videoProgress, progressOverrides])
 
-  // حماية الفيديو: السيرفر مبيرسلش url/filePath خلاص — بنعرف النوع من kind
-  // والتشغيل بيتم عبر /api/video-play بس (توكن موقّع للملفات المرفوعة)
-  const videoKind = (v: any): 'youtube' | 'file' | 'link' | 'none' => {
-    if (v.kind) return v.kind
-    if (getYouTubeId(v.url || '')) return 'youtube'
-    if (v.filePath && /\.(mp4|webm|mov|avi)$/i.test(v.filePath)) return 'file'
-    if (v.url) return 'link'
-    return 'none'
-  }
+  // ترتيب الدروس من الأقدم للأحدث — ده ترتيب نزول الدروس نفسه (الأول في المنهج فوق)
+  const orderedVideos = useMemo(function () {
+    return videos.slice().sort(function (a, b) {
+      var ta = new Date((a as any).createdAt || 0).getTime()
+      var tb = new Date((b as any).createdAt || 0).getTime()
+      return ta - tb
+    })
+  }, [videos])
+
+  // قفل التسلسل (طلب المستر): الفيديو ميفتحش غير لما اللي قبله يتشاف كامل 100%
+  const lockedMap = useMemo(function () {
+    var map: Record<string, boolean> = {}
+    var prevTrackable: string | null = null
+    orderedVideos.forEach(function (v) {
+      var k = videoKindOf(v)
+      var trackable = k === 'youtube' || k === 'file'
+      if (trackable && prevTrackable) {
+        var pct = mergedProgress[prevTrackable] || 0
+        map[v.id] = pct < 99
+      } else {
+        map[v.id] = false
+      }
+      if (trackable) prevTrackable = v.id
+    })
+    return map
+  }, [orderedVideos, mergedProgress])
+
+  // الفيديو اللي قبل كل فيديو (عشان نعرض نسبته على كارت المقفول)
+  const prevVideoMap = useMemo(function () {
+    var map: Record<string, string> = {}
+    var prevTrackable: string | null = null
+    orderedVideos.forEach(function (v) {
+      var k = videoKindOf(v)
+      var trackable = k === 'youtube' || k === 'file'
+      if (trackable && prevTrackable) map[v.id] = prevTrackable
+      if (trackable) prevTrackable = v.id
+    })
+    return map
+  }, [orderedVideos])
 
   // فتح أي درس (يوتيوب أو ملف مرفوع): بنطلب تذكرة تشغيل واحدة الاستخدام
   // من /api/video-ticket — مفيش أي YouTube ID أو رابط ملف بيرجع للصفحة.
   const openPlayModal = (video: VideoType) => {
+    // قفل التسلسل: اللي قبله لسه متشافش كامل → منع + رسالة (طلب المستر)
+    if (lockedMap[video.id]) {
+      toast.error('الفيديو ده هيتفتح أول ما تشوف الفيديو اللي قبله كامل (100%) — كمّل مشاهدة الفيديو اللي قبله الأول', { duration: 6000 })
+      return
+    }
     fetch('/api/video-ticket?videoId=' + video.id + '&studentId=' + encodeURIComponent(studentId || ''))
       .then(function (r) {
         return r.json().then(function (d) { return { ok: r.ok, d: d } })
@@ -392,8 +442,8 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
   return (
     <>
       <div className="grid gap-4 md:grid-cols-2">
-      {videos.map((video) => {
-        const kind = videoKind(video)
+      {orderedVideos.map((video) => {
+        const kind = videoKindOf(video)
         const isVideoFile = kind === 'file'
         const isWatched = localWatched.has(video.id)
         const thumbSrc = video.thumbnail || (video as any).thumb || null
@@ -402,7 +452,11 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
         // A paid account is not a purchase grant. Every priced video stays locked
         // until this specific video has an approved payment/access record.
         const needsPay = hasPrice && !hasApprovedPayment
-        const progress = videoProgress[video.id] || 0
+        const progress = mergedProgress[video.id] || 0
+        // مقفول بالتسلسل؟ الفيديو اللي قبله لسه نسبته أقل من 99%
+        const isSeqLocked = lockedMap[video.id] === true
+        const prevVideoId = prevVideoMap[video.id]
+        const prevPct = prevVideoId ? (mergedProgress[prevVideoId] || 0) : 0
 
         return (
           <Card key={video.id} className={`overflow-hidden transition-all ${isWatched ? 'border-emerald-500/30' : ''}`}>
@@ -435,6 +489,32 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
                     >
                       ادفع الآن
                     </Button>
+                  </div>
+                </div>
+              ) : isSeqLocked ? (
+                // مقفول بالتسلسل — قفل + رسالة (طلب المستر: هيتفتح أول ما تشوف اللي قبله كامل)
+                <div
+                  className="w-full h-full relative cursor-not-allowed select-none"
+                  onClick={function () { toast.error('الفيديو ده هيتفتح أول ما تشوف الفيديو اللي قبله كامل (100%) — كمّل مشاهدة الفيديو اللي قبله الأول', { duration: 6000 }) }}
+                  role="button"
+                  aria-label="الفيديو مقفول — هيتفتح أول ما تشوف الفيديو اللي قبله كامل"
+                >
+                  {thumbSrc ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={thumbSrc} alt={video.title} className="w-full h-full object-cover opacity-25 grayscale" draggable={false} />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-black/80 to-black" />
+                  )}
+                  <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-2 z-20 px-4 text-center">
+                    <div className="h-12 w-12 rounded-full bg-red-500/20 border border-red-400/40 flex items-center justify-center shrink-0">
+                      <Lock className="h-6 w-6 text-red-400" />
+                    </div>
+                    <p className="text-white text-xs sm:text-sm font-bold leading-relaxed">
+                      الفيديو ده هيتفتح أول ما تشوف الفيديو اللي قبله كامل
+                    </p>
+                    {prevPct > 0 && (
+                      <p className="text-white/60 text-[10px]">نسبة الفيديو اللي قبله دلوقتي: {prevPct}%</p>
+                    )}
                   </div>
                 </div>
               ) : kind === 'youtube' || isVideoFile ? (
@@ -522,7 +602,26 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
             trackVideoWatch(activeLessonVideo.id)
             setLocalWatched(function (prev) { return new Set([...prev, activeLessonVideo.id]) })
           }}
-          onClose={function () { setActiveLessonVideo(null) }}
+          onClose={function () {
+            var vid = activeLessonVideo.id
+            setActiveLessonVideo(null)
+            // نجيب نسبة المشاهدة الأخيرة للفيديو — عشان قفل الفيديو اللي بعده يتحدّث فورًا
+            if (!studentId) return
+            fetch('/api/video-progress?studentId=' + studentId + '&videoId=' + vid)
+              .then(function (r) { return r.json() })
+              .then(function (d) {
+                var row = (d.progress || [])[0]
+                if (row && row.totalSeconds > 0) {
+                  var pct = Math.min(100, Math.round((row.watchedSeconds / row.totalSeconds) * 100))
+                  setProgressOverrides(function (prev) {
+                    var n = Object.assign({}, prev)
+                    n[vid] = pct
+                    return n
+                  })
+                }
+              })
+              .catch(function () {})
+          }}
         />
       )}
     </>

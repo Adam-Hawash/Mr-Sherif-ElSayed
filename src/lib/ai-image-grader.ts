@@ -60,6 +60,9 @@ export function normalizeFinalAnswer(s: string): string {
   // Arabic-Indic digits → Western (٤٢ = 42)
   out = out.replace(/[٠-٩]/g, function (d) { return String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)) })
   out = out.replace(/[۰-۹]/g, function (d) { return String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)) })
+  // Arabic decimal separator ٫ → .  , and "3,5" → "3.5" (decimal comma)
+  out = out.replace(/٫/g, '.')
+  out = out.replace(/(\d)\s*,\s*(\d)/g, '$1.$2')
   // unicode superscripts → ^digits
   var supMap: Record<string, string> = { '⁰': '0', '¹': '1', '²': '2', '³': '3', '⁴': '4', '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9' }
   out = out.replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]+/g, function (m) {
@@ -102,10 +105,27 @@ function canonicalMonomial(s: string): string {
 }
 
 /* safe numeric evaluation for pure arithmetic/exponent forms: 2^10 = 1024,
- * 1/2 = 0.5. Returns null for anything with letters (no eval of words). */
+ * 1/2 = 0.5, 50% = 0.5, √50, π, 3:4 ratio, ½ …
+ * Returns null for anything with letters (no eval of words). */
 function tryNumeric(s: string): number | null {
-  var t = normalizeFinalAnswer(s).replace(/\^/g, '**')
-  if (!t || !/\d/.test(t) || !/^[\d+\-*/(). ]+$/.test(t)) return null
+  var t = normalizeFinalAnswer(s)
+  if (!t) return null
+  // unicode fractions → explicit division
+  t = t.replace(/½/g, '(1/2)').replace(/¼/g, '(1/4)').replace(/¾/g, '(3/4)')
+  t = t.replace(/⅓/g, '(1/3)').replace(/⅔/g, '(2/3)')
+  // percent: 50% → 50/100 (= 0.5)
+  t = t.replace(/%/g, '/100')
+  // square roots: √50 → Math.sqrt(50), √(50) → Math.sqrt(50)
+  t = t.replace(/√\s*\(?\s*([\d.]+)\s*\)?/g, 'Math.sqrt($1)')
+  // pi
+  t = t.replace(/π/g, 'Math.PI')
+  // ratio "3:4" (as a WHOLE value) = 3/4
+  if (/^[\d.]+\s*:\s*[\d.]+$/.test(t.trim())) t = t.trim().replace(/:/, '/')
+  t = t.replace(/\^/g, '**')
+  if (!/\d/.test(t) && t.indexOf('Math.PI') === -1) return null
+  // allow only arithmetic + the Math.sqrt / Math.PI tokens we just built
+  var check = t.replace(/Math\.sqrt/g, '').replace(/Math\.PI/g, '')
+  if (!/^[\d+\-*/().\s]*$/.test(check)) return null
   try {
     var v = Function('"use strict"; return (' + t + ')')()
     return typeof v === 'number' && isFinite(v) ? v : null
@@ -127,10 +147,15 @@ export function exactEquivalent(a: string, b: string): boolean {
   var ca = canonicalMonomial(a)
   var cb = canonicalMonomial(b)
   if (ca !== '' && cb !== '' && ca === cb) return true
-  // pure arithmetic evaluates equal: 2^10 = 1024, 1/2 = 0.5
+  // pure arithmetic evaluates equal: 2^10 = 1024, 1/2 = 0.5, 50% = 0.5, √50 = 7.071…, 3:4 = 3/4
   var va = tryNumeric(a)
   var vb = tryNumeric(b)
   if (va !== null && vb !== null && Math.abs(va - vb) < 1e-9) return true
+  // percent-symmetric pass: "50%" ≡ "50" (same value, one wrote the sign and one didn't)
+  var stripPct = function (t: string) { return String(t || '').replace(/%/g, '') }
+  var va2 = tryNumeric(stripPct(a))
+  var vb2 = tryNumeric(stripPct(b))
+  if (va2 !== null && vb2 !== null && Math.abs(va2 - vb2) < 1e-9) return true
   return false
 }
 
@@ -249,7 +274,7 @@ export async function gradeImageAnswer(params: {
   prompt += '   EXAMPLE: student writes "5+3=9" (wrong arithmetic) then boxes "8" or writes "الإجابة النهائية: 8" at the end → the answer is 8 → grade 8 → CORRECT, full marks. NEVER grade the "9".\n'
   prompt += '   CRITICAL: every intermediate step, every middle result, every scratched-out attempt is NOT the answer. Do NOT grade an intermediate value. Many students write wrong-looking middle steps and still end with the CORRECT boxed final answer — that is CORRECT, full marks. If you compare a middle step against the model answer instead of the boxed/last value, you FAIL.\n'
   prompt += '   Set answerSource = "boxed" if found in a box, "last-line" if from the last line, "unclear" if you truly cannot read any final value.\n'
-  prompt += 'STEP 5 — Compare the student\'s final answer VALUE with the model final answer and accepted answers. You are comparing MATHEMATICAL VALUES, not strings. All of these are the SAME answer: 2^7 = 128, 1/2 = 0.5 = ½, n=6 = n = 6 = 6, x^4y^3 = y^3x^4, √50 = 5√2, 2^{n+2} = 2^n·4. Simplify BOTH sides mentally before deciding.\n'
+  prompt += 'STEP 5 — Compare the student\'s final answer VALUE with the model final answer and accepted answers. You are comparing MATHEMATICAL VALUES, not strings. All of these are the SAME answer: 2^7 = 128, 1/2 = 0.5 = ½ = 50%, n=6 = n = 6 = 6, x^4y^3 = y^3x^4, √50 = 5√2, 2^{n+2} = 2^n·4, 3:4 = 3/4, 3,5 = 3.5, ٤٢ = 42. Units and labels NEVER matter (12 سم = 12 cm = 12). Simplify BOTH sides mentally before deciding.\n'
   prompt += 'STEP 6 — A correct final answer with wrong/missing/unreadable steps is still CORRECT (full points). A genuinely DIFFERENT final value is WRONG even if the steps look nice. Never mark an answer wrong just because the handwriting is hard to read or the steps are messy — judge the final value ONLY. Scratch work NEVER lowers the grade.\n'
   prompt += 'STEP 7 — ALWAYS give a definite verdict (isCorrect true or false). Only say onTopic=false when the photo truly contains NO student work at all.\n\n'
   prompt += 'awardedPoints: an integer from 0 to ' + maxPoints + ' (' + maxPoints + ' only when isCorrect=true).\n\n'
@@ -465,8 +490,8 @@ export async function gradeTextAnswer(params: {
   prompt += acceptedStr + '\n\n'
   prompt += 'CORE PRINCIPLE — the student answer is CORRECT (full points) whenever its FINAL value is mathematically EQUAL to the model final value, even if written differently:\n'
   prompt += '- Different order: y^4x^6 = x^6y^4\n'
-  prompt += '- Different notation: a^7 = aaaaaaa (a multiplied 7 times), 2^10 = 1024, 1/2 = 0.5 = ½, x^(1/2) = √x, √50 = 5√2\n'
-  prompt += '- Arabic digits ٤٢ = 42; with or without × * · spaces or steps\n'
+  prompt += '- Different notation: a^7 = aaaaaaa (a multiplied 7 times), 2^10 = 1024, 1/2 = 0.5 = ½ = 50%, x^(1/2) = √x, √50 = 5√2, 3:4 = 3/4, 3,5 = 3.5\n'
+  prompt += '- Arabic digits ٤٢ = 42; units and labels are IGNORED (12 سم = 12 cm = 12, x = 5 = 5); with or without × * · spaces or steps\n'
   prompt += '- The final value may be CONTAINED in the model solution (model shows steps, student wrote only the final result) → still CORRECT\n'
   prompt += 'Rules:\n'
   prompt += '1. Extract the student\'s FINAL answer ONLY: the value inside a box/circle (مربع/دايرة) if present, otherwise the LAST line (the value after the last "="). COMPLETELY IGNORE all other text — steps, drafts, notes, crossed-out work. They must NEVER affect the verdict even if they look wrong or messy.\n'

@@ -12,6 +12,7 @@
 
 import { callGemini as callGeminiCentral, hasGeminiKey } from '@/lib/gemini'
 import { repairModelJson, repairCorruptMath } from '@/lib/math-text'
+import { exactEquivalent } from './ai-image-grader'
 
 export interface WritingAnswer {
   question: string
@@ -65,10 +66,12 @@ function stripFactorForm(s: string): string {
 }
 
 /*
- * quickSmartMatch — no-AI fast path.
- * returns true  → graded correct without AI
+ * quickSmartMatch — no-AI fast path (كلام المستر: يفهم الإجابة النهائية، مش بالحرف).
+ * المقارنة هنا بالـ VALUE بتاع الإجابة النهائية بس (equivalence) — مفيش أي
+ * contains/substring (ده كان بيدي نتايج غلط: "15" كانت بتتحسب صح لما الصح "5").
+ * returns true  → graded correct without AI (القيم متكافئة رقميًا/رمزيًا)
  * returns false → caller decides (empty answers)
- * returns null → send to AI (not confidently matched)
+ * returns null  → send to AI (it UNDERSTANDS the answer and decides)
  */
 export function quickSmartMatch(
   studentAnswer: string,
@@ -78,23 +81,21 @@ export function quickSmartMatch(
   var st = normalizeForMatch(studentAnswer)
   if (!st) return false
   var stFinal = stripFactorForm(finalSegment(st))
-  var stAll = stripFactorForm(st)
+  if (!stFinal) return null
 
   var candidates: string[] = []
-  ;(acceptedAnswers || []).forEach(function (a) { if (a) candidates.push(a) })
-  if (modelAnswer) candidates.push(modelAnswer)
+  ;(acceptedAnswers || []).forEach(function (a) { if (a && String(a).trim()) candidates.push(String(a).trim()) })
+  if (modelAnswer && String(modelAnswer).trim()) candidates.push(String(modelAnswer).trim())
 
   for (var i = 0; i < candidates.length; i++) {
-    var candFinal = stripFactorForm(finalSegment(candidates[i]))
-    var candAll = stripFactorForm(normalizeForMatch(candidates[i]))
-    if (!candFinal && !candAll) continue
-    // final value equal on both sides
-    if (candFinal && stFinal && candFinal === stFinal) return true
-    // accepted answer (short = specific) contained in the student line
-    if (candAll && candAll.length <= 24 && stAll.indexOf(candAll) !== -1) return true
-    // student final contained in the model's final (model: "x = 3 or x = -3" style)
-    if (candFinal && stFinal && candFinal.indexOf(stFinal) !== -1 && stFinal.length >= 1 && candFinal.length - stFinal.length <= 2) return true
+    var cand = candidates[i]
+    var candFinal = stripFactorForm(finalSegment(cand))
+    // الإجابة النهائية متكافئة رغم اختلاف الشكل: 0.5 = 50% = 1/2 = ½ = خمسة-على-عشرة
+    if (candFinal && stFinal && exactEquivalent(stFinal, candFinal)) return true
+    // النموذج نفسه ممكن يكون قيمة مباشرة من غير = (مثلًا "5" أو "2^10")
+    if (exactEquivalent(stFinal, cand)) return true
   }
+  // مش متأكدين إنها متكافئة → الـ AI يفهم الإجابة ويقرر (مش حكم حرفي)
   return null
 }
 
@@ -107,8 +108,8 @@ function buildAiPrompt(needAI: WritingAnswer[]): string {
   lines.push('CORE PRINCIPLE — grade the MATHEMATICAL VALUE, never the literal wording:')
   lines.push('The student answer is CORRECT (full points) whenever its final value is mathematically EQUAL to the model answer final value, even if written differently:')
   lines.push('- Different order: y^4x^6 = x^6y^4')
-  lines.push('- Different notation: a^7 = aaaaaaa (a multiplied 7 times), 2^10 = 1024, 1/2 = 0.5 = ½, x^(1/2) = √x, √50 = 5√2, 2^{n+2} = 2^n·4')
-  lines.push('- Arabic digits ٤٢ = 42, with or without × * · spaces units or steps')
+  lines.push('- Different notation: a^7 = aaaaaaa (a multiplied 7 times), 2^10 = 1024, 1/2 = 0.5 = ½ = 50%, x^(1/2) = √x, √50 = 5√2, 2^{n+2} = 2^n·4, 3:4 = 3/4, 3,5 = 3.5')
+  lines.push('- Arabic digits ٤٢ = 42; units and labels are IGNORED (12 سم = 12 cm = 12; x = 5 = 5); with or without × * · spaces units or steps')
   lines.push('- The final value may be CONTAINED in the model answer (the model shows full steps, the student wrote only the final result) → still CORRECT')
   lines.push('- UNDERSTAND the answer: find the FINAL value (usually the last thing written: after the last =, or a boxed/circled value, or after ANSWER). Messy steps, extra working or unusual formatting NEVER make a correct final value wrong. Simplify BOTH sides mentally before deciding.')
   lines.push('- ALWAYS decide: every graded answer gets a definite isCorrect true or false — never leave one undecided.')
@@ -338,7 +339,7 @@ function heuristicFallback(slot: GradedAnswer, wa: WritingAnswer): GradedAnswer 
     var stFinal = stripFactorForm(finalSegment(st))
     var mFinal = stripFactorForm(finalSegment(model))
     var sim = bigramSimilarity(st, model)
-    if (stFinal && mFinal && stFinal === mFinal) {
+    if (stFinal && mFinal && (stFinal === mFinal || exactEquivalent(stFinal, mFinal))) {
       awarded = maxPts
       feedback = 'الإجابة النهائية مطابقة للإجابة النموذجية ✓'
     } else if (sim >= 0.55) {
