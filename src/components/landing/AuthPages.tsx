@@ -31,11 +31,11 @@ function DeviceWarningBanner({ mode }: { mode: 'login' | 'register' }) {
       <p className="text-[13px] leading-relaxed text-foreground">
         {mode === 'register' ? (
           <>
-            <span className="font-bold">مهم جدًا:</span> الحساب بيتقفل على <span className="font-bold">جهاز واحد بس</span> — الجهاز اللي هتعمل بيه الحساب دلوقتي. اعمل الحساب من الجهاز اللي هتفتح بيه المنصة دايمًا، ولو حصلت أي مشكلة كلم المستر.
+            <span className="font-bold">مهم جدًا:</span> الحساب بيتقفل على <span className="font-bold">جهاز واحد بس</span> — الجهاز اللي هتعمل بيه الحساب دلوقتي. اعمل الحساب من الجهاز اللي هتفتح بيه المنصة دايمًا، ولو حصلت أي مشكلة اكتبها في <span className="font-bold">قسم الشكاوي</span>.
           </>
         ) : (
           <>
-            <span className="font-bold">تنبيه:</span> الحساب مربوط بـ <span className="font-bold">جهاز واحد بس</span> (الجهاز اللي اتعمل بيه). لو حصلت معاك أي مشكلة كلم المستر.
+            <span className="font-bold">تنبيه:</span>             <span className="font-bold">تنبيه مهم:</span> الجهاز اللي أنت هتعمل منه <span className="font-bold">تسجيل الدخول</span> دلوقتي هو ده الجهاز اللي هتخش منه على حسابك <span className="font-bold">للأبد</span> — ما ينفعش تغيّره ولا تدخل بجهاز تاني. الحساب بيدخل بـ <span className="font-bold">جهاز واحد بس</span>، والجهاز اللي هتدخل منه ده هيفضل بتاعك. لو واجهتك أي مشكلة اكتبها في <span className="font-bold">قسم الشكاوي</span>.
           </>
         )}
       </p>
@@ -143,7 +143,7 @@ export function LoginView() {
       var data = await res.json()
       // ربط الجهاز: الحساب مربوط بجهاز تاني → رسالة حمراء واضحة جوه الكارت
       if (res.status === 403 && data.deviceBlocked) {
-        var msg = data.error || '🚫 لازم تدخل بالجهاز اللي انت عملت من عليه الحساب — الحساب ده مربوط بجهاز واحد بس. لو حصلت معاك أي مشكلة كلم المستر.'
+        var msg = data.error || '🚫 لازم تدخل بالجهاز اللي انت عملت من عليه الحساب — الحساب ده مربوط بجهاز واحد بس. لو حصلت معاك أي مشكلة اكتبها في قسم الشكاوي.'
         setDeviceBlockMsg(msg)
         toast.error(msg, { duration: 12000 })
         setStudentPassword('')
