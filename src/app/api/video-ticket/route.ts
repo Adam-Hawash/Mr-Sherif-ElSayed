@@ -11,7 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { db } from '@/lib/db'
-import { computePlayback, isAdmin, ensurePlayTicketTable } from '@/lib/video-guard'
+import { computePlayback, isAdmin, ensurePlayTicketTable, checkSequentialUnlock } from '@/lib/video-guard'
 
 export const dynamic = 'force-dynamic'
 
@@ -74,7 +74,12 @@ export async function GET(request: NextRequest) {
       authorized = true
     } else {
       const result = await computePlayback(videoId, studentId || null)
-      if (result.ok) authorized = true
+      if (result.ok) {
+        // تسلسل المشاهدة (طلب المستر): الفيديو بيتفتح بس لو اللي قبله اتشاف كامل
+        const seq = await checkSequentialUnlock(videoId, studentId || null)
+        if (!seq.ok) return NextResponse.json({ error: seq.reason }, { status: seq.code || 423 })
+        authorized = true
+      }
       else return NextResponse.json({ error: result.reason }, { status: result.code })
     }
     if (!authorized) return NextResponse.json({ error: 'غير مسموح' }, { status: 401 })

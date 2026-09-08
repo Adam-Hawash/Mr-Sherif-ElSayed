@@ -13,7 +13,7 @@
 import { NextResponse, after } from 'next/server'
 import { db } from '@/lib/db'
 import { gradeImageAnswer, gradeTextAnswer, extractImageMediaIds } from '@/lib/ai-image-grader'
-import { gradeFallbackDecisive } from '@/lib/smart-grader'
+import { gradeFallbackDecisive, quickSmartMatch } from '@/lib/smart-grader'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120
@@ -89,25 +89,11 @@ async function ensureTable() {
   }
 }
 
-/* quick local text matching (fast path, no AI) */
+/* quick local text match — EQUIVALENCE of the FINAL answer only (no literal
+ * substring: "15" must never match accepted "5"). Anything not confidently
+ * equivalent goes to the AI which UNDERSTANDS the answer. */
 function quickTextMatch(answerText: string, modelAnswer: string, acceptedAnswers: string[]): boolean {
-  var cleanStudent = answerText.toLowerCase().replace(/\s+/g, ' ').trim()
-  if (!cleanStudent) return false
-  if (acceptedAnswers && acceptedAnswers.length > 0) {
-    for (var ai = 0; ai < acceptedAnswers.length; ai++) {
-      var acc = (acceptedAnswers[ai] || '').trim().toLowerCase().replace(/\s+/g, ' ')
-      if (acc && (cleanStudent === acc || cleanStudent.includes(acc) || acc.includes(cleanStudent))) return true
-    }
-  }
-  if (modelAnswer) {
-    var cleanModel = modelAnswer.toLowerCase().replace(/\s+/g, ' ').trim()
-    var modelParts = cleanModel.split('=')
-    var modelFinal = (modelParts[modelParts.length - 1] || '').trim()
-    var studentParts = cleanStudent.split('=')
-    var studentFinal = (studentParts[studentParts.length - 1] || '').trim()
-    if (modelFinal && studentFinal && (modelFinal === studentFinal || modelFinal.includes(studentFinal) || studentFinal.includes(modelFinal))) return true
-  }
-  return false
+  return quickSmartMatch(answerText, modelAnswer, acceptedAnswers || []) === true
 }
 
 export async function POST(request) {
@@ -418,7 +404,7 @@ export async function POST(request) {
           awardedPoints: wa.points,
           aiExtractedAnswer: answerText,
           aiIsCorrect: true,
-          aiFeedback: 'إجابة صحيحة (تطابق نصي)',
+          aiFeedback: 'إجابة صحيحة (الإجابة النهائية مطابقة للصحيحة)',
           aiAwardedPoints: wa.points,
           feedback: 'إجابة صحيحة',
         })

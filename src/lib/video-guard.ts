@@ -130,6 +130,59 @@ export async function computePlayback(videoId: string, studentId: string | null 
   return { ok: false, code: 402, reason: 'محتاج تسديد الفيديو ده الأول' }
 }
 
+// ============================================================
+// التسلسل في المشاهدة (طلب المستر): لو فيه أكتر من فيديو على المنصة،
+// الفيديو اللي بعده ميقعش يتفتح غير لما الفيديو اللي قبله يتشاف كامل
+// — نسبة المشاهدة توصل 100% (أو 99% هامش أمان للتفاوت في مدة اليوتيوب).
+// الترتيب: من الأقدم للأحدث (ترتيب نزول الدروس نفسه).
+// الفيديوهات اللي مينفعش نتتبع نسبتها (لينك خارجي بس) بتتخطى عشان
+// التسلسل ميقلعش على فيديو مش قابل للقياس.
+// ============================================================
+export const SEQ_UNLOCK_RATIO = 0.99
+
+export async function checkSequentialUnlock(
+  videoId: string,
+  studentId: string | null | undefined
+): Promise<{ ok: boolean; code?: number; reason?: string }> {
+  // زائر/معاينة أدمن → التسلسل مبيطبقش عليهم
+  if (!studentId) return { ok: true }
+  try {
+    const video = await db.video.findUnique({ where: { id: videoId } })
+    if (!video) return { ok: true }
+    const gradeVideos = await db.video.findMany({
+      where: { grade: video.grade },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, url: true, filePath: true, fileType: true },
+    })
+    const idx = gradeVideos.findIndex((v) => v.id === videoId)
+    // أول فيديو في الترتيب دايمًا مفتوح
+    if (idx <= 0) return { ok: true }
+    // ندوّر على أقرب فيديو قبله قابل لتتبع النسبة (يوتيوب أو ملف مرفوع)
+    for (let i = idx - 1; i >= 0; i--) {
+      const v = gradeVideos[i]
+      const isYT = Boolean(getYouTubeId(v.url || ''))
+      const isFile = Boolean(v.filePath || v.fileType)
+      if (!isYT && !isFile) continue // لينك خارجي — مش قابل للتتبع، نتخطاه
+      const prog = await db.videoProgress.findUnique({
+        where: { studentId_videoId: { studentId, videoId: v.id } },
+      }).catch(() => null)
+      const ratio = prog && prog.totalSeconds > 0 ? prog.watchedSeconds / prog.totalSeconds : 0
+      if (ratio < SEQ_UNLOCK_RATIO) {
+        return {
+          ok: false,
+          code: 423,
+          reason: 'الفيديو ده هيتفتح أول ما تشوف الفيديو اللي قبله كامل (100%) — كمّل مشاهدة الفيديو اللي قبله الأول',
+        }
+      }
+      break // أقرب فيديو قبله قابل للتتبع خلص → الفيديو ده مفتوح
+    }
+    return { ok: true }
+  } catch (e) {
+    // أي خطأ داخلي → ممنوع نمنع طالب بريء من المشاهدة بسبب عطل تقني
+    return { ok: true }
+  }
+}
+
 // الصورة المصغرة من غير ما نكشف لينك اليوتيوب:
 // لو محفوظة نرجعها زي ما هي (صور عامة)، لو يوتيوب نبعت عبر بروكسي
 // /api/video-thumb/[id] اللي بيجيب الصورة من يوتيوب على السيرفر
