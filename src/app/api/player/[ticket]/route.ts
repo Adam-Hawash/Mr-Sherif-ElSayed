@@ -7,12 +7,13 @@
 //     وبيتفك في الذاكرة لحظة التشغيل بس، فمفيش ID في مصدر الصفحة
 //     ولا في الـ DOM ولا في أي console.log.
 //  2) الملفات المرفوعة بتتخدم بتوكن موقّع قصير العمر مرتبط بالطالب.
-//  3) ووترمارك (مواصفات المستر النهائية 2026-و): مفيش أي شِپات على الحواف خالص —
+//  3) ووترمارك (مواصفات المستر النهائية 2026-ز): مفيش أي شِپات على الحواف خالص —
 //     ووترمارك كبير واحد في نص الخلفية على سطرين (الاسم الثنائي + الرقم تحته)
-//     **شفافية أخف + نبض: يظهر ٦ ثواني ويختفي ١٠ ثواني** (طلب المستر حرفيًا:
-//     "تقللي الشفافية عشان بتاخد من الكلام... تظهر ٥/٦ ثواني وتختفي عشر ثواني")
-//     + بيرجع يرسم لوحه نفسه لو اتمسح + شغال جوه ملء الشاشة.
-//     والكارت (الاسم الكامل + الرقم) ثابت في **الزاوية تحت على اليمين**.
+//     **ثابت تمامًا من غير أي نبض** (طلب المستر حرفيًا: "خليها ثابتة ما
+//     تغيرهاش — الشفافية بتاعتها حلوة") + بيرجع يرسم لوحه نفسه لو اتمسح
+//     + شغال جوه ملء الشاشة.
+//     وكارتين (الاسم الكامل + الرقم): واحد فوق الناحية الشمال (جديد) وواحد
+//     ثابت في **الزاوية تحت على اليمين**.
 //  4) حماية فحص: كليك يمين مقفول + F12/Ctrl+Shift+I/J/C/Ctrl+U مقفولين
 //     بتنبيه لطيف + لو أدوات المطور اتفتحت الفيديو بيوقف مؤقتًا.
 //  5) التقدم بيتقال للأب بـ postMessage كل 5 ثواني (مفيش أي لينك).
@@ -200,18 +201,16 @@ const PLAYER_PAGE = `<!doctype html>
   #wrap{position:relative;width:100%;max-width:100vw;background:#000;overflow:hidden}
   #wrap.fs{width:100vw;height:100vh;max-width:none}
   #yt,#fileVid{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000}
-  /* ===== الووترمارك (مواصفات المستر النهائية 2026-و) =====
+  /* ===== الووترمارك (مواصفات المستر النهائية 2026-ز) =====
      • ووترمارك كبير واحد في نص الخلفية على سطرين: الاسم الثنائي فوق
-       والرقم تحته — **شفافية أخف + نبض: يظهر 6 ثواني ويختفي ~10 ثواني**
-       (طلب المستر: "تقللي الشفافية عشان بتاخد من الكلام")
-     • كارت الطالب (الاسم الكامل + الرقم) ثابت في **الزاوية تحت على اليمين**
+       والرقم تحته — **ثابت تمامًا من غير أي نبض وحركات**
+       (طلب المستر: "خليها ثابتة ما تغيرهاش — الشفافية بتاعتها حلوة")
+     • كارتين (الاسم الكامل + الرقم): فوق الناحية الشمال + تحت اليمين
      • مفيش أي شِپات على الحواف خالص (اتشالت كلها بطلب المستر) */
-  @keyframes mgWmPulse{0%,37.5%{opacity:var(--wmo,.5)}43.75%,93.75%{opacity:0}100%{opacity:var(--wmo,.5)}}
   .wm{position:absolute;inset:0;z-index:40;pointer-events:none;user-select:none;overflow:hidden}
-  /* الووترمارك الكبير في النص — سطرين: الاسم الثنائي + الرقم تحته — نبض 16 ثانية */
+  /* الووترمارك الكبير في النص — سطرين: الاسم الثنائي + الرقم تحته — **ثابت** */
   #wmBig{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:41;direction:rtl;
-    text-align:center;max-width:94%;--wmo:.5;
-    animation:mgWmPulse 16s linear infinite;
+    text-align:center;max-width:94%;--wmo:.5;opacity:var(--wmo,.5);
     font-weight:900;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
     font-size:clamp(20px,5.6vw,72px);line-height:1.25;
     unicode-bidi:plaintext;letter-spacing:0}
@@ -225,12 +224,14 @@ const PLAYER_PAGE = `<!doctype html>
     text-shadow:0 0 12px rgba(255,255,255,.16)}
   /* كارت الطالب — ثابت في الزاوية تحت على اليمين (مفيش أي حاجة بتتحرك) */
   .wmCard{position:absolute;z-index:46;bottom:7.5%;right:2.2%}
-  .wmCard .in{display:inline-block;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.28);
+  /* كارت تاني فوق في **الناحية الشمال** (طلب المستر 2026-ز) — نفس الشكل */
+  .wmCardTop{position:absolute;z-index:46;top:2.8%;left:2.2%}
+  .wmCard .in,.wmCardTop .in{display:inline-block;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.28);
     color:#fff;border-radius:14px;padding:7px 18px;text-align:center;direction:rtl;
     box-shadow:0 8px 26px rgba(0,0,0,.55)}
-  .wmCard .nm{display:block;font-size:clamp(11px,1.5vw,15px);font-weight:800;unicode-bidi:plaintext;letter-spacing:0;white-space:nowrap;
+  .wmCard .nm,.wmCardTop .nm{display:block;font-size:clamp(11px,1.5vw,15px);font-weight:800;unicode-bidi:plaintext;letter-spacing:0;white-space:nowrap;
     text-shadow:0 1px 2px rgba(0,0,0,.8)}
-  .wmCard .ph{display:block;font-size:clamp(9.5px,1.2vw,12px);font-weight:700;direction:ltr;unicode-bidi:plaintext;letter-spacing:0;opacity:.85;margin-top:2px}
+  .wmCard .ph,.wmCardTop .ph{display:block;font-size:clamp(9.5px,1.2vw,12px);font-weight:700;direction:ltr;unicode-bidi:plaintext;letter-spacing:0;opacity:.85;margin-top:2px}
   /* درع فوق — **دايمًا شغال** (مش بس وقت الوقف): بيغطي عنوان يوتيوب/اسم القناة/
      زرار الشير اللي بيظهروا وقت الوقف أو بعد التحوال — بديل القص:
      الفيديو كامل 100% والواجهة مستحيل تبان ولا حد يقدر يدوس عليها */
@@ -307,14 +308,14 @@ function deobfuscate(b64, key){
   }catch(e){ return ''; }
 }
 
-/* ===== الووترمارك (مواصفات المستر النهائية 2026-و) =====
+/* ===== الووترمارك (مواصفات المستر النهائية 2026-ز) =====
    • ووترمارك كبير واحد في نص الخلفية على **سطرين** — زي ما المستر طلب
      حرفيًا: "الاسم الثنائي وتحتيه الرقم — لازم الرقم يظهر":
      السطر الأول: الاسم الثنائي (أول كلمتين من الاسم)
      السطر التاني: رقم الطالب تحته (أصغر — واضح ومقروء)
-     **شفافية أخف + نبض: يظهر 6 ثواني ويختفي ~10 ثواني** (طلب المستر:
-     "تقللي الشفافية عشان بتاخد من الكلام... تظهر ٥/٦ ثواني وتختفي عشر ثواني")
-   • كارت الطالب (الاسم الكامل + الرقم) ثابت في الزاوية تحت على اليمين
+     **ثابت تمامًا من غير أي نبض** (طلب المستر 2026-ز: "خليها ثابتة
+     ما تغيرهاش — الشفافية بتاعتها حلوة")
+   • كارتين (الاسم الكامل + الرقم): فوق الناحية الشمال + تحت اليمين
    • الاسم من غير قص أي حرف — ممنوع letter-spacing
      وpaint-order:stroke عشان الحواف السودة متاكلش الحروف */
 var wmName = String(CFG.wm.name || '').trim();
@@ -339,13 +340,20 @@ function buildWm(){
     /* الرقم تحت الاسم في سطر لوحده — لازم يبان زي ما المستر طلب */
     var numLine = (wmName && wmPhone) ? '<span class="b2">' + esc(wmPhone) + '</span>' : '';
     big.innerHTML = nameLine + numLine;
-    /* شفافية أخف عشان مش يغطي الكلام (النبض نفسه جوه الـ CSS keyframes
-       بيقرا المتغير ده — الافتراضي 0.5 وأقصى حاجة 0.6) */
+    /* نفس الشفافية الخفيفة — ثابتة على طول (مفيش نبض) */
     var wmo = Math.min(0.6, Math.max(0.3, (Number(CFG.wm.opacity) || 0.55) * 0.85));
     big.style.setProperty('--wmo', String(wmo));
     layer.appendChild(big);
   }
-  /* 2) كارت الطالب (الاسم الكامل + الرقم) — ثابت في الزاوية تحت على اليمين */
+  /* 2) كارت فوق في **الناحية الشمال** (طلب المستر 2026-ز: "أضفلي كارت فوق
+     فيه الاسم والرقم فوق الناحية الشمال") — ثابت تمامًا */
+  if(wmName || wmPhone){
+    var cardTop = document.createElement('div');
+    cardTop.className = 'wmCardTop';
+    cardTop.innerHTML = '<div class="in"><span class="nm">' + esc(wmName || wmPhone) + '</span>' + ((wmName && wmPhone) ? '<span class="ph">' + esc(wmPhone) + '</span>' : '') + '</div>';
+    layer.appendChild(cardTop);
+  }
+  /* 3) كارت الطالب (الاسم الكامل + الرقم) — ثابت في الزاوية تحت على اليمين */
   if(wmName || wmPhone){
     var card = document.createElement('div');
     card.className = 'wmCard';
@@ -391,23 +399,24 @@ function clearRot(){
 /* ===== عرض الفيديو **كامل 100% من غير أي قص** (طلب المستر 2026-هـ:
    "الفيديو مش كامل إنت قاصص منه الأطراف — لازم يبان كله") — مفيش أي قص،
    وأي واجهة يوتيوب بتتغطى بالدروع (الدرع العلوي + باتش اللوجو + الووترمارك). */
-/* ===== الجودة (أهم حاجة — 2026-و) =====
-   يوتيوب بيحدد **سقف الجودة بمقاس المشغل**: مشغل 1280×720 بيرفض 1080p+
-   حتى مع setPlaybackQuality/loadVideoById (اتختبر فعليًا). عشان كده:
-   الـ iframe بيرندر بمقاس **1920×1080 كحد أدنى** (أو مقاس الصندوق لو أكبر)
-   وبيتصغّر بالـ CSS بـ **min (contain)** — تصغير مش تكبير:
+/* ===== الجودة (أهم حاجة — 2026-ز) =====
+   **الإصلاح الجذري لمشكلة "الجودة مش بتعلى" على الموبايل**:
+   يوتيوب بيحدد سقف الجودة بمقاس الـ iframe نفسه — مقاس 1280×720 (اللي كان
+   بيتحط على الصناديق الصغيرة) بيقفل تيار 1080p حتى لو الفيديو الأصلي 1080p.
+   **الحل: رندر 1920×1080 دايمًا على أي جهاز** والتصغير بـ CSS scale بـ
+   min (contain) — تصغير مش تكبير:
    • يوتيوب بيسمح بتيار 1080p فعلًا (المقاس الكبير)
    • مفيش أي تمديد بكسلات (التصغير بيحافظ على الحدة 100%)
    • مفيش أي قص (contain — الفيديو كامل دايمًا) */
-function hostRasterFor(boxW){
-  if(boxW > 0 && boxW < 640) return { w: 1280, h: 720 };  // صناديق صغيرة جدًا (موبايل جوه الصفحة)
-  return { w: 1920, h: 1080 };                            // الكونتينر العادي/ملء الشاشة
+function hostRasterFor(){
+  /* دايمًا 1920×1080 — أي مقاس أصغر بيقفل تيار 1080p عند يوتيوب */
+  return { w: 1920, h: 1080 };
 }
 function sizeYtHost(){
   var c = document.getElementById('ytCrop'), h = document.getElementById('ytHost');
   if(!c || !h) return;
   var w = c.offsetWidth || 0, hh = c.offsetHeight || 0;
-  var dim = hostRasterFor(w);
+  var dim = hostRasterFor();
   /* لو الشاشة نفسها أكبر من 1080p → نرندر بمقاس الشاشة (scale=1 بلا تمديد) */
   if(w > dim.w || hh > dim.h){ dim = { w: Math.max(w, 1), h: Math.max(hh, 1) }; }
   h.style.width = dim.w + 'px'; h.style.height = dim.h + 'px';
@@ -480,8 +489,16 @@ function reportProgress(cur, dur){
 }
 function reportEnded(){ try{ if(window.parent && window.parent !== window) window.parent.postMessage({type:'mg_ended', videoId:CFG.videoId}, '*'); }catch(e){} }
 
-/* ===== حماية الفحص (تنبيه لطيف) ===== */
-document.addEventListener('contextmenu', function(e){ e.preventDefault(); toast('🔒 العرض محمي — كليك يمين مقفول'); });
+/* ===== حماية الفحص + منع التسجيل (تنبيه فوري) =====
+   منع التسجيل (طلب المستر 2026-ز):
+   • Win/⌘ + Shift + R (تسجيل ويندوز) → "التسجيل ممنوع"
+   • Win/⌘ + Shift + S (أداة القص) → "التسجيل ممنوع"
+   • زرار PrintScreen → محاولة تفريغ الحافظة + رسالة
+   • كليك يمين ممنوع
+   ملاحظة حقيقية: اختصار النظام نفسه فوق صلاحية المتصفح — لكن المحاولة
+   بتتكشف والتحذير بيظهر فورًا، والووترمارك باسم الطالب ورقمه هو الخصم
+   الحقيقي لأي صورة/فيديو مسرب. */
+document.addEventListener('contextmenu', function(e){ e.preventDefault(); toast('🚫 التسجيل ممنوع — كليك يمين مقفول'); });
 document.addEventListener('dragstart', function(e){ e.preventDefault(); });
 document.addEventListener('selectstart', function(e){ if(e.target && e.target.id !== 'toast') e.preventDefault(); });
 document.addEventListener('keydown', function(e){
@@ -491,7 +508,17 @@ document.addEventListener('keydown', function(e){
   if((e.ctrlKey || e.metaKey) && e.shiftKey && (k === 'i' || k === 'j' || k === 'c')) blocked = true;
   if((e.ctrlKey || e.metaKey) && (k === 'u' || k === 's')) blocked = true;
   if((e.metaKey || e.ctrlKey) && e.altKey && (k === 'i' || k === 'j' || k === 'c')) blocked = true;
-  if(blocked){ e.preventDefault(); e.stopPropagation(); toast('🛡️ عرض الفيديو محمي — دي خاصية مقفولة'); }
+  if(blocked){ e.preventDefault(); e.stopPropagation(); toast('🛡️ عرض الفيديو محمي — دي خاصية مقفولة'); return; }
+  /* منع التسجيل: Win/⌘ + Shift + R أو S */
+  var metaPressed = !!(e.metaKey || e.key === 'OS' || e.key === 'Meta' || e.keyCode === 91 || e.keyCode === 92);
+  if(metaPressed && e.shiftKey && (k === 'r' || k === 's')){
+    e.preventDefault(); e.stopPropagation(); toast('🚫 التسجيل ممنوع'); return;
+  }
+  /* زرار PrintScreen → تحذير + تفريغ الحافظة */
+  if(k === 'printscreen' || e.keyCode === 44){
+    toast('🚫 التسجيل ممنوع');
+    try{ if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText('🔒 المحتوى محمي').catch(function(){}); }catch(err){}
+  }
 });
 var devOpen = false, wasPlayingBeforeDev = false;
 // هنقيس على نافذة التاب العلوية (نفس الدومين فمسموح) — لو قسنا على الـ iframe
@@ -669,8 +696,17 @@ function mountYouTube(){
   // شاشة التوقف (بتغطي أي حاجة يوتيوب بيعرضها وقت الوقوف)
   var centerOv = document.createElement('div'); centerOv.id='centerOv'; centerOv.innerHTML='<div class="big">'+svgPlay()+'</div>';
   wrap.appendChild(centerOv);
-  // باتش صغير فوق مكان لوجو يوتيوب (لو ظهر) — شكل خفيف مش لوجو
-  var patch = document.createElement('div'); patch.id='logoPatch'; wrap.appendChild(patch);
+  // باتش صغير فوق مكان لوجو يوتيوب (لو ظهر) — بلور + تعتيم + ووترمارك مكانه
+  var patch = document.createElement('div'); patch.id='logoPatch';
+  patch.innerHTML = '<span>🔒 محتوى محمي</span>';
+  wrap.appendChild(patch);
+  // باتش الركن العلوي (فوق يمين) — طلب المستر 2026-ز: علامة الشير و
+  // "Watch on YouTube" اللي بيوتيوب بيعرضهم فوق يمين وقت فتح/وقف الفيديو
+  // **متشالوش ولا حد يقدر يدوس عليهم** — متغطيين بباتش عليه ووترمارك
+  // (من غير أي قص للفيديو — طبقة فوق بس)
+  var trp = document.createElement('div'); trp.id='topRightPatch';
+  trp.innerHTML = '<span>🔒 محتوى محمي</span>';
+  wrap.appendChild(trp);
   // شاشة النهاية (بتغطي شاشة يوتيوب النهائية بالعنوان)
   var endOv = document.createElement('div'); endOv.id='endOv';
   endOv.innerHTML = '<p>🎉 خلصت الفيديو — برافو عليك!</p><button type="button" id="replayBtn">شوفه تاني ↺</button>';
@@ -819,6 +855,13 @@ function buildPlayer(){
       if(playerApi && playerApi.getCurrentTime){
         var cur = playerApi.getCurrentTime() || 0, dur = playerApi.getDuration() || 0;
         reportProgress(cur, dur);
+        /* زرار الجودة بيعرض الجودة **الفعلية الشغالة** (الحقيقة مش المطلوب
+           بس) — عشان 1080p تظهر بس لما التيار يكون 1080p فعلًا */
+        try{
+          var aq = playerApi.getPlaybackQuality ? (playerApi.getPlaybackQuality() || '') : '';
+          var ql = document.getElementById('qLbl');
+          if(ql && aq && aq !== 'unknown' && aq !== 'auto') ql.textContent = qLabel(aq);
+        }catch(eAQ){}
         /* حارس النهاية: لو شاشة الاقتراحات هتظهر (ENDED ماتفوتش) → غطّي فورًا */
         if(ytState()===0){
           var eo3=document.getElementById('endOv');

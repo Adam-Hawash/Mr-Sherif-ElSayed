@@ -2,19 +2,20 @@
 // ============================================================
 // VideoWatermark — ووترمارك الطالب فوق الفيديو (اسمه + رقمه)
 // ============================================================
-// مواصفات المستر النهائية (تحديث 2026-و):
+// مواصفات المستر النهائية (تحديث 2026-ز):
 //  1) **مفيش أي شِپات على الحواف** — اتشالت كلها بطلب المستر،
-//     مفيش حاجة غير الووترمارك الكبير في النص + الكارت في الزاوية.
+//     مفيش حاجة غير الووترمارك الكبير في النص + الكارتين (فوق شمال + تحت يمين).
 //  2) ووترمارك كبير واحد في نص الخلفية على **سطرين** (زي ما المستر طلب
 //     حرفيًا: "الاسم الثنائي وتحتيه الرقم — لازم الرقم يظهر"):
 //     • السطر الأول:  الاسم الثنائي (أول كلمتين من اسم الطالب)
 //     • السطر التاني: **رقم الطالب تحته** (أصغر شوية — باين ومقروء)
-//  3) **الشفافية قلّت + نبض** (طلب المستر 2026-و حرفيًا: "تقللي الشفافية
-//     عشان بتاخد من الكلام... تظهر ٥/٦ ثواني وتختفي عشر ثواني وهكذا"):
-//     الووترمارك الكبير بيظهر ٦ ثواني → يختفي ١٠ ثواني → يرجع يظهر (نبض
-//     16 ثانية) وبشفافية أخف عشان مش يغطي الكلام المكتوب في الفيديو.
-//  4) الكارت (الاسم الكامل + الرقم) **ثابت في الزاوية تحت على اليمين**
-//     — مفيش أي حركة خالص (ده اللي بيغطي ركن يوتيوب كمان).
+//  3) **ثابت تمامًا من غير أي نبض** (طلب المستر 2026-ز حرفيًا: "خليها
+//     ثابتة ما تغيرهاش — الشفافية بتاعتها حلوة") — نفس الشفافية الخفيفة
+//     السابقة بس **ثابتة على طول** مفيش ظهور واختفاء خالص.
+//  4) **كارتين** (الاسم الكامل + الرقم):
+//     • كارت فوق في **الناحية الشمال** (فوق شمال — طلب المستر حرفيًا:
+//       "أضفلي كارت فوق فيه الاسم والرقم فوق الناحية الشمال")
+//     • الكارت الأصلي ثابت في الزاوية تحت على اليمين
 //  5) الاسم من غير قص أي حرف:
 //     • ممنوع letter-spacing نهائيًا (بيقطع اتصال الحروف العربية)
 //     • paintOrder: 'stroke' عشان الحواف السودة متاكلش الحروف
@@ -24,13 +25,54 @@
 // ============================================================
 import { useEffect, useRef, useState } from 'react'
 
-/* النبض: ظهور 6 ثواني (37.5% من دورة 16 ثانية) ثم خفوت ثانية،
-   اختفاء ~9 ثواني ثم رجوع تدريجي — زي ما المستر وصف بالظبط:
-   "تظهر ٥/٦ ثواني وتختفي عشر ثواني وهكذا" */
-const WM_PULSE_CSS = `
-@keyframes mgWmPulse{0%,37.5%{opacity:var(--wmo,.5)}43.75%,93.75%{opacity:0}100%{opacity:var(--wmo,.5)}}
-.mg-wm-pulse{animation:mgWmPulse 16s linear infinite}
-`
+/* الكارت المشترك (الاسم الكامل + الرقم) — نفس الشكل في الفوق والتحت */
+function WmCard({ nm, num }: { nm: string; num: string }) {
+  return (
+    <div
+      style={{
+        display: 'inline-block',
+        background: 'rgba(0,0,0,0.72)',
+        border: '1px solid rgba(255,255,255,0.28)',
+        color: '#fff',
+        borderRadius: 14,
+        padding: '7px 18px',
+        textAlign: 'center',
+        direction: 'rtl',
+        boxShadow: '0 8px 26px rgba(0,0,0,0.55)',
+      }}
+    >
+      <span
+        style={{
+          display: 'block',
+          fontSize: 'clamp(11px, 1.5vw, 15px)',
+          fontWeight: 800,
+          unicodeBidi: 'plaintext',
+          letterSpacing: 0,
+          whiteSpace: 'nowrap',
+          textShadow: '0 1px 2px rgba(0,0,0,0.8)',
+        }}
+      >
+        {nm || num}
+      </span>
+      {nm && num && (
+        <span
+          style={{
+            display: 'block',
+            fontSize: 'clamp(9.5px, 1.2vw, 12px)',
+            fontWeight: 700,
+            direction: 'ltr',
+            unicodeBidi: 'plaintext',
+            letterSpacing: 0,
+            opacity: 0.85,
+            marginTop: 2,
+          }}
+        >
+          {num}
+        </span>
+      )}
+    </div>
+  )
+}
 
 export function VideoWatermark({ name, phone }: { name?: string; phone?: string }) {
   const layerRef = useRef<HTMLDivElement>(null)
@@ -58,13 +100,13 @@ export function VideoWatermark({ name, phone }: { name?: string; phone?: string 
       className="absolute inset-0 z-[60] pointer-events-none select-none overflow-hidden"
       aria-hidden="true"
     >
-      <style dangerouslySetInnerHTML={{ __html: WM_PULSE_CSS }} />
       {/* الووترمارك الكبير في نص الخلفية — سطرين: الاسم الثنائي فوق
-          والرقم تحته — شفافية أخف + نبض (يظهر 6 ثواني ويختفي ~10 ثواني)
-          (طلب المستر: "تقللي الشفافية عشان بتاخد من الكلام") */}
+          والرقم تحته — **ثابت تمامًا** من غير أي نبض وحركات (طلب المستر
+          2026-ز: "خليها ثابتة ما تغيرهاش — الشفافية بتاعتها حلوة")
+          وبنفس الشفافية الخفيفة عشان مش يغطي كلام الفيديو */}
       <div
-        className="mg-wm-pulse absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
-        style={{ ['--wmo' as any]: '0.5' }}
+        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+        style={{ opacity: 0.5 }}
       >
         <div
           className="text-center font-black"
@@ -112,51 +154,17 @@ export function VideoWatermark({ name, phone }: { name?: string; phone?: string 
         </div>
       </div>
 
+      {/* كارت الطالب فوق في **الناحية الشمال** (فوق شمال) — ثابت تمامًا
+          (طلب المستر 2026-ز: "أضفلي كارت فوق فيه الاسم والرقم فوق
+          الناحية الشمال") — وكمان بيبقى فوق مكان عنوان/قناة يوتيوب
+          وقت الوقف فبيغطيه زيادة */}
+      <div className="absolute z-[61]" style={{ top: '2.8%', left: '2.2%' }}>
+        <WmCard nm={nm} num={num} />
+      </div>
+
       {/* كارت الطالب (الاسم الكامل + الرقم) — ثابت في الزاوية تحت على اليمين */}
       <div className="absolute z-[61]" style={{ bottom: '7.5%', right: '2.2%' }}>
-        <div
-          style={{
-            display: 'inline-block',
-            background: 'rgba(0,0,0,0.72)',
-            border: '1px solid rgba(255,255,255,0.28)',
-            color: '#fff',
-            borderRadius: 14,
-            padding: '7px 18px',
-            textAlign: 'center',
-            direction: 'rtl',
-            boxShadow: '0 8px 26px rgba(0,0,0,0.55)',
-          }}
-        >
-          <span
-            style={{
-              display: 'block',
-              fontSize: 'clamp(11px, 1.5vw, 15px)',
-              fontWeight: 800,
-              unicodeBidi: 'plaintext',
-              letterSpacing: 0,
-              whiteSpace: 'nowrap',
-              textShadow: '0 1px 2px rgba(0,0,0,0.8)',
-            }}
-          >
-            {nm || num}
-          </span>
-          {nm && num && (
-            <span
-              style={{
-                display: 'block',
-                fontSize: 'clamp(9.5px, 1.2vw, 12px)',
-                fontWeight: 700,
-                direction: 'ltr',
-                unicodeBidi: 'plaintext',
-                letterSpacing: 0,
-                opacity: 0.85,
-                marginTop: 2,
-              }}
-            >
-              {num}
-            </span>
-          )}
-        </div>
+        <WmCard nm={nm} num={num} />
       </div>
     </div>
   )
