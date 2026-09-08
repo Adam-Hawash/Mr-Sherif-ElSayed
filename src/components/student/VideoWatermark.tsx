@@ -74,6 +74,55 @@ function WmCard({ nm, num }: { nm: string; num: string }) {
   )
 }
 
+/* الكارت الصغير (تحت الشمال) — بمقاس أصغر يناسب الركن (طلب المستر 2026-ح) */
+function WmCardSmall({ nm, num }: { nm: string; num: string }) {
+  return (
+    <div
+      style={{
+        display: 'inline-block',
+        background: 'rgba(0,0,0,0.72)',
+        border: '1px solid rgba(255,255,255,0.28)',
+        color: '#fff',
+        borderRadius: 10,
+        padding: '4px 12px',
+        textAlign: 'center',
+        direction: 'rtl',
+        boxShadow: '0 6px 18px rgba(0,0,0,0.5)',
+      }}
+    >
+      <span
+        style={{
+          display: 'block',
+          fontSize: 'clamp(9.5px, 1.15vw, 12px)',
+          fontWeight: 800,
+          unicodeBidi: 'plaintext',
+          letterSpacing: 0,
+          whiteSpace: 'nowrap',
+          textShadow: '0 1px 2px rgba(0,0,0,0.8)',
+        }}
+      >
+        {nm || num}
+      </span>
+      {nm && num && (
+        <span
+          style={{
+            display: 'block',
+            fontSize: 'clamp(8.5px, 1vw, 10.5px)',
+            fontWeight: 700,
+            direction: 'ltr',
+            unicodeBidi: 'plaintext',
+            letterSpacing: 0,
+            opacity: 0.85,
+            marginTop: 1,
+          }}
+        >
+          {num}
+        </span>
+      )}
+    </div>
+  )
+}
+
 export function VideoWatermark({ name, phone }: { name?: string; phone?: string }) {
   const layerRef = useRef<HTMLDivElement>(null)
   const [, setTick] = useState(0)
@@ -165,6 +214,12 @@ export function VideoWatermark({ name, phone }: { name?: string; phone?: string 
       {/* كارت الطالب (الاسم الكامل + الرقم) — ثابت في الزاوية تحت على اليمين */}
       <div className="absolute z-[61]" style={{ bottom: '7.5%', right: '2.2%' }}>
         <WmCard nm={nm} num={num} />
+      </div>
+
+      {/* كارت أصغر تحت على **الشمال** (طلب المستر 2026-ح) — مكان علامة الشير
+          وعلامة يوتيوب، بمقاس أصغر، وفوق شريط الكنترولز مش على جزء منه */}
+      <div className="absolute z-[61]" style={{ bottom: 64, left: 10 }}>
+        <WmCardSmall nm={nm} num={num} />
       </div>
     </div>
   )

@@ -226,6 +226,16 @@ const PLAYER_PAGE = `<!doctype html>
   .wmCard{position:absolute;z-index:46;bottom:7.5%;right:2.2%}
   /* كارت تاني فوق في **الناحية الشمال** (طلب المستر 2026-ز) — نفس الشكل */
   .wmCardTop{position:absolute;z-index:46;top:2.8%;left:2.2%}
+  /* كارت أصغر تحت على **الشمال** (طلب المستر 2026-ح): مكان علامة الشير
+     وعلامة يوتيوب اللي كانوا بيظهروا تحت الشمال — كارت باسم الطالب ورقمه
+     بمقاس أصغر يناسب الركن، وفوق شريط الكنترولز مش على جزء منه */
+  .wmCardBL{position:absolute;z-index:46;bottom:58px;left:10px}
+  .wmCardBL .in{display:inline-block;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.28);
+    color:#fff;border-radius:10px;padding:4px 12px;text-align:center;direction:rtl;
+    box-shadow:0 6px 18px rgba(0,0,0,.5)}
+  .wmCardBL .nm{display:block;font-size:clamp(9.5px,1.15vw,12px);font-weight:800;unicode-bidi:plaintext;letter-spacing:0;white-space:nowrap;
+    text-shadow:0 1px 2px rgba(0,0,0,.8)}
+  .wmCardBL .ph{display:block;font-size:clamp(8.5px,1vw,10.5px);font-weight:700;direction:ltr;unicode-bidi:plaintext;letter-spacing:0;opacity:.85;margin-top:1px}
   .wmCard .in,.wmCardTop .in{display:inline-block;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.28);
     color:#fff;border-radius:14px;padding:7px 18px;text-align:center;direction:rtl;
     box-shadow:0 8px 26px rgba(0,0,0,.55)}
@@ -270,7 +280,15 @@ const PLAYER_PAGE = `<!doctype html>
   #endOv button{padding:10px 20px;border-radius:10px;border:0;background:rgba(255,255,255,.16);color:#fff;font-weight:700;font-size:14px;cursor:pointer}
   /* باتش مكان لوجو/لينك يوتيوب (تحت يمين) — بلور + تعتيم خفيف مش ملحوظ */
   #logoPatch{position:absolute;bottom:8px;right:8px;z-index:26;width:120px;height:42px;border-radius:10px;background:rgba(0,0,0,.55);
+    backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);pointer-events:none;display:flex;align-items:center;justify-content:center}
+  /* باتش الركن تحت الشمال — نفس فكرة باتش اللوجو: أي علامة يوتيوب/شير
+     ممكن تظهر تحت الشمال تتغطى (الكارت الصغير فوقيه مباشرة) */
+  #blPatch{position:absolute;bottom:8px;left:8px;z-index:26;width:120px;height:42px;border-radius:10px;background:rgba(0,0,0,.55);
     backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);pointer-events:none}
+  /* باتش الركن العلوي (فوق يمين) — بيغطي Share/Watch on YouTube بتوع يوتيوب */
+  #topRightPatch{position:absolute;top:8px;right:8px;z-index:26;min-width:90px;height:38px;border-radius:10px;background:rgba(0,0,0,.55);
+    backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);pointer-events:none;display:flex;align-items:center;justify-content:center;padding:0 12px}
+  #logoPatch span,#topRightPatch span{color:rgba(255,255,255,.85);font-size:10.5px;font-weight:700;font-family:system-ui,sans-serif;direction:rtl;white-space:nowrap}
   /* ===== حماية الفحص ===== */
   #devshield{position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;background:rgba(5,5,10,.92);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
   #devshield .box{text-align:center;color:#e5e7eb;direction:rtl;padding:24px}
@@ -359,6 +377,14 @@ function buildWm(){
     card.className = 'wmCard';
     card.innerHTML = '<div class="in"><span class="nm">' + esc(wmName || wmPhone) + '</span>' + ((wmName && wmPhone) ? '<span class="ph">' + esc(wmPhone) + '</span>' : '') + '</div>';
     layer.appendChild(card);
+  }
+  /* 4) كارت أصغر تحت على **الشمال** (طلب المستر 2026-ح) — مكان علامة الشير
+     وعلامة يوتيوب، بمقاس أصغر يناسب الركن */
+  if(wmName || wmPhone){
+    var cardBL = document.createElement('div');
+    cardBL.className = 'wmCardBL';
+    cardBL.innerHTML = '<div class="in"><span class="nm">' + esc(wmName || wmPhone) + '</span>' + ((wmName && wmPhone) ? '<span class="ph">' + esc(wmPhone) + '</span>' : '') + '</div>';
+    layer.appendChild(cardBL);
   }
   wrap.appendChild(layer);
 }
@@ -520,6 +546,31 @@ document.addEventListener('keydown', function(e){
     try{ if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText('🔒 المحتوى محمي').catch(function(){}); }catch(err){}
   }
 });
+/* ===== مضاد التصوير (طلب المستر 2026-ح — زي منع F12 بالظبط) =====
+   Win/⌘ + Shift + R و Win/⌘ + Shift + S (أداة القص) — الاتنين متصطادين
+   في مستمع keydown اللي فوق. والأهم: برامج تسجيل الشاشة وأداة القص بيسحبوا
+   الفوكس من نافذة المتصفح — فأول ما النافذة تفقد الفوكس أو التاب يتخفي
+   والفيديو شغال → بنوقفه فورًا + رسالة "التسجيل ممنوع". فمفيش أي تسجيل
+   يطلع غير إطار واقف عليه الووترمارك باسم الطالب ورقمه.
+   ملاحظة تقنية صادقة: اختصارات النظام نفسها (Win+Shift+S) بتتشال من
+   ويندوز قبل ما توصل للمتصفح — فالمتصفح مش بيشوفها أصلًا. لكن اللقطة
+   اللي هياخدها هتبقى لصفحة وقفها الفيديو بالفعل (فقدان الفوكس) — وده
+   أقصى حماية ممكنة من غير برامج خارجية. */
+(function(){
+  function antiCapturePause(){
+    try{ if(playerApi && playerApi.getPlayerState){ var st = playerApi.getPlayerState(); if(st === 1 || st === 3){ playerApi.pauseVideo(); toast('🚫 التسجيل ممنوع — الفيديو اتوقف'); } } }catch(e){}
+    try{ if(fileApi && !fileApi.paused){ fileApi.pause(); toast('🚫 التسجيل ممنوع — الفيديو اتوقف'); } }catch(e){}
+  }
+  /* لو الإناء جوه صفحة المنصة → بنراقب نافذة المتصفح العلوية (نفس الدومين
+     فمسموح): blur بتاعها معناه إن تطبيق تاني (تسجيل/قص) سحب الفوكس —
+     مش بنراقب blur الإناء نفسه عشان الضغط جوه الصفحة ميبقاش بيقف الفيديو غلط */
+  var gw = window, gd = document;
+  try{ if(window.top && window.top !== window){ gw = window.top; gd = window.top.document; } }catch(e){ gw = null; }
+  if(gw){
+    gw.addEventListener('blur', function(){ antiCapturePause(); });
+    try{ gd.addEventListener('visibilitychange', function(){ try{ if(gd.hidden) antiCapturePause(); }catch(e){} }); }catch(e){}
+  }
+})();
 var devOpen = false, wasPlayingBeforeDev = false;
 // هنقيس على نافذة التاب العلوية (نفس الدومين فمسموح) — لو قسنا على الـ iframe
 // نفسه الفرق الطبيعي بين مقاس الـ iframe والنافذة هيعمل إنذار كاذب
@@ -551,6 +602,66 @@ setInterval(function(){
 /* ===== مشغّل يوتيوب — بدون أي شكل يوتيوب: كنترولز خاصة بينا + شاشات تغطية
    بتمنع ظهور العنوان/اللوجو نهائيًا. الـ ID بيتفك في الذاكرة بس زي ما هو ===== */
 var playerApi = null;
+/* ===== رسائل الخطأ + إعادة بناء المشغل (2026-ح — علاج "المشغل بيتجهز ومش بيشتغل") =====
+   يوتيوب ساعات بيرفض التشغيل خالص (خطأ auth/153 — حماية ضد البوتات على شبكات
+   معينة، أو فيديو اتحظر تضمينه، أو فيديو اتمسح). المشغل القديم كان يفشل
+   **بصمت** — الطالب بيضغط ويلقي "المشغل بيتجهز" ومفيش أي رسالة أو حل.
+   دلوقتي:
+   • onError بيظهر سبب واضح بالعربي فورًا (حظر تضمين / فيديو اتمسح / شبكة)
+   • لو يوتيوب رفض على www → بنجرب أوتوماتيك مرة واحدة youtube-nocookie.com
+   • زرار "حاول تاني" + نصيحة تغيير الشبكة — مفيش شاشة ميّت من غير كلام */
+var ytHostKind = 'www';   /* 'www' | 'nocookie' */
+var rebuildTries = 0;     /* عداد إعادة بناء المشغل */
+var lastErrCode = '';
+var tickStarted = false;  /* مؤقت التقدم يتسجل مرة واحدة بس حتى مع إعادة البناء */
+function msgForYtError(code){
+  var c = String(code || '');
+  if(c === '101' || c === '150') return 'الفيديو مرفوض التشغيل هنا — يا إما صاحب الفيديو قفل التضمين، يا إما يوتيوب مرفض على الشبكة دي. غيّر الشبكة (بيانات الموبايل بدل الواي فاي) وحاول تاني — ولو تكررت بلغ الإدارة في قسم الشكاوى';
+  if(c === '100') return 'الفيديو ده اتمسح من يوتيوب أو بقى خاص — بلغ الإدارة في قسم الشكاوى';
+  if(c === '2') return 'في مشكلة في تعريف الفيديو نفسه — بلغ الإدارة في قسم الشكاوى';
+  if(c === '5' || c === 'auth') return 'يوتيوب مرفض تشغيل الفيديو على الشبكة دي حاليًا — غيّر الشبكة (بيانات الموبايل بدل الواي فاي أو العكس) وحاول تاني';
+  return 'يوتيوب مرفض تشغيل الفيديو دلوقتي (كود ' + c + ') — غيّر الشبكة وحاول تاني، ولو تكررت بلغ الإدارة';
+}
+function showPlayError(msg){
+  var so = document.getElementById('startOv');
+  if(!so) return;
+  so.style.display = 'flex';
+  var old = document.getElementById('peBox');
+  if(old && old.parentNode) old.parentNode.removeChild(old);
+  var box = document.createElement('div');
+  box.id = 'peBox';
+  box.style.cssText = 'position:relative;z-index:6;background:rgba(127,29,29,.82);border:1px solid rgba(252,165,165,.45);border-radius:14px;padding:14px 18px;max-width:86%;direction:rtl;text-align:center;box-shadow:0 10px 34px rgba(0,0,0,.5)';
+  box.innerHTML = '<p style="margin:0 0 10px;color:#fff;font-size:13.5px;font-weight:800;line-height:1.95">' + esc(msg) + '</p>' +
+    '<button id="peRetry" type="button" style="background:#fff;color:#18181b;border:0;border-radius:10px;padding:9px 22px;font-weight:800;font-size:13.5px;cursor:pointer;font-family:system-ui,sans-serif">حاول تاني ↻</button>' +
+    '<p style="margin:9px 0 0;color:rgba(255,255,255,.78);font-size:11px;line-height:1.8">لو ظهرت الرسالة دي تاني — غيّر الشبكة أو بلغ الإدارة في قسم الشكاوى</p>';
+  so.appendChild(box);
+  var rb = document.getElementById('peRetry');
+  if(rb) rb.addEventListener('click', function(e){ e.stopPropagation(); try{ if(box.parentNode) box.parentNode.removeChild(box); }catch(ex){} retryPlayback(); });
+}
+function retryPlayback(){
+  /* أول إعادة → نفس المضيف بمشغل نظيف. بعدها → nocookie. وأي فشل → رسالة صريحة */
+  rebuildThenPlay(rebuildTries === 0 ? 'www' : 'nocookie');
+}
+function rebuildThenPlay(kind){
+  if(rebuildTries >= 2){
+    showPlayError('يوتيوب لسه مرفض التشغيل — اقفل الصفحة وافتح الفيديو من جديد، ولو تكررت بلغ الإدارة في قسم الشكاوى');
+    return;
+  }
+  rebuildTries++;
+  ytHostKind = (kind === 'nocookie') ? 'nocookie' : 'www';
+  try{ if(playerApi && playerApi.destroy) playerApi.destroy(); }catch(e){}
+  playerApi = null;
+  if(wdTimer){ clearInterval(wdTimer); wdTimer = null; }
+  var old = document.getElementById('ytHost');
+  if(old && old.parentNode) old.parentNode.removeChild(old);
+  var crop = document.getElementById('ytCrop');
+  var host = document.createElement('div');
+  host.id = 'ytHost';
+  host.style.cssText = 'position:absolute;top:50%;left:50%;width:1920px;height:1080px;transform:translate(-50%,-50%) scale(0.5);transform-origin:center center';
+  if(crop) crop.appendChild(host);
+  pendingStart = true;
+  try{ buildPlayer(); }catch(e){ showPlayError(msgForYtError(lastErrCode || 'auth')); }
+}
 /* ===== مراقب التشغيل — علاج "الفيديو مش بيفتح" =====
    أول أمر playVideo() على الموبايل ممكن يتصفر من المتصفح. بنجرب تاني كل
    700ms بتدرج قوي: playVideo → playVideo → loadVideoById (ضربة قوية بتقفل
@@ -561,6 +672,13 @@ var wdTimer = null, muteFallback = false, lastTap = 0;
 var pendingStart = false, pendingResume = 0, ytIdCached = '';
 /* قفل الجودة — اختيار الطالب ('top' = أعلى جودة متاحة في المصدر) */
 var qSel = 'top', lastQAssert = 0;
+/* حارس الجودة القسري (علاج "بختار 720 والرقم بيفضل 360"):
+   setPlaybackQuality بقى مُهمَل من يوتيوب في أغلب الحالات — فالتبديل
+   الحقيقي بيتعمل بـ loadVideoById بالجودة المطلوبة (بيبدّل التيار فعلًا)
+   + تثبيت setPlaybackQualityRange على نفس المستوى فورًا وبعدها — عشان
+   القياس الأوتوماتيكي ميرجعش التيار لـ360p تاني. بسقف محاولات وكولداون
+   عشان مفيش لوب إعادات تحميل على النت الضعيف. */
+var qLowSince = 0, qHardTries = 0, lastQHard = 0, qPendingPause = false;
 /* أعلى جودة متاحة فعلًا في الفيديو — لو الملف الأصلي مرفوع بجودة ضعيفة
    يوتيوب هيرجّع أعلى حاجة عنده بس (حدود المصدر مش حدود المشغل) */
 function highestAvail(){
@@ -591,6 +709,23 @@ function applyQ(){
       try{ playerApi.setPlaybackQuality(qSel); }catch(e){}
     }
   }catch(e){}
+}
+/* التبديل القسري الحقيقي: تحميل التيار من جديد بالجودة المطلوبة من نفس
+   الثانية اللي الطالب واقف عليها — دي الطريقة الوحيدة اللي بتخلي يوتيوب
+   يبدّل الجودة فعلًا (الأوامر الهادية بيتجاهلها). ولو الفيديو كان واقف
+   بيرجع واقف تاني أول ما يشتغل (qPendingPause) */
+function hardQ(target){
+  if(!target || target === 'auto' || !playerApi) return;
+  try{
+    var pos = 0; try{ pos = playerApi.getCurrentTime() || 0; }catch(e){}
+    playerApi.loadVideoById(ytIdCached, Math.max(0, Math.floor(pos)), target);
+  }catch(e){}
+  try{ playerApi.setPlaybackQualityRange(target, target); }catch(e){}
+  try{ playerApi.setPlaybackQuality(target); }catch(e){}
+  /* إعادة تثبيت النطاق بعد ما التيار الجديد يبدأ — عشان القياس الأوتوماتيكي
+     ميرجعوش ينزّل الجودة لـ360p تاني */
+  setTimeout(function(){ try{ playerApi.setPlaybackQualityRange(target, target); playerApi.setPlaybackQuality(target); }catch(e){} }, 1200);
+  setTimeout(function(){ try{ playerApi.setPlaybackQualityRange(target, target); playerApi.setPlaybackQuality(target); }catch(e){} }, 3200);
 }
 function qLabel(q){ var m = { highres:'2160p+', hd2160:'2160p', hd1440:'1440p', hd1080:'1080p', hd720:'720p', large:'480p', medium:'360p', small:'240p', tiny:'144p' }; return m[q] || q; }
 function updateQBtn(){ var l = document.getElementById('qLbl'); if(l) l.textContent = qSel === 'top' ? 'عالية' : (qSel === 'auto' ? 'تلقائي' : qLabel(qSel)); }
@@ -634,9 +769,18 @@ function startWithWatchdog(){
          أقوى بكتير من playVideo في المتصفحات العنيدة */
       var cur = 0; try{ cur = playerApi.getCurrentTime() || 0; }catch(e){}
       try{ playerApi.loadVideoById(ytIdCached, Math.max(0, Math.floor(cur)), wantedLevel() || 'hd720'); }catch(e){}
-    } else if(attempts >= 5){
-      clearInterval(wdTimer); wdTimer = null;
+    } else if(attempts === 5){
       try{ playerApi.mute(); muteFallback = true; showUnmuteBtn(); playerApi.playVideo(); }catch(e){}
+    } else if(attempts >= 7){
+      /* المشغل لسه واقف بعد كل المحاولات → يوتيوب غالبًا رافض التشغيل أصلاً.
+         ممنوع الشاشة الميّتة الصامتة: نكشف سبب الرفض ونعرض رسالة صريحة + محاولة
+         أوتوماتيك واحدة على مضيف youtube-nocookie.com قبل الرسالة النهائية */
+      clearInterval(wdTimer); wdTimer = null;
+      var ec = '';
+      try{ ec = String((playerApi.getVideoData && playerApi.getVideoData().errorCode) || ''); }catch(e){}
+      if(ec) lastErrCode = ec;
+      if(ytHostKind === 'www' && rebuildTries < 1){ rebuildThenPlay('nocookie'); return; }
+      showPlayError(msgForYtError(ec || lastErrCode || 'auth'));
     } else { try{ playerApi.playVideo(); }catch(e){} }
   }, 700);
 }
@@ -702,6 +846,10 @@ function mountYouTube(){
   var patch = document.createElement('div'); patch.id='logoPatch';
   patch.innerHTML = '<span>🔒 محتوى محمي</span>';
   wrap.appendChild(patch);
+  // باتش الركن تحت الشمال — تغطية أي علامة يوتيوب/شير ممكن تظهر هناك
+  // (الكارت الصغير باسم الطالب فوقيه مباشرة — طلب المستر 2026-ح)
+  var blp = document.createElement('div'); blp.id='blPatch';
+  wrap.appendChild(blp);
   // باتش الركن العلوي (فوق يمين) — طلب المستر 2026-ز: علامة الشير و
   // "Watch on YouTube" اللي بيوتيوب بيعرضهم فوق يمين وقت فتح/وقف الفيديو
   // **متشالوش ولا حد يقدر يدوس عليهم** — متغطيين بباتش عليه ووترمارك
@@ -718,7 +866,7 @@ function mountYouTube(){
   bar.innerHTML = '<button id="ppBtn" type="button" aria-label="تشغيل/إيقاف">'+svgPlay()+'</button>' +
     '<input id="seek" type="range" min="0" max="1000" step="1" value="0" aria-label="شريط التقدم">' +
     '<span id="tTime">0:00 / 0:00</span>' +
-    '<button id="qBtn" type="button" aria-label="جودة الفيديو" aria-haspopup="menu">⚙ <span id="qLbl">عالية</span></button>' +
+    '<button id="qBtn" type="button" aria-label="جودة الفيديو" aria-haspopup="menu"><span id="qLbl">عالية</span></button>' +
     '<button id="fsInBar" type="button" aria-label="ملء الشاشة">'+svgFs()+'</button>';
   wrap.appendChild(bar);
   // قائمة الجودة — بتعرض المستويات الموجودة فعلًا في الفيديو + ملاحظة صادقة
@@ -747,11 +895,17 @@ function mountYouTube(){
           e.stopPropagation();
           var q = btn.getAttribute('data-q') || 'top';
           qSel = q; lastQAssert = Date.now();
-          /* فرض الجودة بالـ API مباشرة — **بدون أي إعادة تحميل للتيار**.
-             الإعادة كانت بتوقف الفيديو وترجّعه يبدأ من 360p ويعلى بالراحة —
-             ده بالظبط سبب "بختار 1080 فتتحول لـ360". setPlaybackQuality
-             بيتبعّل تبديل التيار من يوتيوب نفسه من غير ما نبدأ من الأول */
-          applyQ();
+          qLowSince = 0; qHardTries = 0; /* اختيار جديد = ميزانية محاولات جديدة */
+          if(q === 'auto'){
+            /* تلقائي = تحرير الجودة ليوتيوب يظبطها لوحده */
+            applyQ();
+          } else {
+            /* **التبديل الحقيقي**: تحميل التيار بالجودة المختارة من نفس النقطة
+               + تثبيت النطاق — الرقم على الزرار هيتغير أول ما التيار يتغير فعلًا */
+            var tgt = (q === 'top') ? highestAvail() : q;
+            qPendingPause = (ytState() === 2); /* كان واقف → يرجع واقف بعد التبديل */
+            hardQ(tgt);
+          }
           updateQBtn();
           qMenu.style.display = 'none';
         });
@@ -776,7 +930,7 @@ function mountYouTube(){
      سباق التحميل)، ولو السكريبت فشل يتحمل (نت ضعيف) بنحقنه تاني تلقائيًا —
      ده كان سبب حقيقي إن الفيديو مبيفتحش خالص على بعض الأجهزة */
   ytIdCached = ytId;
-  function apiReadyNow(){ try{ buildPlayer(); }catch(e){} }
+  function apiReadyNow(){ try{ buildPlayer(); }catch(e){ showPlayError('حصل خطأ في تجهيز مشغل يوتيوب — دوس حاول تاني'); } }
   if(window.YT && window.YT.Player){ apiReadyNow(); return; }
   window.onYouTubeIframeAPIReady = apiReadyNow;
   var tag = document.createElement('script');
@@ -805,7 +959,7 @@ function mountYouTube(){
 
 function buildPlayer(){
   var ytId = ytIdCached;
-  playerApi = new YT.Player('ytHost', {
+  var popts = {
     videoId: ytId,
     width: '100%',
     height: '100%',
@@ -834,6 +988,7 @@ function buildPlayer(){
               pendingResume = 0;
             }
             applyQ(); /* تثبيت اختيار الجودة مع كل تشغيل */
+            if(qPendingPause){ qPendingPause = false; try{ playerApi.pauseVideo(); }catch(e){} }
             var so=document.getElementById('startOv'); if(so) so.style.display='none';
             var eo=document.getElementById('endOv'); if(eo) eo.style.display='none';
             setPP(true); showCtrl(true);
@@ -858,10 +1013,31 @@ function buildPlayer(){
             if(effQ && curQ && qRankOf(curQ) < qRankOf(effQ)){ lastQAssert = Date.now(); applyQ(); }
           }
         }catch(e){}
+      },
+      onError: function(ev){
+        /* يوتيوب رفض الفيديو نفسه — ممنوع الصمت: سبب واضح فورًا.
+           100 = الفيديو اتمسح/خاص. 2 = تعريف غلط → رسالة فورية (إعادة مش هتنفع).
+           101/150/5/auth = منع تضمين أو رفض شبكة (حماية ضد البوتات بترجع 150
+           برضه) → محاولة أوتوماتيك واحدة على youtube-nocookie الأول، وبعدها
+           رسالة صادقة بتغطي الحالتين */
+        var code = '';
+        try{ code = String((ev && ev.data) || ''); }catch(e){}
+        lastErrCode = code;
+        if(wdTimer){ clearInterval(wdTimer); wdTimer = null; }
+        if(code === '100' || code === '2'){ showPlayError(msgForYtError(code)); return; }
+        if(ytHostKind === 'www' && rebuildTries < 1){ rebuildThenPlay('nocookie'); return; }
+        showPlayError(msgForYtError(code || 'auth'));
       }
     }
-  });
-  setInterval(function(){
+  };
+  /* المحاولة الثانية بتتم على youtube-nocookie.com — مضيف تاني بيتجاوز بعض
+     حالات الرفض (خطأ 153/auth) بنفس الـ API بالظبط */
+  if(ytHostKind === 'nocookie') popts.host = 'https://www.youtube-nocookie.com';
+  playerApi = new YT.Player('ytHost', popts);
+  /* مؤقت التقدم/الجودة — مرة واحدة بس حتى لو المشغل اتبنى من جديد */
+  if(!tickStarted){
+    tickStarted = true;
+    setInterval(function(){
     try{
       if(playerApi && playerApi.getCurrentTime){
         var cur = playerApi.getCurrentTime() || 0, dur = playerApi.getDuration() || 0;
@@ -878,16 +1054,25 @@ function buildPlayer(){
           var eo3=document.getElementById('endOv');
           if(eo3 && eo3.style.display!=='flex'){ eo3.style.display='flex'; try{ playerApi.seekTo(0,true); playerApi.pauseVideo(); }catch(e){} reportEnded(); }
         }
-        /* تثبيت اختيار الجودة — إعادة تأكيد هادية كل 6 ثواني من غير أي reload:
-           لو الجودة الحالية أقل من المطلوب بنعيد الأمر — والفيديو بيكمل شغال
-           من نفس النقطة، ويوتيوب بيعلى للجودة المطلوبة أول ما يقيس النت */
+        /* حارس الجودة (علاج "الرقم بيفضل 360") — مرحلتين:
+           1) إعادة تأكيد هادية كل 6 ثواني (setPlaybackQualityRange).
+           2) لو الجودة فضلت تحت المطلوب 8 ثواني → **تبديل قسري للتيار**
+              بـ loadVideoById من نفس النقطة (بكولداون 15 ثانية وسقف 3 محاولات
+              لكل اختيار — عشان النت الضعيف ميتحولش لوب إعادات) */
         if(ytState() === 1 && qSel !== 'auto'){
           var q = '';
           try{ q = playerApi.getPlaybackQuality() || ''; }catch(e){}
           var eff = wantedLevel();
-          if(eff && q && q !== 'unknown' && qRankOf(q) < qRankOf(eff)){
+          var qLow = eff && q && q !== 'unknown' && qRankOf(q) < qRankOf(eff);
+          if(qLow){
+            if(!qLowSince) qLowSince = Date.now();
             if(Date.now() - lastQAssert > 6000){ lastQAssert = Date.now(); applyQ(); }
-          }
+            if(Date.now() - qLowSince > 8000 && Date.now() - lastQHard > 15000 && qHardTries < 3){
+              qHardTries++; lastQHard = Date.now(); qLowSince = Date.now();
+              qPendingPause = (ytState() === 2);
+              hardQ(wantedLevel());
+            }
+          } else { qLowSince = 0; }
         }
         if(!seekDragging){
           var se = document.getElementById('seek');
@@ -897,7 +1082,8 @@ function buildPlayer(){
         }
       }
     }catch(e){}
-  }, 1000);
+    }, 1000);
+  }
 }
 
 /* ===== مشغّل الملفات المرفوعة (توكن موقّع قصير العمر) ===== */

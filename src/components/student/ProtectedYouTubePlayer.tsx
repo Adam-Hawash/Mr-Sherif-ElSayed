@@ -440,6 +440,17 @@ export function ProtectedYouTubePlayer({
                    فرض الأعلى هنا تاني عشان الفيديو يفتح أعلى جودة من أول لحظة) */
                 try { e.target.unloadModule && e.target.unloadModule('captions') } catch (err) {}
                 applyQuality(selectedQualityRef.current)
+                /* تحديث المستويات الحقيقية بعد بدء التشغيل — قبل التشغيل يوتيوب
+                   بيرجّع ['auto'] بس، فالقائمة كانت بتعرض جودات مش موجودة
+                   فعلًا في الفيديو (سبب "بختار 720 ومفيش حاجة بتتغير") */
+                try {
+                  var lv = e.target.getAvailableQualityLevels ? e.target.getAvailableQualityLevels() : []
+                  var cl: string[] = []
+                  for (var li = 0; li < lv.length; li++) {
+                    if (lv[li] && lv[li] !== 'auto' && lv[li] !== 'default' && STANDARD_QUALITIES.indexOf(lv[li]) >= 0) cl.push(lv[li])
+                  }
+                  setQualityLevels(function (prev) { return cl.length > 0 ? cl : prev })
+                } catch (err) {}
               }
               else if (e.data === 2) setPlaying(false)
               else if (e.data === 5) {
@@ -676,7 +687,10 @@ export function ProtectedYouTubePlayer({
 
   var fsActive = isFullscreen || fakeFs
   var progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0
-  var menuLevels = qualityLevels.length > 0 ? qualityLevels : STANDARD_QUALITIES
+  /* القائمة بتعرض **المستويات الموجودة فعلًا في الفيديو بس** — مفيش بديل
+     وهمي: لو المستويات لسه مش معروفة (قبل أول تشغيل) بنعرض عالية/تلقائي
+     بس، وأول ما التشغيل يبدأ المستويات الحقيقية بتتبني تلقائي */
+  var menuLevels = qualityLevels
 
   /* الستيج: الطبقة اللي جوه الكونتينر — في الوضع الطولي بندوّرها 90° عشان
      الفيديو + الكنترولز + الووترمارك كلهم يبانوا بالعرض على الشاشة كلها */
