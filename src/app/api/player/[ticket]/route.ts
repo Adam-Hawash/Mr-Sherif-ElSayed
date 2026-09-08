@@ -203,16 +203,19 @@ const PLAYER_PAGE = `<!doctype html>
   #wrap{position:relative;width:100%;max-width:100vw;background:#000;overflow:hidden}
   #wrap.fs{width:100vw;height:100vh;max-width:none}
   #yt,#fileVid{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000}
-  /* ===== الووترمارك (مواصفات المستر النهائية 2026-ز) =====
-     • ووترمارك كبير واحد في نص الخلفية على سطرين: الاسم الثنائي فوق
-       والرقم تحته — **ثابت تمامًا من غير أي نبض وحركات**
-       (طلب المستر: "خليها ثابتة ما تغيرهاش — الشفافية بتاعتها حلوة")
-     • كارتين (الاسم الكامل + الرقم): فوق الناحية الشمال + تحت اليمين
-     • مفيش أي شِپات على الحواف خالص (اتشالت كلها بطلب المستر) */
+  /* ===== الووترمارك (المواصفات الجديدة 2026-ح — طلب المستر الحرفي) =====
+     • **4 ووترمارك صغيرة ثابتة** ظاهرة على طول:
+       واحدة فوق في النص + اتنين في نص الفيديو (يمين وشمال)
+       + واحدة تحت خالص في نص الفيديو
+     • الووترمارك الكبيرة الشفافة في النص: **بتظهر 10 ثواني وبتختفي 20 ثانية**
+       (دورة 30 ثانية بتكرر لوحدها — keyframes wmBlink30) */
   .wm{position:absolute;inset:0;z-index:40;pointer-events:none;user-select:none;overflow:hidden}
-  /* الووترمارك الكبير في النص — سطرين: الاسم الثنائي + الرقم تحته — **ثابت** */
+  @keyframes wmBlink30{0%{opacity:0}1.5%{opacity:var(--wmo,.5)}31.5%{opacity:var(--wmo,.5)}33.5%{opacity:0}98.5%{opacity:0}100%{opacity:var(--wmo,.5)}}
+  /* الووترمارك الكبير في النص — سطرين: الاسم الثنائي + الرقم تحته
+     **بتظهر 10 ثواني وبتختفي 20 ثانية** (دورة 30 ثانية) */
   #wmBig{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:41;direction:rtl;
-    text-align:center;max-width:94%;--wmo:.5;opacity:var(--wmo,.5);
+    text-align:center;max-width:94%;--wmo:.5;opacity:0;
+    animation:wmBlink30 30s linear infinite;
     font-weight:900;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
     font-size:clamp(20px,5.6vw,72px);line-height:1.25;
     unicode-bidi:plaintext;letter-spacing:0}
@@ -224,26 +227,21 @@ const PLAYER_PAGE = `<!doctype html>
     margin-top:.14em;letter-spacing:0;white-space:nowrap;color:rgba(0,0,0,.10);
     -webkit-text-stroke:1px rgba(0,0,0,.40);paint-order:stroke fill;
     text-shadow:0 0 12px rgba(255,255,255,.16)}
-  /* كارت الطالب — ثابت في الزاوية تحت على اليمين (مفيش أي حاجة بتتحرك) */
-  .wmCard{position:absolute;z-index:46;bottom:7.5%;right:2.2%}
-  /* كارت تاني فوق في **الناحية الشمال** (طلب المستر 2026-ز) — نفس الشكل */
-  .wmCardTop{position:absolute;z-index:46;top:2.8%;left:2.2%}
-  /* كارت أصغر تحت على **الشمال** (طلب المستر 2026-ح): مكان علامة الشير
-     وعلامة يوتيوب اللي كانوا بيظهروا تحت الشمال — كارت باسم الطالب ورقمه
-     بمقاس أصغر يناسب الركن، وفوق شريط الكنترولز مش على جزء منه */
-  .wmCardBL{position:absolute;z-index:46;bottom:58px;left:10px}
-  .wmCardBL .in{display:inline-block;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.28);
-    color:#fff;border-radius:10px;padding:4px 12px;text-align:center;direction:rtl;
-    box-shadow:0 6px 18px rgba(0,0,0,.5)}
-  .wmCardBL .nm{display:block;font-size:clamp(9.5px,1.15vw,12px);font-weight:800;unicode-bidi:plaintext;letter-spacing:0;white-space:nowrap;
-    text-shadow:0 1px 2px rgba(0,0,0,.8)}
-  .wmCardBL .ph{display:block;font-size:clamp(8.5px,1vw,10.5px);font-weight:700;direction:ltr;unicode-bidi:plaintext;letter-spacing:0;opacity:.85;margin-top:1px}
-  .wmCard .in,.wmCardTop .in{display:inline-block;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.28);
+  /* ===== الكروت الأربعة الثابتة (المواصفات الجديدة 2026-ح) ===== */
+  /* 1) فوق في النص */
+  .wmCardTC{position:absolute;z-index:46;top:2.8%;left:50%;transform:translateX(-50%)}
+  /* 2) نص الفيديو على اليمين */
+  .wmCardMR{position:absolute;z-index:46;top:50%;right:2.2%;transform:translateY(-50%)}
+  /* 3) نص الفيديو على الشمال */
+  .wmCardML{position:absolute;z-index:46;top:50%;left:2.2%;transform:translateY(-50%)}
+  /* 4) تحت خالص في النص — فوق شريط الكنترولز بشوية */
+  .wmCardBC{position:absolute;z-index:46;bottom:70px;left:50%;transform:translateX(-50%)}
+  .wmCardTC .in,.wmCardMR .in,.wmCardML .in,.wmCardBC .in{display:inline-block;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.28);
     color:#fff;border-radius:14px;padding:7px 18px;text-align:center;direction:rtl;
     box-shadow:0 8px 26px rgba(0,0,0,.55)}
-  .wmCard .nm,.wmCardTop .nm{display:block;font-size:clamp(11px,1.5vw,15px);font-weight:800;unicode-bidi:plaintext;letter-spacing:0;white-space:nowrap;
+  .wmCardTC .nm,.wmCardMR .nm,.wmCardML .nm,.wmCardBC .nm{display:block;font-size:clamp(11px,1.5vw,15px);font-weight:800;unicode-bidi:plaintext;letter-spacing:0;white-space:nowrap;
     text-shadow:0 1px 2px rgba(0,0,0,.8)}
-  .wmCard .ph,.wmCardTop .ph{display:block;font-size:clamp(9.5px,1.2vw,12px);font-weight:700;direction:ltr;unicode-bidi:plaintext;letter-spacing:0;opacity:.85;margin-top:2px}
+  .wmCardTC .ph,.wmCardMR .ph,.wmCardML .ph,.wmCardBC .ph{display:block;font-size:clamp(9.5px,1.2vw,12px);font-weight:700;direction:ltr;unicode-bidi:plaintext;letter-spacing:0;opacity:.85;margin-top:2px}
   /* درع فوق — **دايمًا شغال** (مش بس وقت الوقف): بيغطي عنوان يوتيوب/اسم القناة/
      زرار الشير اللي بيظهروا وقت الوقف أو بعد التحوال — بديل القص:
      الفيديو كامل 100% والواجهة مستحيل تبان ولا حد يقدر يدوس عليها */
@@ -328,14 +326,10 @@ function deobfuscate(b64, key){
   }catch(e){ return ''; }
 }
 
-/* ===== الووترمارك (مواصفات المستر النهائية 2026-ز) =====
-   • ووترمارك كبير واحد في نص الخلفية على **سطرين** — زي ما المستر طلب
-     حرفيًا: "الاسم الثنائي وتحتيه الرقم — لازم الرقم يظهر":
-     السطر الأول: الاسم الثنائي (أول كلمتين من الاسم)
-     السطر التاني: رقم الطالب تحته (أصغر — واضح ومقروء)
-     **ثابت تمامًا من غير أي نبض** (طلب المستر 2026-ز: "خليها ثابتة
-     ما تغيرهاش — الشفافية بتاعتها حلوة")
-   • كارتين (الاسم الكامل + الرقم): فوق الناحية الشمال + تحت اليمين
+/* ===== الووترمارك (المواصفات الجديدة 2026-ح — طلب المستر الحرفي) =====
+   • **4 كروت ثابتة**: فوق في النص + نص الفيديو يمين وشمال + تحت خالص في النص
+   • الووترمارك الكبيرة الشفافة في النص: بتظهر **10 ثواني** وبتختفي **20 ثانية**
+     (دورة 30 ثانية — الـ keyframes wmBlink30 في الـ CSS فوق)
    • الاسم من غير قص أي حرف — ممنوع letter-spacing
      وpaint-order:stroke عشان الحواف السودة متاكلش الحروف */
 var wmName = String(CFG.wm.name || '').trim();
@@ -345,13 +339,17 @@ function wmShortName(){
   var p = wmName.split(/\\s+/).filter(Boolean);
   return p.slice(0, 2).join(' ');
 }
+function wmCardHtml(){
+  return '<div class="in"><span class="nm">' + esc(wmName || wmPhone) + '</span>' + ((wmName && wmPhone) ? '<span class="ph">' + esc(wmPhone) + '</span>' : '') + '</div>';
+}
 function buildWm(){
   if(!CFG.wm.enabled) return;
   var old = document.getElementById('wm');
   if(old) old.parentNode.removeChild(old);
   var layer = document.createElement('div');
   layer.id = 'wm'; layer.className = 'wm';
-  /* 1) الووترمارك الكبير — سطرين: الاسم الثنائي فوق والرقم تحته — ثابت تمامًا */
+  /* 1) الووترمارك الكبيرة في النص — سطرين: الاسم الثنائي والرقم تحته —
+        بتظهر 10 ثواني وبتختفي 20 ثانية (دورة 30 ثانية متكررة) */
   var big1 = wmShortName() || wmPhone;
   if(big1){
     var big = document.createElement('div');
@@ -360,33 +358,18 @@ function buildWm(){
     /* الرقم تحت الاسم في سطر لوحده — لازم يبان زي ما المستر طلب */
     var numLine = (wmName && wmPhone) ? '<span class="b2">' + esc(wmPhone) + '</span>' : '';
     big.innerHTML = nameLine + numLine;
-    /* نفس الشفافية الخفيفة — ثابتة على طول (مفيش نبض) */
     var wmo = Math.min(0.6, Math.max(0.3, (Number(CFG.wm.opacity) || 0.55) * 0.85));
     big.style.setProperty('--wmo', String(wmo));
     layer.appendChild(big);
   }
-  /* 2) كارت فوق في **الناحية الشمال** (طلب المستر 2026-ز: "أضفلي كارت فوق
-     فيه الاسم والرقم فوق الناحية الشمال") — ثابت تمامًا */
+  /* 2) الكروت الأربعة الثابتة (طلب المستر: واحدة فوق في النص، اتنين في النص
+        يمين وشمال، وواحدة تحت خالص في النص) — ظاهرة على طول */
   if(wmName || wmPhone){
-    var cardTop = document.createElement('div');
-    cardTop.className = 'wmCardTop';
-    cardTop.innerHTML = '<div class="in"><span class="nm">' + esc(wmName || wmPhone) + '</span>' + ((wmName && wmPhone) ? '<span class="ph">' + esc(wmPhone) + '</span>' : '') + '</div>';
-    layer.appendChild(cardTop);
-  }
-  /* 3) كارت الطالب (الاسم الكامل + الرقم) — ثابت في الزاوية تحت على اليمين */
-  if(wmName || wmPhone){
-    var card = document.createElement('div');
-    card.className = 'wmCard';
-    card.innerHTML = '<div class="in"><span class="nm">' + esc(wmName || wmPhone) + '</span>' + ((wmName && wmPhone) ? '<span class="ph">' + esc(wmPhone) + '</span>' : '') + '</div>';
-    layer.appendChild(card);
-  }
-  /* 4) كارت أصغر تحت على **الشمال** (طلب المستر 2026-ح) — مكان علامة الشير
-     وعلامة يوتيوب، بمقاس أصغر يناسب الركن */
-  if(wmName || wmPhone){
-    var cardBL = document.createElement('div');
-    cardBL.className = 'wmCardBL';
-    cardBL.innerHTML = '<div class="in"><span class="nm">' + esc(wmName || wmPhone) + '</span>' + ((wmName && wmPhone) ? '<span class="ph">' + esc(wmPhone) + '</span>' : '') + '</div>';
-    layer.appendChild(cardBL);
+    var cardHtml = wmCardHtml();
+    var tc = document.createElement('div'); tc.className = 'wmCardTC'; tc.innerHTML = cardHtml; layer.appendChild(tc);
+    var mr = document.createElement('div'); mr.className = 'wmCardMR'; mr.innerHTML = cardHtml; layer.appendChild(mr);
+    var ml = document.createElement('div'); ml.className = 'wmCardML'; ml.innerHTML = cardHtml; layer.appendChild(ml);
+    var bc = document.createElement('div'); bc.className = 'wmCardBC'; bc.innerHTML = cardHtml; layer.appendChild(bc);
   }
   wrap.appendChild(layer);
 }
@@ -541,6 +524,11 @@ document.addEventListener('keydown', function(e){
   var metaPressed = !!(e.metaKey || e.key === 'OS' || e.key === 'Meta' || e.keyCode === 91 || e.keyCode === 92);
   if(metaPressed && e.shiftKey && (k === 'r' || k === 's')){
     e.preventDefault(); e.stopPropagation(); toast('🚫 التسجيل ممنوع'); return;
+  }
+  /* Ctrl + Shift + R / S (طلب المستر حرفيًا 2026-ح: "منع كنترول شفت آر
+     وكنترول شيفت اس") — إعادة التحميل العنيدة + حفظ الصفحة/أداة القص */
+  if(e.ctrlKey && e.shiftKey && (k === 'r' || k === 's')){
+    e.preventDefault(); e.stopPropagation(); toast('🚫 العملية دي ممنوعة'); return;
   }
   /* زرار PrintScreen → تحذير + تفريغ الحافظة */
   if(k === 'printscreen' || e.keyCode === 44){
@@ -746,14 +734,19 @@ function scheduleFallbackIfStuck(){
     activateFallback('stuck');
   }, 6000);
 }
-/* قفل الجودة — اختيار الطالب ('top' = أعلى جودة متاحة في المصدر) */
-var qSel = 'top', lastQAssert = 0;
+/* قفل الجودة — **الافتراضي 480p مقفولة تلقائيًا** (طلب المستر الحرفي 2026-ح:
+   "الجودة بتتغير كتابيا بس في الحقيقة لأ — لو مالهاش حل ثبتها على 480
+   تلقائيًا عشان تشتغل") — القفل الاتنين اتجاهين (فوق وتحت) والرقم المعروض
+   على الزرار = **الجودة الحقيقية الحية** من getPlaybackQuality مش الورقية */
+var qSel = 'large', lastQAssert = 0;
 /* حارس الجودة القسري (علاج "بختار 720 والرقم بيفضل 360"):
-   setPlaybackQuality بقى مُهمَل من يوتيوب في أغلب الحالات — فالتبديل
-   الحقيقي بيتعمل بـ loadVideoById بالجودة المطلوبة (بيبدّل التيار فعلًا)
-   + تثبيت setPlaybackQualityRange على نفس المستوى فورًا وبعدها — عشان
-   القياس الأوتوماتيكي ميرجعش التيار لـ360p تاني. بسقف محاولات وكولداون
-   عشان مفيش لوب إعادات تحميل على النت الضعيف. */
+   سلم تصعيدي بلا لوب:
+   1) setPlaybackQualityRange + setPlaybackQuality كل 6 ثواني
+   2) بعد 10 ثواني عدم مطابقة → forceQ (نطاق + سيك صغير بيطلب تيار جديد
+      من غير reload)
+   3) بعد 25 ثانية → **تبديل تيار حقيقي واحد** loadVideoById بالمستوى المطلوب
+      (suggestedQuality بيطلب التيار بالمستوى ده من أول لحظة) — سقف 3 مرات
+      + كولداون 30 ثانية عشان مفيش لوب إعادات تحميل على النت الضعيف */
 var qLowSince = 0, qHardTries = 0, lastQHard = 0, qPendingPause = false, lastCapCheck = 0;
 /* أعلى جودة متاحة فعلًا في الفيديو — لو الملف الأصلي مرفوع بجودة ضعيفة
    يوتيوب هيرجّع أعلى حاجة عنده بس (حدود المصدر مش حدود المشغل) */
@@ -764,7 +757,23 @@ function highestAvail(){
   }catch(e){}
   return 'hd720';
 }
-function wantedLevel(){ return qSel === 'top' ? highestAvail() : (qSel === 'auto' ? '' : qSel); }
+/* المستوى الفعلي المفروض: لو المستوى المطلوب مش موجود في الفيديو → أقرب
+   مستوى متاح (تعادل → الأقل عشان "تشتغل") */
+function resolveLockLevel(wanted){
+  try{
+    var ls = playerApi && playerApi.getAvailableQualityLevels ? playerApi.getAvailableQualityLevels() : [];
+    var clean = [];
+    for(var i=0;i<ls.length;i++){ if(ls[i] && ls[i] !== 'auto' && ls[i] !== 'default') clean.push(ls[i]); }
+    if(clean.indexOf(wanted) >= 0 || clean.length === 0) return wanted;
+    var wr = qRankOf(wanted), best = clean[0], bestDist = 999;
+    for(var j=0;j<clean.length;j++){
+      var r = qRankOf(clean[j]), dist = Math.abs(r - wr);
+      if(dist < bestDist || (dist === bestDist && r < qRankOf(best))){ best = clean[j]; bestDist = dist; }
+    }
+    return best;
+  }catch(e){ return wanted; }
+}
+function wantedLevel(){ return qSel === 'top' ? highestAvail() : (qSel === 'auto' ? '' : resolveLockLevel(qSel)); }
 /* ترتيب الجودة — الحارس بيفرض المطلوب **من غير أي إعادة تحميل**:
    إعادة تحميل التيار (loadVideoById) هي السبب الحقيقي إن الجودة كانت بترجع
    لـ360p — يوتيوب بيبدأ أي تيار جديد من أدنى جودة وبيعلى تدريجيًا أثناء
@@ -807,6 +816,17 @@ function forceQ(target){
 }
 function qLabel(q){ var m = { highres:'2160p+', hd2160:'2160p', hd1440:'1440p', hd1080:'1080p', hd720:'720p', large:'480p', medium:'360p', small:'240p', tiny:'144p' }; return m[q] || q; }
 function updateQBtn(){ var l = document.getElementById('qLbl'); if(l) l.textContent = qSel === 'top' ? 'عالية' : (qSel === 'auto' ? 'تلقائي' : qLabel(qSel)); }
+/* آخر سلاح في سلم الجودة: **تبديل تيار حقيقي واحد** — loadVideoById بنفس
+   الثانية والمستوى المطلوب (suggestedQuality بيطلب التيار بالمستوى ده من
+   أول لحظة). مش بنكرره (سقف 3 + كولداون من الحارس) */
+function hardReloadQ(target){
+  try{
+    if(!playerApi || !playerApi.loadVideoById || !ytIdCached) return;
+    var t = playerApi.getCurrentTime() || 0;
+    playerApi.loadVideoById({ videoId: ytIdCached, startSeconds: Math.max(0, Math.floor(t)), suggestedQuality: target });
+  }catch(e){}
+  lastQAssert = Date.now();
+}
 function tapOk(){ var n = Date.now(); if(n - lastTap < 350) return false; lastTap = n; return true; }
 function showUnmuteBtn(){
   var b = document.getElementById('unmuteBtn');
@@ -948,7 +968,7 @@ function mountYouTube(){
   bar.innerHTML = '<button id="ppBtn" type="button" aria-label="تشغيل/إيقاف">'+svgPlay()+'</button>' +
     '<input id="seek" type="range" min="0" max="1000" step="1" value="0" aria-label="شريط التقدم">' +
     '<span id="tTime">0:00 / 0:00</span>' +
-    '<button id="qBtn" type="button" aria-label="جودة الفيديو" aria-haspopup="menu"><span id="qLbl">عالية</span></button>' +
+    '<button id="qBtn" type="button" aria-label="جودة الفيديو" aria-haspopup="menu"><span id="qLbl">480p</span></button>' +
     '<button id="fsInBar" type="button" aria-label="ملء الشاشة">'+svgFs()+'</button>';
   wrap.appendChild(bar);
   // قائمة الجودة — بتعرض المستويات الموجودة فعلًا في الفيديو + ملاحظة صادقة
@@ -1046,7 +1066,7 @@ function buildPlayer(){
         /* تكملة المشاهدة بنأجلها لأول لحظة تشغيل فعلية — أعلى أمان على الموبايل
            (الـ seek قبل التشغيل كان بعلّق المشغل في حالة cued على بعض الأجهزة) */
         try{ if(Number(CFG.resume) > 5) pendingResume = Number(CFG.resume); }catch(e){}
-        applyQ(); /* الجودة الافتراضية: أعلى جودة متاحة في المصدر */
+        applyQ(); /* الجودة الافتراضية: **480p مقفولة تلقائيًا** (طلب المستر) */
         if(pendingStart){ pendingStart = false; startWithWatchdog(); }
         layoutWrap();
       },
@@ -1089,13 +1109,13 @@ function buildPlayer(){
         try{ playerApi.setOption && playerApi.setOption('captions','track',{}); }catch(e){}
       },
       onPlaybackQualityChange: function(ev){
-        /* لو يوتيوب نزّل الجودة لوحدها تحت المطلوب → إعادة تأكيد فورية
-           بالـ API (من غير reload — الـ reload هو اللي كان بيرجّع 360p) */
+        /* لو يوتيوب نزّل أو طلّع الجودة لوحدها بعيدًا عن المطلوب → إعادة تأكيد
+           فورية بالـ API (من غير reload) — القفل الاتنين اتجاهين */
         try{
           if(qSel !== 'auto'){
             var effQ = wantedLevel();
             var curQ = ev.data || '';
-            if(effQ && curQ && qRankOf(curQ) < qRankOf(effQ)){ lastQAssert = Date.now(); applyQ(); }
+            if(effQ && curQ && curQ !== 'unknown' && qRankOf(curQ) !== qRankOf(effQ)){ lastQAssert = Date.now(); applyQ(); }
           }
         }catch(e){}
       },
@@ -1128,39 +1148,44 @@ function buildPlayer(){
       if(playerApi && playerApi.getCurrentTime){
         var cur = playerApi.getCurrentTime() || 0, dur = playerApi.getDuration() || 0;
         reportProgress(cur, dur);
-        /* زرار الجودة:
-           - تلقائي/عالية → بيعرض الجودة الفعلية الشغالة (الحقيقة)
-           - اختيار محدد من الطالب (720 مثلًا) → **الرقم بيثبت على اختياره**
-             زي قائمة يوتيوب نفسها — أوامر الجودة بيبقى يوتيوب بياخدها تحت
-             اليد (النطاق مفروض)، والرقم مش بيرجع يرقص كل ثانية (2026-ي) */
+        /* زرار الجودة: **الرقم الحقيقي الحي** من getPlaybackQuality في كل
+           الأوضاع — مفيش أي رقم ورقي (ده اللي خلى المستر يقول
+           "الجودة بتتغير كتابيا بس في الحقيقة لأ") */
         try{
           var aq = playerApi.getPlaybackQuality ? (playerApi.getPlaybackQuality() || '') : '';
           var ql = document.getElementById('qLbl');
-          if(ql && aq && aq !== 'unknown' && aq !== 'auto' && (qSel === 'auto' || qSel === 'top')) ql.textContent = qLabel(aq);
+          if(ql && aq && aq !== 'unknown') ql.textContent = (aq === 'auto') ? 'تلقائي' : qLabel(aq);
         }catch(eAQ){}
         /* حارس النهاية: لو شاشة الاقتراحات هتظهر (ENDED ماتفوتش) → غطّي فورًا */
         if(ytState()===0){
           var eo3=document.getElementById('endOv');
           if(eo3 && eo3.style.display!=='flex'){ eo3.style.display='flex'; try{ playerApi.seekTo(0,true); playerApi.pauseVideo(); }catch(e){} reportEnded(); }
         }
-        /* حارس الجودة (2026-ي — علاج "الرقم بيفضل 360") — مرحلتين **من غير
-           أي إعادة تحميل خالص** (الإعادة نفسها كانت بترجع التيار لـ360p):
-           1) إعادة تأكيد هادية كل 6 ثواني (setPlaybackQualityRange).
-           2) لو الجودة فضلت تحت المطلوب 10 ثواني → forceQ (نطاق + سيك صغير
-              بيطلب تيار جديد من غير ما نقص جلسة التشغيل) — بكولداون 20 ثانية
-              وسقف 4 محاولات، والميزانية بترجع أول ما الجودة تظبط */
+        /* حارس الجودة (2026-ح — قفل 480p الاتنين اتجاهين):
+           الجودة الفعلية لازم تطابق المطلوب — لو نزلت تحت المطلوب نرفعها،
+           ولو طلعت فوقه ننزّلها (زي اختيار يدوي ثابت في يوتيوب).
+           سلم التصعيد بلا لوب:
+           1) إعادة تأكيد هادية كل 6 ثواني (setPlaybackQualityRange)
+           2) بعد 10 ثواني عدم مطابقة → forceQ (نطاق + سيك صغير بيطلب تيار
+              جديد من غير ما نقص جلسة التشغيل) — بكولداون 20 ثانية
+           3) بعد 25 ثانية → hardReloadQ (تبديل تيار حقيقي loadVideoById
+              بالمستوى المطلوب) — سقف 3 مرات + كولداون 30 ثانية،
+              والميزانية بترجع أول ما الجودة تظبط */
         if(ytState() === 1 && qSel !== 'auto'){
           var q = '';
           try{ q = playerApi.getPlaybackQuality() || ''; }catch(e){}
           var eff = wantedLevel();
-          var qLow = eff && q && q !== 'unknown' && qRankOf(q) < qRankOf(eff);
-          if(qLow){
+          var qMismatch = eff && q && q !== 'unknown' && q !== 'auto' && qRankOf(q) !== qRankOf(eff);
+          if(qMismatch){
             if(!qLowSince) qLowSince = Date.now();
-            if(Date.now() - lastQAssert > 6000){ lastQAssert = Date.now(); applyQ(); }
-            if(Date.now() - qLowSince > 10000 && Date.now() - lastQHard > 20000 && qHardTries < 4){
+            var misFor = Date.now() - qLowSince;
+            if(misFor > 25000 && Date.now() - lastQHard > 30000 && qHardTries < 3){
               qHardTries++; lastQHard = Date.now(); qLowSince = Date.now();
-              qPendingPause = (ytState() === 2);
-              forceQ(wantedLevel());
+              hardReloadQ(eff);
+            } else if(misFor > 10000){
+              if(Date.now() - lastQAssert > 20000){ lastQAssert = Date.now(); qPendingPause = false; forceQ(eff); }
+            } else if(Date.now() - lastQAssert > 6000){
+              lastQAssert = Date.now(); applyQ();
             }
           } else { qLowSince = 0; qHardTries = 0; }
         }

@@ -48,6 +48,15 @@ export function RecordingGuard() {
         toast('🚫 التسجيل ممنوع')
         return
       }
+      /* Ctrl + Shift + R / S (طلب المستر حرفيًا 2026-ح: "منع كنترول شفت آر
+         وكنترول شيفت اس") — إعادة التحميل العنيدة + حفظ الصفحة/أداة القص
+         في متصفحات كتير — ممنوعين زي F12 بالظبط */
+      if (e.ctrlKey && e.shiftKey && (k === 'r' || k === 's')) {
+        e.preventDefault()
+        e.stopPropagation()
+        toast('🚫 العملية دي ممنوعة')
+        return
+      }
       /* زرار PrintScreen → تنبيه + تفريغ الحافظة */
       if (k === 'printscreen' || e.keyCode === 44) {
         toast('🚫 التسجيل ممنوع')

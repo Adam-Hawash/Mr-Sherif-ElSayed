@@ -104,9 +104,21 @@ export function Footer() {
 
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <GraduationCap className="h-4 w-4" />
-            </div>
+            {/* لوجو الفوتر = **نفس صورة لوجو النافيبار** (مربوطين ببعض — نفس الملف في كل المنصات) */}
+            {cfg.instructor_photo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={cfg.instructor_photo}
+                alt={brandName}
+                width={32}
+                height={32}
+                className="h-8 w-8 rounded-lg object-cover border border-primary/30"
+              />
+            ) : (
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                <GraduationCap className="h-4 w-4" />
+              </div>
+            )}
             <span className="font-bold text-sm">{brandName}</span>
           </div>
 

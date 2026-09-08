@@ -106,6 +106,9 @@ model Exam {
   answerKeyType String       @default("")
   grade         String
   questions     String       @default("")
+  // نماذج الامتحان العشوائية: استخراج أكتر من ملف لنفس الامتحان
+  // كل نموذج مفصول لوحده والطالب بيشوف نموذج واحد بس عشوائي ثابت لحسابه
+  models        String       @default("")
   passScore     Float        @default(50)
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
