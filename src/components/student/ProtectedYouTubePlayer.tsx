@@ -88,11 +88,13 @@ function highestAvailable(p: any): string {
   } catch (e) {}
   return 'hd720'
 }
-/* الجودة (أهم حاجة للمستر — 2026-و): الـ iframe بيرندر **بمقاس الصندوق
-   الحقيقي 100%** من غير أي transform scale خالص. الخدعة القديمة (مقاس ثابت
-   1280×720/1920×1080 + CSS scale) كانت بتمدد البكسلات على الشاشات الكبيرة
-   فالفيديو بيبان ناعم حتى لو التيار 1080p — دلوقتي الرندر 1:1 مع الشاشة
-   والجودة نفسها بيتفرض عليها بالـ API (حارس + loadVideoById). */
+/* الجودة (أهم حاجة للمستر — 2026-ز): **الإصلاح الجذري لمشكلة "الجودة مش
+   بتعلى" على الموبايل**. يوتيوب بيحدد سقف الجودة بمقاس الـ iframe نفسه:
+   مقاس 1280×720 = أقصى تيار 720p حتى لو الفيديو الأصلي 1080p (ده كان
+   بيحصل على الموبايل لأن الصندوق أصغر من 640 فكان بيرندر 1280×720).
+   **الحل: الـ iframe بيرندر دايمًا 1920×1080 على أي جهاز** (حتى لو الصندوق
+   صغير) — يوتيوب يسمح بتيار 1080p فعلًا، والتصغير بـ CSS scale (contain)
+   بيحافظ على الحدة 100% (supersampling) ومفيش أي قص للفيديو. */
 
 /* ============================================================
  * ProtectedYouTubePlayer — the player box (aspect-video parent)
@@ -144,6 +146,50 @@ export function ProtectedYouTubePlayer({
   const mutedFallbackRef = useRef(false)
   const [needsUnmute, setNeedsUnmute] = useState(false)
 
+  /* ===== منع التسجيل (طلب المستر 2026-ز) =====
+     • Win/⌘ + Shift + R (تسجيل ويندوز) → رسالة "التسجيل ممنوع"
+     • Win/⌘ + Shift + S (أداة القص) → رسالة "التسجيل ممنوع"
+     • زرار PrintScreen → محاولة تفريغ الحافظة + رسالة
+     • كليك يمين ممنوع
+     ملاحظة حقيقية: اختصارات النظام نفسها فوق صلاحية المتصفح — لكن
+     بنكتشف المحاولة ونبعت التحذير فورًا، والووترمارك باسم الطالب ورقمه
+     على الفيديو نفسه هو الخصم الحقيقي لأي صورة/فيديو مسرب. */
+  const [recMsg, setRecMsg] = useState('')
+  const recTimerRef = useRef<any>(null)
+  function warnRecording(msg: string) {
+    setRecMsg(msg)
+    if (recTimerRef.current) clearTimeout(recTimerRef.current)
+    recTimerRef.current = setTimeout(function () { setRecMsg('') }, 2600)
+  }
+  useEffect(function () {
+    function onKey(e: KeyboardEvent) {
+      var k = (e.key || '').toLowerCase()
+      var metaPressed = !!(e.metaKey || e.key === 'OS' || e.key === 'Meta' || e.keyCode === 91 || e.keyCode === 92)
+      if (metaPressed && e.shiftKey && (k === 'r' || k === 's')) {
+        e.preventDefault()
+        warnRecording('🚫 التسجيل ممنوع')
+      }
+      if (k === 'printscreen' || e.keyCode === 44) {
+        warnRecording('🚫 التسجيل ممنوع')
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText('🔒 المحتوى محمي — Math Genius').catch(function () {})
+        } catch (err) {}
+      }
+    }
+    function onCtx(e: MouseEvent) {
+      e.preventDefault()
+      warnRecording('🚫 التسجيل ممنوع — كليك يمين مقفول')
+    }
+    window.addEventListener('keydown', onKey, true)
+    document.addEventListener('contextmenu', onCtx, true)
+    return function () {
+      window.removeEventListener('keydown', onKey, true)
+      document.removeEventListener('contextmenu', onCtx, true)
+      if (recTimerRef.current) clearTimeout(recTimerRef.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   /* حماية الجودة: عداد إعادات التحميل القسرية (سقف 4 لكل فيديو عشان مفيش لوب) */
   const hardReloadCountRef = useRef(0)
 
@@ -165,7 +211,9 @@ export function ProtectedYouTubePlayer({
       var w = el.clientWidth || 0
       var h = el.clientHeight || 0
       if (w <= 0 || h <= 0) return
-      var dim = w < 640 ? { w: 1280, h: 720 } : { w: 1920, h: 1080 }
+      /* دايمًا 1920×1080 — مقاس أصغر بيقفل تيار 1080p عند يوتيوب (ده كان
+         سبب "الجودة مش بتعلى" على الموبايل). التصغير بـ CSS بيحافظ على الحدة. */
+      var dim = { w: 1920, h: 1080 }
       if (w > dim.w || h > dim.h) dim = { w: w, h: h } /* شاشة أكبر من 1080p → بمقاسها (scale=1 بلا تمديد) */
       setHostDim(dim)
       setHostScale(Math.min(w / dim.w, h / dim.h))
@@ -190,6 +238,9 @@ export function ProtectedYouTubePlayer({
   const [qualityLevels, setQualityLevels] = useState<string[]>([])
   const [selectedQuality, setSelectedQuality] = useState<string>('top')
   const [showQualityMenu, setShowQualityMenu] = useState(false)
+  /* الجودة الفعلية الشغالة دلوقتي — عشان زرار الجودة يعرض الحقيقة
+     (مثلاً "1080p" تظهر بس لما التيار يكون 1080p فعلًا) */
+  const [actualQuality, setActualQuality] = useState<string>('')
   const selectedQualityRef = useRef('top')
   const lastQualityApplyRef = useRef(0)
   const mismatchSinceRef = useRef(0)
@@ -435,6 +486,13 @@ export function ProtectedYouTubePlayer({
            (أو 'top' = الأعلى المتاح) شغال، والـ HARD enforcement بيستخدم نفس
            المستوى المطلوب */
         var wanted = selectedQualityRef.current
+        /* عرض الجودة الفعلية الحية على زرار الجودة (بدل المطلوب بس) */
+        if (p.getPlaybackQuality) {
+          try {
+            var aq = p.getPlaybackQuality()
+            if (aq && aq !== 'unknown' && aq !== 'auto') setActualQuality(function (prev) { return prev === aq ? prev : aq })
+          } catch (e) {}
+        }
         if (wanted !== 'auto' && p.getPlaybackQuality) {
           var eff = wanted === 'top' ? highestAvailable(p) : wanted
           var cur = p.getPlaybackQuality()
@@ -678,11 +736,24 @@ export function ProtectedYouTubePlayer({
           className="absolute top-0 left-0 right-0 pointer-events-none"
           style={{ height: '56px', background: 'linear-gradient(to bottom, rgba(0,0,0,.92), rgba(0,0,0,.55) 55%, rgba(0,0,0,0))' }}
         />
-        {/* باتش لوجو يوتيوب (تحت يمين) — بلور خفيف + تعتيم مش ملحوظ */}
+        {/* باتش الركن العلوي (فوق يمين) — طلب المستر 2026-ز: علامة الشير
+            و"Watch on YouTube" اللي بيوتيوب بيعرضهم فوق يمين وقت فتح/وقف
+            الفيديو **متشالوش ولا حد يقدر يدوس عليهم** — متغطيين بباتش
+            عليه ووترمارك (من غير أي قص للفيديو — طبقة فوق بس). ملاحظة:
+            واجهة يوتيوب الداخلية LTR فالشير بيكون فوق يمين فعلًا. */}
         <div
-          className="absolute pointer-events-none"
-          style={{ bottom: '8px', right: '8px', width: '120px', height: '42px', borderRadius: '10px', background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(5px)', WebkitBackdropFilter: 'blur(5px)' }}
-        />
+          className="absolute pointer-events-none flex items-center justify-center"
+          style={{ top: '6px', right: '8px', width: '170px', height: '46px', borderRadius: '10px', background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}
+        >
+          <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: '10px', fontWeight: 800, letterSpacing: 0, direction: 'rtl', whiteSpace: 'nowrap' }}>🔒 محتوى محمي</span>
+        </div>
+        {/* باتش لوجو/لينك يوتيوب (تحت يمين) — بلور + تعتيم + ووترمارك مكانه */}
+        <div
+          className="absolute pointer-events-none flex items-center justify-center"
+          style={{ bottom: '8px', right: '8px', width: '150px', height: '46px', borderRadius: '10px', background: 'rgba(0,0,0,0.62)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}
+        >
+          <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: '9.5px', fontWeight: 800, letterSpacing: 0, direction: 'rtl', whiteSpace: 'nowrap' }}>🔒 محتوى محمي</span>
+        </div>
       </div>
 
       {/* ملاحظة: شيلنا علامة "YouTube" المكتوبة خالص — طلب المستر الصريح:
@@ -879,9 +950,9 @@ export function ProtectedYouTubePlayer({
                 onTouchEnd={function (e) { e.preventDefault(); e.stopPropagation(); setShowQualityMenu(function (v) { return !v }) }}
               >
                 <Settings className={'w-5 h-5 transition-transform ' + (showQualityMenu ? 'rotate-90' : '')} />
-                {selectedQuality !== 'auto' && (
-                  <span className="text-[10px] font-bold" dir="ltr">{qualityLabel(selectedQuality)}</span>
-                )}
+                {/* عرض الجودة **الفعلية الشغالة** (مش المطلوب بس) — عشان الرقم
+                    يكون صادق: 1080p تظهر بس لما التيار يكون 1080p فعلًا */}
+                <span className="text-[10px] font-bold" dir="ltr">{qualityLabel(actualQuality || selectedQuality)}</span>
               </button>
             </div>
             <button
@@ -901,6 +972,17 @@ export function ProtectedYouTubePlayer({
           في ملء الشاشة (دي كانت المشكلة: كانت بره الكونتينر فبتختفي) */}
       <VideoWatermark name={studentName} phone={studentPhone} />
       </div>
+
+      {/* رسالة "التسجيل ممنوع" — فوق كل حاجة وخارج الستيج الدوّار */}
+      {recMsg && (
+        <div
+          role="alert"
+          className="fixed top-4 left-1/2 -translate-x-1/2 z-[300] rounded-xl bg-black/90 border border-red-400/40 text-white text-sm font-bold px-5 py-3 shadow-2xl pointer-events-none"
+          style={{ direction: 'rtl', whiteSpace: 'nowrap' }}
+        >
+          {recMsg}
+        </div>
+      )}
     </div>
   )
 }
