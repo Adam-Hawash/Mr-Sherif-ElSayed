@@ -205,16 +205,18 @@ const PLAYER_PAGE = `<!doctype html>
   .wm{position:absolute;inset:0;z-index:40;pointer-events:none;user-select:none;overflow:hidden}
   /* الووترمارك الكبير في النص — اسم ثنائي سطر واحد — شفاف بحواف سودة — ثابت تمامًا */
   #wmBig{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:41;direction:rtl;
-    text-align:center;max-width:94%;white-space:nowrap;
+    text-align:center;max-width:94%;
     font-weight:900;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
-    font-size:clamp(20px,5.6vw,72px);line-height:1.3;
+    font-size:clamp(20px,5.6vw,72px);line-height:1.25;
     unicode-bidi:plaintext;letter-spacing:0}
-  #wmBig .b1{display:block;color:rgba(0,0,0,.13);
+  #wmBig .b1{display:block;color:rgba(0,0,0,.13);white-space:nowrap;
     -webkit-text-stroke:1.8px rgba(0,0,0,.5);paint-order:stroke fill;
     text-shadow:0 0 18px rgba(255,255,255,.22)}
-  /* الرقم جنب الاسم في نفس السطر — أصغر عشان مياكلش مساحة */
-  #wmBig .b2{font-size:.5em;direction:ltr;unicode-bidi:plaintext;vertical-align:middle;
-    margin-inline-start:.35em;-webkit-text-stroke:1.2px rgba(0,0,0,.45)}
+  /* الرقم تحت الاسم في سطر لوحده — أصغر بس واضح ومقروء (لازم الرقم يظهر) */
+  #wmBig .b2{display:block;font-size:.5em;direction:ltr;unicode-bidi:plaintext;
+    margin-top:.14em;letter-spacing:0;white-space:nowrap;color:rgba(0,0,0,.13);
+    -webkit-text-stroke:1.3px rgba(0,0,0,.48);paint-order:stroke fill;
+    text-shadow:0 0 14px rgba(255,255,255,.22)}
   /* كارت الطالب — ثابت في الزاوية تحت على اليمين (مفيش أي حاجة بتتحرك) */
   .wmCard{position:absolute;z-index:46;bottom:7.5%;right:2.2%}
   .wmCard .in{display:inline-block;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.28);
@@ -317,13 +319,16 @@ function buildWm(){
   if(old) old.parentNode.removeChild(old);
   var layer = document.createElement('div');
   layer.id = 'wm'; layer.className = 'wm';
-  /* 1) الووترمارك الكبير — اسم ثنائي + الرقم جنب الاسم — سطر واحد — ثابت تمامًا */
+  /* 1) الووترمارك الكبير — سطرين: الاسم الثنائي فوق والرقم تحته — ثابت تمامًا
+        (طلب المستر: "تحتيه الرقم... لازم الرقم يظهر") */
   var big1 = wmShortName() || wmPhone;
   if(big1){
     var big = document.createElement('div');
     big.id = 'wmBig';
-    var numPart = (wmName && wmPhone) ? ' <span class="b2">' + esc(wmPhone) + '</span>' : '';
-    big.innerHTML = '<span class="b1">' + esc(big1) + numPart + '</span>';
+    var nameLine = '<span class="b1">' + esc(big1) + '</span>';
+    /* الرقم تحت الاسم في سطر لوحده — لازم يبان */
+    var numLine = (wmName && wmPhone) ? '<span class="b2">' + esc(wmPhone) + '</span>' : '';
+    big.innerHTML = nameLine + numLine;
     big.style.opacity = String(Math.min(1, (Number(CFG.wm.opacity) || 0.55) * 1.15));
     layer.appendChild(big);
   }
@@ -369,12 +374,14 @@ function clearRot(){
   wrap.style.position=''; wrap.style.top=''; wrap.style.left=''; wrap.style.transform='';
   wrap.style.width=''; wrap.style.height='';
 }
-/* ===== قص أطراف الـ iframe — يوتيوب بيرسم أي حاجة بره المنطقة الباينة ===== */
+/* ===== عرض الفيديو **كامل 100% من غير أي قص** (طلب المستر 2026-هـ:
+   "الفيديو مش كامل إنت قاصص منه الأطراف — لازم يبان كله"). أي واجهة
+   يوتيوب بتتغطى بالدروع (الدرع العلوي + باتش اللوجو + الووترمارك)
+   مش بقص الفيديو. الدالة بتفضل موجودة عشان التوافق بس من غير قص. */
 function applyYtCrop(fs){
   var h = document.getElementById('ytCrop');
   if(!h) return;
-  if(fs){ h.style.width='112%'; h.style.height='132%'; h.style.top='-14%'; h.style.left='-6%'; }
-  else { h.style.width='110%'; h.style.height='120%'; h.style.top='-10%'; h.style.left='-5%'; }
+  h.style.width='100%'; h.style.height='100%'; h.style.top='0'; h.style.left='0';
   sizeYtHost();
 }
 /* تحجيم الـ iframe بمقاسه الحقيقي (1280×720 للـ HD و 1920×1080 للـ Full HD)
@@ -605,7 +612,7 @@ function mountYouTube(){
   // (transform scale) ليملّي الصندوق — يوتيوب بيختار الجودة من مقاس المشغل بالبكسل،
   // فالمقاس الكبير ده بيضمن تيار 720p فعلاً بدل ما يقف على 360p.
   var ytCrop = document.createElement('div');
-  ytCrop.id = 'ytCrop'; ytCrop.style.cssText = 'position:absolute;width:110%;height:120%;top:-10%;left:-5%;overflow:hidden';
+  ytCrop.id = 'ytCrop'; ytCrop.style.cssText = 'position:absolute;width:100%;height:100%;top:0;left:0;overflow:hidden';
   var host = document.createElement('div');
   host.id = 'ytHost';
   host.style.cssText = 'position:absolute;top:50%;left:50%;width:1280px;height:720px;transform:translate(-50%,-50%) scale(1);transform-origin:center center';
@@ -614,7 +621,10 @@ function mountYouTube(){
   // شاشة البداية (بتغطي أي عنوان/برanding بتاع يوتيوب لحظة التحميل)
   var startOv = document.createElement('div');
   startOv.id='startOv';
-  startOv.innerHTML = '<div class="big"><svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg></div><p>اضغط للمشاهدة</p>';
+  startOv.innerHTML = '<img src="/images/sherif-profile.jpg" alt="Mr. Sherif ElSayed" ' +
+    'style="max-width:min(58%,300px);max-height:52%;object-fit:contain;border-radius:18px;' +
+    'border:2px solid rgba(249,115,22,.55);box-shadow:0 12px 40px rgba(0,0,0,.6);pointer-events:none">' +
+    '<div class="big"><svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg></div><p>اضغط للمشاهدة</p>';
   startOv.addEventListener('click', function(){ if(!tapOk()) return; startWithWatchdog(); showCtrl(true); });
   startOv.addEventListener('touchend', function(e){ e.preventDefault(); if(!tapOk()) return; startWithWatchdog(); showCtrl(true); });
   wrap.appendChild(startOv);
