@@ -21,7 +21,6 @@ import {
   ChevronLeft, CheckCircle2, Smartphone, RotateCcw, ShieldCheck, Monitor, Tablet, Flag
 } from 'lucide-react'
 import { AdminComplaints } from './AdminComplaints'
-import { getDeviceCandidates, getDeviceId, getDeviceTraits, getDeviceType } from '@/lib/device'
 import { CMSPanel } from './CMSPanel'
 import { VideoProtectionSettings } from './VideoProtectionSettings'
 import { FractionText, hasMathMarkup } from '@/components/FractionText'
@@ -465,50 +464,16 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
     catch { toast.error('خطأ في حذف الطالب') }
   }
 
-  // ===== ربط الجهاز: تحكم المستر =====
-  const handleDeviceAction = async (id: string, action: 'allowAll' | 'bindOnly', currentValue: { allowAllDevices?: boolean; deviceId?: string }) => {
+  // ===== فك ربط الجهاز — الزرار الوحيد للمستر (منظومة الجهاز الواحد) =====
+  // بعد فك الربط: أول جهاز يعمله الطالب تسجيل دخول بيبقى جهاز حسابه **للأبد**
+  const handleUnbind = async (id: string) => {
+    if (!window.confirm('فك ربط الجهاز؟ بعد كده أول جهاز يعمله الطالب تسجيل دخول هيبقى هو جهاز حسابه للأبد.')) return
     try {
-      var body: any = {}
-      if (action === 'allowAll') body.allowAllDevices = !(currentValue.allowAllDevices === true)
-      else body.resetDevice = true
-      const res = await fetch(`/api/students/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      const res = await fetch(`/api/students/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ resetDevice: true }) })
       if (!res.ok) throw new Error()
-      toast.success(action === 'allowAll'
-        ? (body.allowAllDevices ? 'تم السماح بالدخول من كل الأجهزة ✅' : 'تم قفل الحساب على جهازه الأصلي 🔒')
-        : 'تم فك ربط الجهاز — أول جهاز يسجل دخول بعد كده هيبقى هو جهاز الحساب')
+      toast.success('تم فك الربط — أول جهاز يسجل دخول بعد كده هيبقى هو جهاز الحساب للأبد')
       loadStudents(false)
-    } catch { toast.error('خطأ في تحديث إعدادات الجهاز') }
-  }
-
-  // ===== ربط الحساب بجهاز المستر الحالي =====
-  // ده الحل المباشر لحالة "الحساب اتعمل من الكمبيوتر بتاعي ومش بيدخل منه":
-  // المستر دس الزرار من الجهاز اللي هو عايزه → الحساب اتربط بيه **بكل بياناته**
-  // (الهوية الفريدة + البصمة + مكوّنات الجهاز) → أول دخول بعدها بيفتح على طول
-  const [bindingDevice, setBindingDevice] = useState<string>('')
-  const handleBindCurrentDevice = async (id: string) => {
-    setBindingDevice(id)
-    try {
-      var uuid = getDeviceId()
-      var cands = getDeviceCandidates()
-      var fp = ''
-      for (var i = 0; i < cands.length; i++) {
-        if (cands[i].indexOf('dv3_') === 0 || cands[i].indexOf('dv2_') === 0) { fp = cands[i]; break }
-      }
-      const res = await fetch(`/api/students/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          bindDevice: uuid || fp,
-          bindDeviceFp: fp,
-          bindDeviceTraits: JSON.stringify(getDeviceTraits()),
-          bindDeviceType: getDeviceType(),
-        }),
-      })
-      if (!res.ok) throw new Error()
-      toast.success('تم ربط الحساب بالجهاز الحالي ✅ — ادخل بالحساب من الجهاز ده هيفتح على طول')
-      loadStudents(false)
-    } catch { toast.error('خطأ في ربط الجهاز — جرب تاني') }
-    setBindingDevice('')
+    } catch { toast.error('خطأ في فك الربط — جرب تاني') }
   }
 
   const statusColors: Record<string, string> = { pending: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400', approved: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400', paid: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400', rejected: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400', refused: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' }
@@ -631,7 +596,7 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
                     {(s as any).allowAllDevices === true ? (
                       <Badge className="text-[9px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 flex items-center gap-0.5"><ShieldCheck className="h-2.5 w-2.5" />سماح كل الأجهزة</Badge>
                     ) : ((s as any).deviceId || (s as any).creationDeviceId) ? (
-                      <Badge variant="outline" className="text-[9px] border-primary/40 text-primary flex items-center gap-0.5">{deviceIcon((s as any).deviceType)}مقفول على جهاز الإنشاء{deviceTypeLabels[(s as any).deviceType] ? ' — ' + deviceTypeLabels[(s as any).deviceType] : ''}</Badge>
+                      <Badge variant="outline" className="text-[9px] border-primary/40 text-primary flex items-center gap-0.5">{deviceIcon((s as any).deviceType)}مربوط بجهاز{deviceTypeLabels[(s as any).deviceType] ? ' — ' + deviceTypeLabels[(s as any).deviceType] : ''}</Badge>
                     ) : (
                       <Badge variant="outline" className="text-[9px] text-muted-foreground">هيتربط بأول جهاز يدخل بيه</Badge>
                     )}
@@ -644,25 +609,18 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
                     <Badge variant="outline" className="text-[10px]">{s.grade}</Badge>
                     {s.lastLogin && <p className="text-[10px] text-muted-foreground">آخر دخول: {new Date(s.lastLogin).toLocaleDateString('ar-EG')}</p>}
                   </div>
-                  {/* تشخيص آخر حجب جهاز — المستر يشوف السبب بالتفصيل من غير تخمين */}
+                  {/* محاولات الدخول الممنوعة — سطر نظيف بالعربي من غير أي أكواد تقنية */}
                   {(s as any).lastDeviceBlock?.details && (s as any).allowAllDevices !== true && (
-                    <p className="text-[10px] text-red-600 dark:text-red-400 leading-relaxed" title={(s as any).lastDeviceBlock.details}>
-                      ⛔ آخر حجب ({new Date((s as any).lastDeviceBlock.createdAt).toLocaleString('ar-EG', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}): {(s as any).lastDeviceBlock.details.replace('محاولة دخول من جهاز غريب — ', '').slice(0, 160)}
+                    <p className="text-[10px] text-red-600 dark:text-red-400 leading-relaxed">
+                      ⛔ في محاولات دخول من جهاز تاني اترفضت — آخر محاولة: {new Date((s as any).lastDeviceBlock.createdAt).toLocaleString('ar-EG', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     </p>
                   )}
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
                   <Button size="icon" variant="ghost" className="h-8 w-8 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20" onClick={() => loadStudentProgress(s.id)} title="تفاصيل"><BarChart3 className="h-4 w-4" /></Button>
-                  {/* زرار السماح — واضح باسمه عشان المستر يلاقيه بسهولة */}
-                  <Button size="sm" variant="outline" className={(s as any).allowAllDevices === true ? 'h-8 px-2.5 text-xs border-emerald-400 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-400' : 'h-8 px-2.5 text-xs border-primary/50 text-primary hover:bg-primary/10'} onClick={() => handleDeviceAction(s.id, 'allowAll', { allowAllDevices: (s as any).allowAllDevices })} title={(s as any).allowAllDevices === true ? 'إلغاء السماح — رجّع الحساب على جهازه الأصلي بس' : 'سماح — الطالب يقدر يفتح حسابه من جهاز جديد (أول دخول بعد السماح يربط الحساب بالجهاز ده ويقفله)'}><Smartphone className="h-3.5 w-3.5" />{(s as any).allowAllDevices === true ? 'إلغاء السماح' : 'سماح / نقل جهاز'}</Button>
-                  {/* ربط الجهاز الحالي — الحل المباشر: الحساب يتربط بالجهاز اللي المستر واقف عليه دلوقتي */}
-                  {(s as any).allowAllDevices !== true && (
-                    <Button size="sm" variant="outline" disabled={bindingDevice === s.id} className="h-8 px-2.5 text-xs border-violet-400 bg-violet-50 text-violet-700 hover:bg-violet-100 dark:bg-violet-900/20 dark:text-violet-400" onClick={() => handleBindCurrentDevice(s.id)} title="ربط الحساب بالجهاز اللي انت فاتح منه لوحة التحكم دلوقتي — بعد كده الدخول من الجهاز ده هيفتح على طول">
-                      <Monitor className="h-3.5 w-3.5" />{bindingDevice === s.id ? 'جاري الربط…' : 'اربط جهازي الحالي'}
-                    </Button>
-                  )}
-                  {(s as any).deviceId && (s as any).allowAllDevices !== true && (
-                    <Button size="sm" variant="outline" className="h-8 px-2.5 text-xs border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-900/20 dark:text-amber-400" onClick={() => handleDeviceAction(s.id, 'bindOnly', {})} title="فك ربط الجهاز — أول جهاز يسجل دخول بعد كده هيبقى هو جهاز الحساب الجديد"><RotateCcw className="h-3.5 w-3.5" />فك الربط</Button>
+                  {/* فك الربط — التحكم الوحيد: بعد الفك أول جهاز يدخل بيبقى جهاز الحساب للأبد */}
+                  {((s as any).deviceId || (s as any).creationDeviceId) && (s as any).allowAllDevices !== true && (
+                    <Button size="sm" variant="outline" className="h-8 px-2.5 text-xs border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-900/20 dark:text-amber-400" onClick={() => handleUnbind(s.id)} title="فك ربط الجهاز — أول جهاز يسجل دخول بعد كده هيبقى هو جهاز الحساب الجديد للأبد"><RotateCcw className="h-3.5 w-3.5" />فك الربط</Button>
                   )}
                   {s.status === 'pending' && (<>
                     <Button size="icon" variant="ghost" className="h-8 w-8 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20" onClick={() => handleAction(s.id, 'approved')} title="مقبول - مجاني"><Check className="h-4 w-4" /></Button>

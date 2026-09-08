@@ -559,8 +559,8 @@ var playerApi = null;
    + لو الطالب دس قبل ما الـ API يجهز → الطلب بيتسجل وبيتنفذ أول ما يجهز. */
 var wdTimer = null, muteFallback = false, lastTap = 0;
 var pendingStart = false, pendingResume = 0, ytIdCached = '';
-/* قفل الجودة — اختيار الطالب ('top' = أعلى جودة متاحة في المصدر) — عدادات الحارس */
-var qSel = 'top', qMissAt = 0, qReloads = 0, lastQReload = 0;
+/* قفل الجودة — اختيار الطالب ('top' = أعلى جودة متاحة في المصدر) */
+var qSel = 'top', lastQAssert = 0;
 /* أعلى جودة متاحة فعلًا في الفيديو — لو الملف الأصلي مرفوع بجودة ضعيفة
    يوتيوب هيرجّع أعلى حاجة عنده بس (حدود المصدر مش حدود المشغل) */
 function highestAvail(){
@@ -571,8 +571,10 @@ function highestAvail(){
   return 'hd720';
 }
 function wantedLevel(){ return qSel === 'top' ? highestAvail() : (qSel === 'auto' ? '' : qSel); }
-/* ترتيب الجودة — الحارس بيفرض **الترقية بس** (لو يوتيوب نزّل الجودة تحت المطلوب)
-   وبيقبل أي جودة أعلى من اختيار الطالب بدون إعادات تحميل بلا لزوم */
+/* ترتيب الجودة — الحارس بيفرض المطلوب **من غير أي إعادة تحميل**:
+   إعادة تحميل التيار (loadVideoById) هي السبب الحقيقي إن الجودة كانت بترجع
+   لـ360p — يوتيوب بيبدأ أي تيار جديد من أدنى جودة وبيعلى تدريجيًا أثناء
+   قياس سرعة النت، فكل إعادة تحميل كانت بترجّعنا لنقطة البداية تاني */
 var qRank = { highres:10, hd2160:10, hd1440:9, hd1080:8, hd720:7, large:6, medium:5, small:4, tiny:3 };
 function qRankOf(q){ return qRank[q] || 0; }
 function applyQ(){
@@ -744,14 +746,12 @@ function mountYouTube(){
         btn.addEventListener('click', function(e){
           e.stopPropagation();
           var q = btn.getAttribute('data-q') || 'top';
-          qSel = q; qMissAt = 0; qReloads = 0;
+          qSel = q; lastQAssert = Date.now();
+          /* فرض الجودة بالـ API مباشرة — **بدون أي إعادة تحميل للتيار**.
+             الإعادة كانت بتوقف الفيديو وترجّعه يبدأ من 360p ويعلى بالراحة —
+             ده بالظبط سبب "بختار 1080 فتتحول لـ360". setPlaybackQuality
+             بيتبعّل تبديل التيار من يوتيوب نفسه من غير ما نبدأ من الأول */
           applyQ();
-          if(q !== 'auto' && playerApi && playerApi.loadVideoById){
-            /* الضربة القوية: إعادة تحميل التيار بالمستوى المختار — بتشتغل فعلاً */
-            var target = q === 'top' ? highestAvail() : q;
-            var pos = 0; try{ pos = playerApi.getCurrentTime() || 0; }catch(err){}
-            try{ playerApi.loadVideoById(ytIdCached, Math.max(0, Math.floor(pos)), target); try{ playerApi.playVideo(); }catch(err){} }catch(err){}
-          }
           updateQBtn();
           qMenu.style.display = 'none';
         });
@@ -847,6 +847,17 @@ function buildPlayer(){
             reportEnded();
           }
         }catch(e){}
+      },
+      onPlaybackQualityChange: function(ev){
+        /* لو يوتيوب نزّل الجودة لوحدها تحت المطلوب → إعادة تأكيد فورية
+           بالـ API (من غير reload — الـ reload هو اللي كان بيرجّع 360p) */
+        try{
+          if(qSel !== 'auto'){
+            var effQ = wantedLevel();
+            var curQ = ev.data || '';
+            if(effQ && curQ && qRankOf(curQ) < qRankOf(effQ)){ lastQAssert = Date.now(); applyQ(); }
+          }
+        }catch(e){}
       }
     }
   });
@@ -867,25 +878,16 @@ function buildPlayer(){
           var eo3=document.getElementById('endOv');
           if(eo3 && eo3.style.display!=='flex'){ eo3.style.display='flex'; try{ playerApi.seekTo(0,true); playerApi.pauseVideo(); }catch(e){} reportEnded(); }
         }
-        /* تثبيت اختيار الجودة (الأعلى متاح أو اختيار الطالب): لو يوتيوب نزّلها
-           لوحده → نعيد الأمر، ولو استمر → إعادة تحميل التيار بالمستوى المطلوب
-           (4 مرات كحد أقصى للفيديو + كولداون 15 ثانية عشان مفيش لوب) */
+        /* تثبيت اختيار الجودة — إعادة تأكيد هادية كل 6 ثواني من غير أي reload:
+           لو الجودة الحالية أقل من المطلوب بنعيد الأمر — والفيديو بيكمل شغال
+           من نفس النقطة، ويوتيوب بيعلى للجودة المطلوبة أول ما يقيس النت */
         if(ytState() === 1 && qSel !== 'auto'){
           var q = '';
           try{ q = playerApi.getPlaybackQuality() || ''; }catch(e){}
           var eff = wantedLevel();
           if(eff && q && q !== 'unknown' && qRankOf(q) < qRankOf(eff)){
-            /* الجودة الحالية **أقل** من المطلوب → فرض (أول بأول زي ما المستر عايز) */
-            if(!qMissAt) qMissAt = Date.now();
-            if(Date.now() - qMissAt > 4000){
-              if(qReloads < 4 && Date.now() - lastQReload > 15000){
-                qReloads++; lastQReload = Date.now(); qMissAt = 0;
-                try{ playerApi.loadVideoById(ytIdCached, Math.max(0, Math.floor(playerApi.getCurrentTime() || 0)), eff); }catch(e){}
-              } else {
-                applyQ();
-              }
-            }
-          } else { qMissAt = 0; }
+            if(Date.now() - lastQAssert > 6000){ lastQAssert = Date.now(); applyQ(); }
+          }
         }
         if(!seekDragging){
           var se = document.getElementById('seek');
