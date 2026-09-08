@@ -35,7 +35,7 @@ function DeviceWarningBanner({ mode }: { mode: 'login' | 'register' }) {
           </>
         ) : (
           <>
-            <span className="font-bold">تنبيه:</span>             <span className="font-bold">تنبيه مهم:</span> الجهاز اللي أنت هتعمل منه <span className="font-bold">تسجيل الدخول</span> دلوقتي هو ده الجهاز اللي هتخش منه على حسابك <span className="font-bold">للأبد</span> — ما ينفعش تغيّره ولا تدخل بجهاز تاني. الحساب بيدخل بـ <span className="font-bold">جهاز واحد بس</span>، والجهاز اللي هتدخل منه ده هيفضل بتاعك. لو واجهتك أي مشكلة اكتبها في <span className="font-bold">قسم الشكاوي</span>.
+            <span className="font-bold">تنبيه مهم:</span> الجهاز اللي أنت هتعمل منه <span className="font-bold">تسجيل الدخول</span> دلوقتي هو ده الجهاز اللي هتخش منه على حسابك <span className="font-bold">على طول</span> — ما ينفعش تغيّره ولا تدخل بجهاز تاني. الحساب بيدخل بـ <span className="font-bold">جهاز واحد بس</span>، والجهاز اللي هتدخل منه ده هيفضل بتاعك. لو واجهتك أي مشكلة اكتبها في <span className="font-bold">قسم الشكاوي</span>.
           </>
         )}
       </p>

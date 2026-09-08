@@ -196,9 +196,10 @@ const PLAYER_PAGE = `<!doctype html>
   #wrap{position:relative;width:100%;max-width:100vw;background:#000;overflow:hidden}
   #wrap.fs{width:100vw;height:100vh;max-width:none}
   #yt,#fileVid{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000}
-  /* ===== الووترمارك (مواصفات المستر النهائية 2026-ج) =====
-     • ووترمارك كبير واحد في نص الخلفية: **اسم ثنائي (أول كلمتين) في سطر واحد**
-       شفاف بحواف سودة — ثابت تمامًا مفيش أي حركة — عشان مياكلش كلام الفيديو
+  /* ===== الووترمارك (مواصفات المستر النهائية 2026-د) =====
+     • ووترمارك كبير واحد في نص الخلفية: **اسم ثنائي (أول كلمتين) + الرقم
+       جنب الاسم في نفس السطر** شفاف بحواف سودة — ثابت تمامًا مفيش أي حركة
+       — عشان مياكلش كلام الفيديو (الرقم أصغر وجنب الاسم زي ما المستر طلب)
      • كارت الطالب (الاسم الكامل + الرقم) ثابت في **الزاوية تحت على اليمين**
      • مفيش أي شِپات على الحواف خالص (اتشالت كلها بطلب المستر) */
   .wm{position:absolute;inset:0;z-index:40;pointer-events:none;user-select:none;overflow:hidden}
@@ -211,6 +212,9 @@ const PLAYER_PAGE = `<!doctype html>
   #wmBig .b1{display:block;color:rgba(0,0,0,.13);
     -webkit-text-stroke:1.8px rgba(0,0,0,.5);paint-order:stroke fill;
     text-shadow:0 0 18px rgba(255,255,255,.22)}
+  /* الرقم جنب الاسم في نفس السطر — أصغر عشان مياكلش مساحة */
+  #wmBig .b2{font-size:.5em;direction:ltr;unicode-bidi:plaintext;vertical-align:middle;
+    margin-inline-start:.35em;-webkit-text-stroke:1.2px rgba(0,0,0,.45)}
   /* كارت الطالب — ثابت في الزاوية تحت على اليمين (مفيش أي حاجة بتتحرك) */
   .wmCard{position:absolute;z-index:46;bottom:7.5%;right:2.2%}
   .wmCard .in{display:inline-block;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.28);
@@ -230,8 +234,17 @@ const PLAYER_PAGE = `<!doctype html>
   #ytCtrl{position:absolute;bottom:0;left:0;right:0;z-index:30;display:flex;align-items:center;gap:9px;direction:rtl;
     padding:10px 12px 12px;background:linear-gradient(to top,rgba(0,0,0,.85),rgba(0,0,0,.5) 65%,transparent);transition:opacity .3s}
   #ytCtrl.hide{opacity:0;pointer-events:none}
-  #ppBtn,#fsInBar{width:38px;height:38px;border-radius:10px;border:0;background:rgba(255,255,255,.16);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto}
-  #ppBtn:hover,#fsInBar:hover{background:rgba(255,255,255,.26)}
+  #ppBtn,#fsInBar,#qBtn{height:38px;border-radius:10px;border:0;background:rgba(255,255,255,.16);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto}
+  #ppBtn,#fsInBar{width:38px}
+  #qBtn{padding:0 12px;gap:5px;font-weight:700;font-size:11.5px;font-family:system-ui,sans-serif;white-space:nowrap}
+  #qBtn:hover,#fsInBar:hover,#ppBtn:hover{background:rgba(255,255,255,.26)}
+  #qMenu{position:absolute;bottom:58px;right:12px;z-index:62;background:rgba(10,10,16,.96);border:1px solid rgba(255,255,255,.18);
+    border-radius:12px;padding:6px;display:none;flex-direction:column;min-width:190px;direction:rtl;box-shadow:0 10px 30px rgba(0,0,0,.6)}
+  #qMenu button{display:flex;justify-content:space-between;align-items:center;gap:10px;background:0;border:0;color:#fff;
+    padding:10px 12px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:system-ui,sans-serif;text-align:right;min-height:38px}
+  #qMenu button:hover{background:rgba(255,255,255,.12)}
+  #qMenu button.on{color:#fbbf24}
+  #qMenu .note{font-size:10.5px;color:#fbbf24;padding:7px 12px 3px;line-height:1.7;border-top:1px solid rgba(255,255,255,.12);margin-top:4px}
   #seek{flex:1;-webkit-appearance:none;appearance:none;height:5px;border-radius:4px;background:rgba(255,255,255,.3);outline:0;cursor:pointer;min-width:50px;margin:0}
   #seek::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.6)}
   #seek::-moz-range-thumb{width:15px;height:15px;border:0;border-radius:50%;background:#fff}
@@ -283,10 +296,10 @@ function deobfuscate(b64, key){
   }catch(e){ return ''; }
 }
 
-/* ===== الووترمارك (مواصفات المستر النهائية 2026-ج) =====
+/* ===== الووترمارك (مواصفات المستر النهائية 2026-د) =====
    • ووترمارك كبير واحد في نص الخلفية — **اسم ثنائي (أول كلمتين من الاسم)
-     في سطر واحد بس** شفاف بحواف سودة — ثابت تمامًا (مفيش أي حركة) —
-     عشان مياكلش الكلام المكتوب في الفيديو
+     + الرقم جنب الاسم في نفس السطر** شفاف بحواف سودة — ثابت تمامًا
+     (مفيش أي حركة) — عشان مياكلش الكلام المكتوب في الفيديو
    • كارت الطالب (الاسم الكامل + الرقم) ثابت في الزاوية تحت على اليمين
    • مفيش أي شِپات على الحواف خالص — طلب المستر
    • الاسم من غير قص أي حرف — ممنوع letter-spacing
@@ -304,12 +317,13 @@ function buildWm(){
   if(old) old.parentNode.removeChild(old);
   var layer = document.createElement('div');
   layer.id = 'wm'; layer.className = 'wm';
-  /* 1) الووترمارك الكبير — اسم ثنائي في سطر واحد — ثابت تمامًا */
+  /* 1) الووترمارك الكبير — اسم ثنائي + الرقم جنب الاسم — سطر واحد — ثابت تمامًا */
   var big1 = wmShortName() || wmPhone;
   if(big1){
     var big = document.createElement('div');
     big.id = 'wmBig';
-    big.innerHTML = '<span class="b1">' + esc(big1) + '</span>';
+    var numPart = (wmName && wmPhone) ? ' <span class="b2">' + esc(wmPhone) + '</span>' : '';
+    big.innerHTML = '<span class="b1">' + esc(big1) + numPart + '</span>';
     big.style.opacity = String(Math.min(1, (Number(CFG.wm.opacity) || 0.55) * 1.15));
     layer.appendChild(big);
   }
@@ -363,14 +377,19 @@ function applyYtCrop(fs){
   else { h.style.width='110%'; h.style.height='120%'; h.style.top='-10%'; h.style.left='-5%'; }
   sizeYtHost();
 }
-/* تحجيم الـ iframe الثابت (1280×720) ليملّي منطقة العرض — scale موحد من غير
-   تشويه لأن الاتنين 16:9 — وده اللي بيخلي يوتيوب تدينا تيار 720p فعلاً */
+/* تحجيم الـ iframe بمقاسه الحقيقي (1280×720 للـ HD و 1920×1080 للـ Full HD)
+   ليملّي منطقة العرض — scale موحد من غير تشويه لأن الاتنين 16:9 — وده اللي
+   بيخلي يوتيوب تدينا تيار بجودة المستوى المطلوب فعلاً */
+var effLevel = '';
+function hostDimFor(q){ return (q === 'hd1080' || q === 'hd1440' || q === 'hd2160' || q === 'highres') ? { w: 1920, h: 1080 } : { w: 1280, h: 720 }; }
 function sizeYtHost(){
   var c = document.getElementById('ytCrop'), h = document.getElementById('ytHost');
   if(!c || !h) return;
+  var dim = hostDimFor(effLevel);
+  h.style.width = dim.w + 'px'; h.style.height = dim.h + 'px';
   var w = c.offsetWidth || 0, hh = c.offsetHeight || 0;
   if(w > 0 && hh > 0){
-    var s = Math.max(w / 1280, hh / 720);
+    var s = Math.max(w / dim.w, hh / dim.h);
     h.style.transform = 'translate(-50%,-50%) scale(' + s + ')';
   }
 }
@@ -489,8 +508,38 @@ var playerApi = null;
    + لو الطالب دس قبل ما الـ API يجهز → الطلب بيتسجل وبيتنفذ أول ما يجهز. */
 var wdTimer = null, muteFallback = false, lastTap = 0;
 var pendingStart = false, pendingResume = 0, ytIdCached = '';
-/* قفل الجودة 720p — عدادات الحارس */
-var qMissAt = 0, qReloads = 0, lastQReload = 0;
+/* قفل الجودة — اختيار الطالب ('top' = أعلى جودة متاحة في المصدر) — عدادات الحارس */
+var qSel = 'top', qMissAt = 0, qReloads = 0, lastQReload = 0;
+/* أعلى جودة متاحة فعلًا في الفيديو — لو الملف الأصلي مرفوع بجودة ضعيفة
+   يوتيوب هيرجّع أعلى حاجة عنده بس (حدود المصدر مش حدود المشغل) */
+function highestAvail(){
+  try{
+    var ls = playerApi && playerApi.getAvailableQualityLevels ? playerApi.getAvailableQualityLevels() : [];
+    for(var i=0;i<ls.length;i++){ if(ls[i] && ls[i] !== 'auto' && ls[i] !== 'default') return ls[i]; }
+  }catch(e){}
+  return 'hd720';
+}
+function wantedLevel(){ return qSel === 'top' ? highestAvail() : (qSel === 'auto' ? '' : qSel); }
+function applyQ(){
+  try{
+    if(qSel === 'top'){
+      var best = highestAvail(); effLevel = best;
+      try{ playerApi.setPlaybackQualityRange(best, best); }catch(e){}
+      try{ playerApi.setPlaybackQuality(best); }catch(e){}
+    } else if(qSel === 'auto'){
+      effLevel = '';
+      try{ playerApi.setPlaybackQualityRange('auto', 'auto'); }catch(e){}
+      try{ playerApi.setPlaybackQuality('auto'); }catch(e){}
+    } else {
+      effLevel = qSel;
+      try{ playerApi.setPlaybackQualityRange(qSel, qSel); }catch(e){}
+      try{ playerApi.setPlaybackQuality(qSel); }catch(e){}
+    }
+    sizeYtHost();
+  }catch(e){}
+}
+function qLabel(q){ var m = { highres:'2160p+', hd2160:'2160p', hd1440:'1440p', hd1080:'1080p', hd720:'720p', large:'480p', medium:'360p', small:'240p', tiny:'144p' }; return m[q] || q; }
+function updateQBtn(){ var l = document.getElementById('qLbl'); if(l) l.textContent = qSel === 'top' ? 'عالية' : (qSel === 'auto' ? 'تلقائي' : qLabel(qSel)); }
 function tapOk(){ var n = Date.now(); if(n - lastTap < 350) return false; lastTap = n; return true; }
 function showUnmuteBtn(){
   var b = document.getElementById('unmuteBtn');
@@ -530,7 +579,7 @@ function startWithWatchdog(){
       /* الضربة القوية: loadVideoById بيحمّل التيار من الأول وبيشتغل فورًا —
          أقوى بكتير من playVideo في المتصفحات العنيدة */
       var cur = 0; try{ cur = playerApi.getCurrentTime() || 0; }catch(e){}
-      try{ playerApi.loadVideoById(ytIdCached, Math.max(0, Math.floor(cur)), 'hd720'); }catch(e){}
+      try{ playerApi.loadVideoById(ytIdCached, Math.max(0, Math.floor(cur)), wantedLevel() || 'hd720'); }catch(e){}
     } else if(attempts >= 5){
       clearInterval(wdTimer); wdTimer = null;
       try{ playerApi.mute(); muteFallback = true; showUnmuteBtn(); playerApi.playVideo(); }catch(e){}
@@ -569,10 +618,12 @@ function mountYouTube(){
   startOv.addEventListener('click', function(){ if(!tapOk()) return; startWithWatchdog(); showCtrl(true); });
   startOv.addEventListener('touchend', function(e){ e.preventDefault(); if(!tapOk()) return; startWithWatchdog(); showCtrl(true); });
   wrap.appendChild(startOv);
-  // طبقة النقر — بتلقط التابات بدل ما توصل ليوتيوب
+  // طبقة النقر — بتلقط التابات بدل ما توصل ليوتيوب (+ بتقفل قائمة الجودة)
   var tap = document.createElement('div'); tap.id='tapLayer';
+  function closeQMenu(){ var m = document.getElementById('qMenu'); if(m) m.style.display = 'none'; }
   tap.addEventListener('click', function(){
     if(!tapOk()) return;
+    closeQMenu();
     try{ if(playerApi&&playerApi.getPlayerState){ if(playerApi.getPlayerState()===YT.PlayerState.PLAYING) playerApi.pauseVideo(); else startWithWatchdog(); } }catch(e){}
     showCtrl(true);
   });
@@ -586,13 +637,60 @@ function mountYouTube(){
   var endOv = document.createElement('div'); endOv.id='endOv';
   endOv.innerHTML = '<p>🎉 خلصت الفيديو — برافو عليك!</p><button type="button" id="replayBtn">شوفه تاني ↺</button>';
   wrap.appendChild(endOv);
-  // كنترولز بتاعتنا: تشغيل/إيقاف + شريط تقدم + الوقت + ملء الشاشة
+  // كنترولز بتاعتنا: تشغيل/إيقاف + شريط تقدم + الوقت + الجودة + ملء الشاشة
   var bar = document.createElement('div'); bar.id='ytCtrl';
   bar.innerHTML = '<button id="ppBtn" type="button" aria-label="تشغيل/إيقاف">'+svgPlay()+'</button>' +
     '<input id="seek" type="range" min="0" max="1000" step="1" value="0" aria-label="شريط التقدم">' +
     '<span id="tTime">0:00 / 0:00</span>' +
+    '<button id="qBtn" type="button" aria-label="جودة الفيديو" aria-haspopup="menu">⚙ <span id="qLbl">عالية</span></button>' +
     '<button id="fsInBar" type="button" aria-label="ملء الشاشة">'+svgFs()+'</button>';
   wrap.appendChild(bar);
+  // قائمة الجودة — بتعرض المستويات الموجودة فعلًا في الفيديو + ملاحظة صادقة
+  // لو أعلى جودة في المصدر ضعيفة (الملف الأصلي على يوتيوب مرفوع بجودة ضعيفة)
+  var qMenu = document.createElement('div'); qMenu.id = 'qMenu'; qMenu.style.display = 'none';
+  wrap.appendChild(qMenu);
+  function buildQMenu(){
+    var html = '';
+    html += '<button type="button" data-q="top" class="'+(qSel==='top'?'on':'')+'"><span>عالية (الأعلى المتاح)</span>'+(qSel==='top'?'<span>✓</span>':'')+'</button>';
+    html += '<button type="button" data-q="auto" class="'+(qSel==='auto'?'on':'')+'"><span>تلقائي</span>'+(qSel==='auto'?'<span>✓</span>':'')+'</button>';
+    var ls = [];
+    try{ ls = playerApi && playerApi.getAvailableQualityLevels ? playerApi.getAvailableQualityLevels() : []; }catch(e){}
+    for(var i=0;i<ls.length;i++){
+      var qq = ls[i];
+      if(!qq || qq === 'auto' || qq === 'default') continue;
+      html += '<button type="button" data-q="'+qq+'" class="'+(qSel===qq?'on':'')+'"><span dir="ltr">'+qLabel(qq)+'</span>'+(qSel===qq?'<span>✓</span>':'')+'</button>';
+    }
+    var best = highestAvail();
+    var lowMap = { large:'480p', medium:'360p', small:'240p', tiny:'144p' };
+    if(best && lowMap[best]) html += '<div class="note">أعلى جودة متاحة في الفيديو ده: '+qLabel(best)+' — دي حدود الملف الأصلي على يوتيوب</div>';
+    qMenu.innerHTML = html;
+    var btns = qMenu.getElementsByTagName('button');
+    for(var j=0;j<btns.length;j++){
+      (function(btn){
+        btn.addEventListener('click', function(e){
+          e.stopPropagation();
+          var q = btn.getAttribute('data-q') || 'top';
+          qSel = q; qMissAt = 0; qReloads = 0;
+          applyQ();
+          if(q !== 'auto' && playerApi && playerApi.loadVideoById){
+            /* الضربة القوية: إعادة تحميل التيار بالمستوى المختار — بتشتغل فعلاً */
+            var target = q === 'top' ? highestAvail() : q;
+            var pos = 0; try{ pos = playerApi.getCurrentTime() || 0; }catch(err){}
+            try{ playerApi.loadVideoById(ytIdCached, Math.max(0, Math.floor(pos)), target); try{ playerApi.playVideo(); }catch(err){} }catch(err){}
+          }
+          updateQBtn();
+          qMenu.style.display = 'none';
+        });
+      })(btns[j]);
+    }
+  }
+  var qBtn = document.getElementById('qBtn');
+  qBtn.addEventListener('click', function(e){
+    e.stopPropagation();
+    var open = qMenu.style.display === 'flex';
+    if(open){ qMenu.style.display = 'none'; }
+    else { buildQMenu(); qMenu.style.display = 'flex'; showCtrl(false); }
+  });
   var pp = document.getElementById('ppBtn');
   pp.addEventListener('click', function(e){ e.stopPropagation(); if(!tapOk()) return; try{ if(ytState()===1) playerApi.pauseVideo(); else startWithWatchdog(); }catch(err){} showCtrl(true); });
   document.getElementById('fsInBar').addEventListener('click', function(e){ e.stopPropagation(); toggleFs(); });
@@ -644,7 +742,7 @@ function buildPlayer(){
         /* تكملة المشاهدة بنأجلها لأول لحظة تشغيل فعلية — أعلى أمان على الموبايل
            (الـ seek قبل التشغيل كان بعلّق المشغل في حالة cued على بعض الأجهزة) */
         try{ if(Number(CFG.resume) > 5) pendingResume = Number(CFG.resume); }catch(e){}
-        try{ ev.target.setPlaybackQuality('hd720'); }catch(e){} /* 720p — الجودة الثابتة */
+        applyQ(); /* الجودة الافتراضية: أعلى جودة متاحة في المصدر */
         if(pendingStart){ pendingStart = false; startWithWatchdog(); }
         layoutWrap();
       },
@@ -661,7 +759,7 @@ function buildPlayer(){
               if(posR > 0){ try{ playerApi.seekTo(posR, true); }catch(e){} }
               pendingResume = 0;
             }
-            try{ ev.target.setPlaybackQuality('hd720'); }catch(e){} /* 720p ثابتة */
+            applyQ(); /* تثبيت اختيار الجودة مع كل تشغيل */
             var so=document.getElementById('startOv'); if(so) so.style.display='none';
             var eo=document.getElementById('endOv'); if(eo) eo.style.display='none';
             setPP(true); showCtrl(true);
@@ -688,19 +786,21 @@ function buildPlayer(){
           var eo3=document.getElementById('endOv');
           if(eo3 && eo3.style.display!=='flex'){ eo3.style.display='flex'; try{ playerApi.seekTo(0,true); playerApi.pauseVideo(); }catch(e){} reportEnded(); }
         }
-        /* قفل الجودة على 720p: لو يوتيوب نزّلها لوحده → نعيد الأمر، ولو استمر
-           → إعادة تحميل التيار عند 720p (مرتين كحد أقصى للفيديو عشان مفيش لوب) */
-        if(ytState()===1){
+        /* تثبيت اختيار الجودة (الأعلى متاح أو اختيار الطالب): لو يوتيوب نزّلها
+           لوحده → نعيد الأمر، ولو استمر → إعادة تحميل التيار بالمستوى المطلوب
+           (مرتين كحد أقصى للفيديو عشان مفيش لوب) */
+        if(ytState() === 1 && qSel !== 'auto'){
           var q = '';
           try{ q = playerApi.getPlaybackQuality() || ''; }catch(e){}
-          if(q && q !== 'hd720' && q !== 'auto' && q !== 'unknown'){
+          var eff = wantedLevel();
+          if(eff && q && q !== 'unknown' && q !== eff){
             if(!qMissAt) qMissAt = Date.now();
             if(Date.now() - qMissAt > 5000){
               if(qReloads < 2 && Date.now() - lastQReload > 18000){
                 qReloads++; lastQReload = Date.now(); qMissAt = 0;
-                try{ playerApi.loadVideoById(ytIdCached, Math.max(0, Math.floor(playerApi.getCurrentTime() || 0)), 'hd720'); }catch(e){}
+                try{ playerApi.loadVideoById(ytIdCached, Math.max(0, Math.floor(playerApi.getCurrentTime() || 0)), eff); }catch(e){}
               } else {
-                try{ playerApi.setPlaybackQuality('hd720'); }catch(e){}
+                applyQ();
               }
             }
           } else { qMissAt = 0; }

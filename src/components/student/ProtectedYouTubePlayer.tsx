@@ -14,10 +14,14 @@
 //                related-videos end screen)
 //          - NO native controls, NO keyboard shortcuts, NO right-click
 //          - Settings (gear) button → video quality control
-//            (720p [DEFAULT] / تلقائي / 1080p / 720p / 480p / 360p / 240p / 144p)
-//            DEFAULT = 720p مثبتة (طلب المستر: الجودة تكون 720) — واضحة وسريعة،
-//            والجودة المختارة بتتنفذ بحارس مستمر
-//            soft hints first, then a HARD stream reload if YouTube ignores it.
+//            (عالية [DEFAULT = أعلى جودة متاحة فعلًا في المصدر] / تلقائي /
+//             كل المستويات المتاحة حقيقيًا في الفيديو)
+//            الافتراضي = **أعلى جودة موجودة فعلًا على يوتيوب** (طلب المستر:
+//            الجودة تبقى عالية) والطالب يقدر يغيّر من القائمة وده **بيشتغل
+//            فعلًا** (إعادة تحميل التيار بالمستوى المختار). ملاحظة صادقة:
+//            لو الفيديو نفسه مرفوع على يوتيوب بجودة ضعيفة (مثلاً 360p بس)
+//            القائمة بتوضّح إن دي حدود الملف الأصلي — مفيش مشغل يقدر يخترع
+//            بكسلات مش موجودة في المصدر.
 //          - RESUME: on open the player fetches the saved progress for this
 //            student+video and seeks there — progress is CUMULATIVE (max ever
 //            reached), re-watching the start can never pull the % back down.
@@ -67,10 +71,28 @@ function formatTime(sec: number) {
 /* ---------- Quality helpers ---------- */
 var STANDARD_QUALITIES = ['hd2160', 'hd1440', 'hd1080', 'hd720', 'large', 'medium', 'small', 'tiny']
 function qualityLabel(q: string): string {
-  if (q === 'auto480') return 'تلقائي 480p'
+  if (q === 'top') return 'عالية'
   if (q === 'auto' || q === 'default') return 'تلقائي'
   var map: any = { highres: '2160p+', hd2160: '2160p', hd1440: '1440p', hd1080: '1080p', hd720: '720p', large: '480p', medium: '360p', small: '240p', tiny: '144p' }
   return map[q] || q
+}
+/* أعلى جودة متاحة فعلًا في الفيديو — يوتيوب بيرجّع القائمة مرتبة من الأعلى
+   للأقل (وآخر عنصر 'auto'). لو الملف الأصلي مرفوع بجودة ضعيفة، دي أعلى
+   حاجة هتظهر — وده حدود المصدر مش حدود المشغل. */
+function highestAvailable(p: any): string {
+  try {
+    var levels = p && p.getAvailableQualityLevels ? p.getAvailableQualityLevels() : []
+    for (var i = 0; i < levels.length; i++) {
+      if (levels[i] && levels[i] !== 'auto' && levels[i] !== 'default') return levels[i]
+    }
+  } catch (e) {}
+  return 'hd720'
+}
+/* مقاس الـ iframe الحقيقي المطلوب للمستوى — يوتيوب بيختار التيار من مقاس
+   المشغل بالبكسل: 720p → 1280×720 و 1080p+ → 1920×1080 */
+function hostSizeForQuality(q: string): { w: number; h: number } {
+  if (q === 'hd1080' || q === 'hd1440' || q === 'hd2160' || q === 'highres') return { w: 1920, h: 1080 }
+  return { w: 1280, h: 720 }
 }
 
 /* ============================================================
@@ -124,22 +146,33 @@ export function ProtectedYouTubePlayer({
   const [needsUnmute, setNeedsUnmute] = useState(false)
 
   /* فرض الجودة بمقاس المشغل: يوتيوب بيختار الجودة من مقاس الـ iframe بالبكسل —
-     فبنرندر الـ iframe بمقاس ثابت 1280×720 بكسل حقيقي وبنعمله scale بالـ CSS
-     ليملّي الصندوق — النتيجة تيار 720p فعلًا بدل ما يقف على 360p (مشكلة الجودة
-     الضعيفة اللي المستر وصفها: الفيديو ثابت على نفس البكسلات مهما علّينا الجودة) */
+     فبنرندر الـ iframe بمقاس حقيقي (1280×720 للـ HD و 1920×1080 للـ Full HD)
+     وبنعمله scale بالـ CSS ليملّي الصندوق — النتيجة تيار HD فعلًا بدل ما يقف
+     على 360p (مشكلة الجودة الضعيفة اللي المستر وصفها) */
   const cropRef = useRef<HTMLDivElement>(null)
+  const hostDimRef = useRef({ w: 1280, h: 720 })
+  const [hostDim, setHostDim] = useState({ w: 1280, h: 720 })
   const [hostScale, setHostScale] = useState(1)
+  const effectiveRef = useRef('')
+
+  function setEffectiveQuality(q: string) {
+    var dim = hostSizeForQuality(q)
+    effectiveRef.current = q
+    hostDimRef.current = dim
+    setHostDim(dim)
+  }
 
   /* resume + cumulative progress state */
   const savedSecondsRef = useRef(0)
   const maxSeenRef = useRef(0)
 
-  /* quality settings state — DEFAULT: 720p PINNED (طلب المستر: الجودة تكون 720
-     — واضحة وسريعة). الحارس بيفرضها باستمرار. */
+  /* quality settings state — DEFAULT: 'top' = أعلى جودة متاحة فعلًا في المصدر
+     (طلب المستر: الجودة تبقى عالية). الطالب يقدر يختار من القائمة واختياره
+     بيتنفذ فعلًا (إعادة تحميل التيار بالمستوى). */
   const [qualityLevels, setQualityLevels] = useState<string[]>([])
-  const [selectedQuality, setSelectedQuality] = useState<string>('hd720')
+  const [selectedQuality, setSelectedQuality] = useState<string>('top')
   const [showQualityMenu, setShowQualityMenu] = useState(false)
-  const selectedQualityRef = useRef('hd720')
+  const selectedQualityRef = useRef('top')
   const lastQualityApplyRef = useRef(0)
   const mismatchSinceRef = useRef(0)
   const lastHardReloadRef = useRef(0)
@@ -147,7 +180,7 @@ export function ProtectedYouTubePlayer({
   useEffect(function () { selectedQualityRef.current = selectedQuality }, [selectedQuality])
   useEffect(function () { onWatchRef.current = onWatch }, [onWatch])
 
-  /* قياس منطقة العرض (المقصوصة) وتحديث scale الـ iframe الثابت 1280×720 —
+  /* قياس منطقة العرض (المقصوصة) وتحديث scale الـ iframe بمقاسه الحقيقي —
      بيتحدث مع أي تغيير مقاس (ملء الشاشة / دوران / تكبير نافذة) */
   useEffect(function () {
     function measure() {
@@ -155,7 +188,7 @@ export function ProtectedYouTubePlayer({
       if (!el) return
       var w = el.clientWidth || 0
       var h = el.clientHeight || 0
-      if (w > 0 && h > 0) setHostScale(Math.max(w / 1280, h / 720))
+      if (w > 0 && h > 0) setHostScale(Math.max(w / hostDimRef.current.w, h / hostDimRef.current.h))
     }
     measure()
     var ro: any = null
@@ -166,6 +199,15 @@ export function ProtectedYouTubePlayer({
       window.removeEventListener('resize', measure)
     }
   }, [])
+
+  /* إعادة حساب scale لما مقاس الـ iframe يتغير (مثلاً 1080p → 1920×1080) */
+  useEffect(function () {
+    var el = cropRef.current
+    if (!el) return
+    var w = el.clientWidth || 0
+    var h = el.clientHeight || 0
+    if (w > 0 && h > 0) setHostScale(Math.max(w / hostDimRef.current.w, h / hostDimRef.current.h))
+  }, [hostDim])
 
   /* orientation helpers — rotate the phone to landscape while fullscreen so
      the 16:9 video FILLS the screen instead of a tiny letterboxed strip in
@@ -244,18 +286,20 @@ export function ProtectedYouTubePlayer({
     var p = playerRef.current
     if (!p) return
     try {
-      if (q === 'auto') {
+      if (q === 'top') {
+        /* أعلى جودة متاحة فعلًا في المصدر — لو الملف الأصلي مرفوع بجودة
+           ضعيفة يوتيوب هيرجّع أعلى حاجة عنده بس (حدود المصدر) */
+        var best = highestAvailable(p)
+        setEffectiveQuality(best)
+        if (p.setPlaybackQualityRange) p.setPlaybackQualityRange(best, best)
+        if (p.setPlaybackQuality) p.setPlaybackQuality(best)
+      } else if (q === 'auto') {
         /* full automatic — YouTube adapts freely */
+        effectiveRef.current = ''
         if (p.setPlaybackQualityRange) p.setPlaybackQualityRange('auto', 'auto')
         if (p.setPlaybackQuality) p.setPlaybackQuality('auto')
-      } else if (q === 'auto480') {
-        /* automatic but CAPPED at 480p: suggested 360p, allowed 240p–480p.
-           Called with both documented signatures — YouTube accepts one. */
-        if (p.setPlaybackQualityRange) {
-          try { p.setPlaybackQualityRange('medium', 'small', 'large') } catch (e) {}
-          try { p.setPlaybackQualityRange('small', 'large') } catch (e) {}
-        }
       } else {
+        setEffectiveQuality(q)
         if (p.setPlaybackQualityRange) p.setPlaybackQualityRange(q, q)
         if (p.setPlaybackQuality) p.setPlaybackQuality(q)
       }
@@ -317,16 +361,16 @@ export function ProtectedYouTubePlayer({
                   })
                   .catch(function () {})
               }
-              /* available quality levels for the settings menu */
+              /* available quality levels for the settings menu — القائمة بتعرض
+                 بس المستويات الموجودة فعلًا في الفيديو (صادق مع الطالب) */
               try {
                 var levels = e.target.getAvailableQualityLevels ? e.target.getAvailableQualityLevels() : []
                 var clean: string[] = []
                 for (var i = 0; i < levels.length; i++) {
                   if (levels[i] && levels[i] !== 'auto' && levels[i] !== 'default' && STANDARD_QUALITIES.indexOf(levels[i]) >= 0) clean.push(levels[i])
                 }
-                if (clean.length === 0) clean = ['hd1080', 'hd720', 'large', 'medium', 'small', 'tiny']
                 setQualityLevels(clean)
-              } catch (err) { setQualityLevels(['hd1080', 'hd720', 'large', 'medium', 'small', 'tiny']) }
+              } catch (err) { setQualityLevels([]) }
               if (pendingPlayRef.current) {
                 pendingPlayRef.current = false
                 startPlaybackWithWatchdog(e.target)
@@ -383,11 +427,14 @@ export function ProtectedYouTubePlayer({
         setCurrentTime(t)
         if (d) setDuration(d)
         if (p.getVideoLoadedFraction) setBuffered((p.getVideoLoadedFraction() || 0) * 100)
-        /* sticky quality + captions stay OFF */
+        /* sticky quality + captions stay OFF — الحارس بيفضّل اختيار الطالب
+           (أو 'top' = الأعلى المتاح) شغال، والـ HARD enforcement بيستخدم نفس
+           المستوى المطلوب */
         var wanted = selectedQualityRef.current
-        if (wanted !== 'auto' && wanted !== 'auto480' && p.getPlaybackQuality) {
+        if (wanted !== 'auto' && p.getPlaybackQuality) {
+          var eff = wanted === 'top' ? highestAvailable(p) : wanted
           var cur = p.getPlaybackQuality()
-          if (cur && cur !== wanted) {
+          if (eff && cur && cur !== 'unknown' && cur !== eff) {
             /* HARD enforcement: if YouTube keeps ignoring the soft hints for
                8s, reload the stream at the chosen quality (cooldown 20s) */
             if (mismatchSinceRef.current === 0) mismatchSinceRef.current = Date.now()
@@ -396,7 +443,7 @@ export function ProtectedYouTubePlayer({
               mismatchSinceRef.current = 0
               try {
                 var posNow = p.getCurrentTime ? p.getCurrentTime() : 0
-                p.loadVideoById(ytId, Math.max(0, Math.floor(posNow)), wanted)
+                p.loadVideoById(ytId, Math.max(0, Math.floor(posNow)), eff)
                 try { p.playVideo && p.playVideo() } catch (err) {}
               } catch (e) {}
             } else {
@@ -538,16 +585,17 @@ export function ProtectedYouTubePlayer({
     selectedQualityRef.current = q
     applyQuality(q)
     mismatchSinceRef.current = 0
-    if (q !== 'auto' && q !== 'auto480') {
-      /* HARD enforcement for explicit qualities: reload the same video at the
-         same position with the chosen quality as the documented
-         suggestedQuality — this actually switches streams */
+    var target = q === 'top' ? highestAvailable(playerRef.current) : q
+    if (target && target !== 'auto') {
+      /* HARD enforcement: reload the same video at the same position with the
+         chosen quality as the documented suggestedQuality — this actually
+         switches streams (بيشتغل فعلًا مش كلام) */
       var p = playerRef.current
       try {
         var pos = 0
         try { pos = (p && p.getCurrentTime ? p.getCurrentTime() : 0) || 0 } catch (err) {}
         if (p && p.loadVideoById) {
-          p.loadVideoById(ytId, Math.max(0, Math.floor(pos)), q)
+          p.loadVideoById(ytId, Math.max(0, Math.floor(pos)), target)
           try { p.playVideo && p.playVideo() } catch (err) {}
         }
       } catch (e) {}
@@ -597,12 +645,11 @@ export function ProtectedYouTubePlayer({
           • Fullscreen: 14% top + 18% bottom (kills YouTube's native
             fullscreen share/save/quality bar, ~48-56px on any phone),
             6% each side (mostly eats the pillarbox black bars).
-          • QUALITY FORCING: the iframe itself renders at a FIXED 1280×720
-            real pixels and gets scaled down with CSS transform to fill the
-            crop box — YouTube picks the stream from the player's pixel size,
-            so this guarantees a true 720p stream instead of being stuck at
-            360p on small boxes (the exact "same pixels" problem the teacher
-            reported). */}
+          • QUALITY FORCING: the iframe itself renders at REAL pixels
+            (1280×720 for HD, 1920×1080 when 1080p+ is selected) and gets
+            scaled with CSS transform to fill the crop box — YouTube picks
+            the stream from the player's pixel size, so the chosen quality
+            actually plays instead of being stuck at 360p on small boxes. */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div
           ref={cropRef}
@@ -618,8 +665,8 @@ export function ProtectedYouTubePlayer({
               position: 'absolute',
               top: '50%',
               left: '50%',
-              width: '1280px',
-              height: '720px',
+              width: hostDim.w + 'px',
+              height: hostDim.h + 'px',
               transform: 'translate(-50%, -50%) scale(' + hostScale + ')',
               transformOrigin: 'center center',
             }}
@@ -726,20 +773,11 @@ export function ProtectedYouTubePlayer({
             <button
               type="button"
               role="menuitem"
-              className={'w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-white hover:bg-white/10 transition-colors min-h-[36px] ' + (selectedQuality === 'large' ? 'text-primary font-bold' : '')}
-              onClick={function (e) { e.preventDefault(); e.stopPropagation(); handleQualitySelect('large') }}
+              className={'w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-white hover:bg-white/10 transition-colors min-h-[36px] ' + (selectedQuality === 'top' ? 'text-primary font-bold' : '')}
+              onClick={function (e) { e.preventDefault(); e.stopPropagation(); handleQualitySelect('top') }}
             >
-              <span>480p (ثابتة)</span>
-              {selectedQuality === 'large' && <Check className="w-4 h-4" />}
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              className={'w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-white hover:bg-white/10 transition-colors min-h-[36px] ' + (selectedQuality === 'auto480' ? 'text-primary font-bold' : '')}
-              onClick={function (e) { e.preventDefault(); e.stopPropagation(); handleQualitySelect('auto480') }}
-            >
-              <span>تلقائي 480p</span>
-              {selectedQuality === 'auto480' && <Check className="w-4 h-4" />}
+              <span>عالية (الأعلى المتاح)</span>
+              {selectedQuality === 'top' && <Check className="w-4 h-4" />}
             </button>
             <button
               type="button"
@@ -765,6 +803,13 @@ export function ProtectedYouTubePlayer({
                 </button>
               )
             })}
+            {/* ملاحظة صادقة: لو أعلى جودة في المصدر ضعيفة (الملف الأصلي على
+                يوتيوب مرفوع بجودة ضعيفة) — مفيش مشغل يقدر يتحايل على ده */}
+            {qualityLevels.length > 0 && ['large', 'medium', 'small', 'tiny'].indexOf(qualityLevels[0]) >= 0 && (
+              <p className="px-3 pt-1.5 pb-1 text-[10px] leading-relaxed text-amber-300/90 border-t border-white/10 mt-1">
+                أعلى جودة متاحة في الفيديو ده: {qualityLabel(qualityLevels[0])} — دي حدود الملف الأصلي على يوتيوب
+              </p>
+            )}
           </div>
         )}
 

@@ -2,13 +2,14 @@
 // ============================================================
 // VideoWatermark — ووترمارك الطالب فوق الفيديو (اسمه + رقمه)
 // ============================================================
-// مواصفات المستر النهائية (تحديث 2026-ج):
+// مواصفات المستر النهائية (تحديث 2026-د):
 //  1) **مفيش أي شِپات على الحواف** — اتشالت كلها بطلب المستر،
 //     مفيش حاجة غير الووترمارك الكبير في النص + الكارت في الزاوية.
 //  2) ووترمارك كبير واحد في نص الخلفية: **اسم ثنائي (أول كلمتين من
-//     اسم الطالب) في سطر واحد بس** — مش الاسم كله ومفيش صف تاني،
-//     عشان مياكلش الكلام اللي مكتوب في الفيديو. **ثابت تمامًا**
-//     (من غير أي حركة خالص).
+//     اسم الطالب) + الرقم جنب الاسم في نفس السطر** — الاسم والرقم
+//     مع بعض في سطر واحد بس (الرقم أصغر وجنب الاسم زي ما المستر
+//     طلب: "الاسم الثنائي وجنبيه الرقم") — مش بيياكل كلام الفيديو.
+//     **ثابت تمامًا** (من غير أي حركة خالص).
 //  3) الكارت (الاسم الكامل + الرقم) **ثابت في الزاوية تحت على اليمين**
 //     — مفيش أي حركة خالص.
 //  4) الاسم من غير قص أي حرف:
@@ -37,7 +38,7 @@ export function VideoWatermark({ name, phone }: { name?: string; phone?: string 
   if (!num && !nm) return null
   // الاسم الثنائي: أول كلمتين بس من اسم الطالب — سطر واحد في النص بدل الاسم كله
   var parts = nm.split(/\s+/).filter(Boolean)
-  var shortName = (parts.slice(0, 2).join(' ')) || num
+  var shortName = parts.slice(0, 2).join(' ') || num
 
   return (
     <div
@@ -46,7 +47,8 @@ export function VideoWatermark({ name, phone }: { name?: string; phone?: string 
       className="absolute inset-0 z-[60] pointer-events-none select-none overflow-hidden"
       aria-hidden="true"
     >
-      {/* الووترمارك الكبير في نص الخلفية — اسم ثنائي في سطر واحد — ثابت تمامًا */}
+      {/* الووترمارك الكبير في نص الخلفية — اسم ثنائي + الرقم جنب الاسم في
+          سطر واحد — ثابت تمامًا */}
       <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
         <div
           className="text-center font-black leading-tight"
@@ -65,6 +67,21 @@ export function VideoWatermark({ name, phone }: { name?: string; phone?: string 
           }}
         >
           {shortName}
+          {/* الرقم جنب الاسم في نفس السطر — أصغر من الاسم عشان مياكلش مساحة */}
+          {num && shortName !== num && (
+            <span
+              style={{
+                fontSize: '0.5em',
+                direction: 'ltr',
+                unicodeBidi: 'plaintext',
+                verticalAlign: 'middle',
+                marginInlineStart: '0.35em',
+                WebkitTextStroke: '1.2px rgba(0,0,0,0.45)',
+              }}
+            >
+              {num}
+            </span>
+          )}
         </div>
       </div>
 
