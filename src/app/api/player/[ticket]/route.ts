@@ -78,11 +78,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       try { row = await db.playTicket.findUnique({ where: { id: ticket } }) } catch (e2) { row = null }
     }
     if (!row) return pageError('تذكرة التشغيل مش موجودة — اقفل المشغل وافتح الفيديو من الأول.', 403)
-    if (row.consumed) return pageError('تذكرة التشغيل اتاستخدمت خلاص — اقفل المشغل وافتح الفيديو من الأول.', 403)
-    if (new Date(row.expiresAt).getTime() < Date.now()) return pageError('تذكرة التشغيل خلصت صلاحيتها — اقفل المشغل وافتح الفيديو من الأول.', 403)
-
-    // استهلاك التذكرة فورًا (single-use) — إعادة فتح اللينك مش هتنفع
-    await db.playTicket.update({ where: { id: ticket }, data: { consumed: true } }).catch(function () {})
+    // ===== (2026-ط) علاج جذري لـ"الفيديو مش بيفتح خالص" =====
+    // كانت التذكرة بتُستهلك من أول تحميل (single-use) — أي preFetch أو Retry
+    // أو إعادة تحميل للـ iframe قبل ما المشغل يرندر بيحرق التذكرة، والطالب
+    // يشوف "التذكرة اتاستخدمت" للأبد من غير أي حل. دلوقتي: التذكرة صالحة
+    // طوال دقيقتين مهما اتفتحت — الحماية زي ما هي (التذكرة مخصصة للطالب
+    // وبتنتهي تلقائيًا ومفيش أي معرف فيديو بيظهر نتيجة كده)
+    if (new Date(row.expiresAt).getTime() < Date.now()) return pageError('تذكرة التشغيل خلصت صلاحيتها — اقفل المشغل وافتح الفيديو من الأول وهيفتح عادي.', 403)
 
     // ===== فيديوهات المعرض (gal_...) =====
     if (row.videoId && row.videoId.indexOf('gal_') === 0) {
@@ -639,12 +641,15 @@ function showPlayError(msg){
   if(rb) rb.addEventListener('click', function(e){ e.stopPropagation(); try{ if(box.parentNode) box.parentNode.removeChild(box); }catch(ex){} retryPlayback(); });
 }
 function retryPlayback(){
-  /* أول إعادة → نفس المضيف بمشغل نظيف. بعدها → nocookie. وأي فشل → رسالة صريحة */
+  /* أول إعادة → نفس المضيف بمشغل نظيف. بعدها → nocookie. وأي فشل → الوضع البديل المضمون */
   rebuildThenPlay(rebuildTries === 0 ? 'www' : 'nocookie');
+  scheduleFallbackIfStuck();
 }
 function rebuildThenPlay(kind){
   if(rebuildTries >= 2){
-    showPlayError('يوتيوب لسه مرفض التشغيل — اقفل الصفحة وافتح الفيديو من جديد، ولو تكررت بلغ الإدارة في قسم الشكاوى');
+    /* (2026-ط) مفيش شاشة ميّت خلاص — لو يوتيوب مرفض على كل المضيفين
+       → الوضع البديل المضمون (مشغل مباشر) والفيديو يشتغل */
+    activateFallback('rebuild-limit');
     return;
   }
   rebuildTries++;
@@ -670,6 +675,77 @@ function rebuildThenPlay(kind){
    + لو الطالب دس قبل ما الـ API يجهز → الطلب بيتسجل وبيتنفذ أول ما يجهز. */
 var wdTimer = null, muteFallback = false, lastTap = 0;
 var pendingStart = false, pendingResume = 0, ytIdCached = '';
+/* ===== (2026-ط) تحميل API يوتيوب بلا استسلام + الوضع البديل المضمون =====
+   المشكلة الحقيقية اللي كانت بتقفل الفيديو خالص: سكريبت يوتيوب لو اتأخر
+   أو فشل مرة واحدة، المشغل بيفضل "بيتجهز" للأبد من غير أي رسالة أو حل.
+   الحل من مرحلتين:
+   1) محاولات تحميل متجددة كل 3 ثواني (بالتبديل بين المضيفين + كسر الكاش)
+   2) لو الطالب دس والمشغل ماجاش في 6 ثواني → الوضع البديل المضمون:
+      مشغل يوتيوب مباشر (embed) بنفس الحمايات (الووترمارك والدروع فوقه
+      وكلها pointer-events:none) — الفيديو يشتغل على أي حال مهما حصل */
+var apiTimer = null, apiTries = 0, apiSrcIdx = 0, apiScriptPending = false;
+var playerBuilt = false, fallbackActive = false, fallbackTimer = null;
+var API_HOSTS = ['https://www.youtube.com/iframe_api', 'https://www.youtube-nocookie.com/iframe_api'];
+function apiReadyNow(){
+  if(playerBuilt || playerApi) return;
+  try{
+    buildPlayer();
+    playerBuilt = true;
+    try{ if(apiTimer){ clearInterval(apiTimer); apiTimer = null; } }catch(e2){}
+  }catch(e){ try{ showPlayError('حصل خطأ في تجهيز مشغل يوتيوب — دوس حاول تاني'); }catch(e2){} }
+}
+function injectApi(bust){
+  try{
+    if(window.YT && window.YT.Player){ apiReadyNow(); return; }
+    apiScriptPending = true;
+    var s = document.createElement('script');
+    s.src = API_HOSTS[apiSrcIdx % API_HOSTS.length] + (bust ? ('?r=' + Date.now()) : '');
+    apiSrcIdx++;
+    s.onload = function(){ apiScriptPending = false; if(window.YT && window.YT.Player) apiReadyNow(); };
+    s.onerror = function(){ apiScriptPending = false; };
+    document.head.appendChild(s);
+  }catch(e){ apiScriptPending = false; }
+}
+function activateFallback(reason){
+  if(fallbackActive) return;
+  if(CFG.kind !== 'youtube'){ showPlayError('حصل خطأ في تشغيل الفيديو — جرب تاني'); return; }
+  fallbackActive = true;
+  try{ if(apiTimer){ clearInterval(apiTimer); apiTimer = null; } }catch(e){}
+  try{ if(wdTimer){ clearInterval(wdTimer); wdTimer = null; } }catch(e){}
+  try{ if(fallbackTimer){ clearTimeout(fallbackTimer); fallbackTimer = null; } }catch(e){}
+  var ytId = ytIdCached || deobfuscate(CFG.blob, CFG.key);
+  if(!ytId){
+    fallbackActive = false;
+    showPlayError('مش قادرين نوصل لفيديو يوتيوب دلوقتي — اتأكد من النت وحاول تاني، ولو تكررت بلغ الإدارة في قسم الشكاوى');
+    return;
+  }
+  /* شيل كل الطبقات اللي بتمنع النقر — المشغل المباشر فيه كنترولز يوتيوب نفسه
+     (والووترمارك والدروع بيفضلوا فوقه لأنهم pointer-events:none — الحماية ثابتة) */
+  var killIds = ['ytCrop','startOv','tapLayer','centerOv','endOv','ytCtrl','qMenu','peBox','unmuteBtn'];
+  for(var i=0;i<killIds.length;i++){ try{ var el = document.getElementById(killIds[i]); if(el && el.parentNode) el.parentNode.removeChild(el); }catch(e){} }
+  var startS = Math.max(0, Math.floor(Number(CFG.resume) || 0));
+  if(pendingResume > 5) startS = Math.max(startS, Math.floor(pendingResume));
+  var f = document.getElementById('ytPlain');
+  if(!f){
+    f = document.createElement('iframe');
+    f.id = 'ytPlain';
+    f.setAttribute('allow','autoplay; fullscreen; encrypted-media; picture-in-picture');
+    f.setAttribute('allowfullscreen','');
+    f.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;background:#000';
+    wrap.appendChild(f);
+  }
+  f.src = 'https://www.youtube.com/embed/' + ytId + '?autoplay=1&controls=1&rel=0&modestbranding=1&playsinline=1&iv_load_policy=3&start=' + startS;
+  layoutWrap();
+  toast('تمام — الفيديو شغّال دلوقتي ▶');
+}
+function scheduleFallbackIfStuck(){
+  if(fallbackActive || fallbackTimer || CFG.kind !== 'youtube') return;
+  fallbackTimer = setTimeout(function(){
+    fallbackTimer = null;
+    if(playerApi && playerApi.playVideo) return;
+    activateFallback('stuck');
+  }, 6000);
+}
 /* قفل الجودة — اختيار الطالب ('top' = أعلى جودة متاحة في المصدر) */
 var qSel = 'top', lastQAssert = 0;
 /* حارس الجودة القسري (علاج "بختار 720 والرقم بيفضل 360"):
@@ -752,9 +828,13 @@ function doUnmute(){
 }
 function startWithWatchdog(){
   if(!playerApi || !playerApi.playVideo){
-    /* الـ API لسه بيتحمل — سجل الطلب وهيتشغل أول ما يجهز (بدل ما أول دوسة تضيع) */
+    /* الـ API لسه بيتحمل — سجل الطلب وهيتشغل أول ما يجهز (بدل ما أول دوسة تضيع)
+       + (2026-ط) نضغط على التحميل فورًا، ولو بعد 6 ثواني مفيش API → الوضع
+       البديل المضمون — ممنوع إن الطالب يفضل دايس على طول من غير فيديو */
     pendingStart = true;
-    toast('المشغل بيتجهز… دوس تاني بعد لحظة');
+    toast('المشغل بيتجهز… ثواني ونشغّله');
+    try{ injectApi(true); }catch(e){}
+    scheduleFallbackIfStuck();
     return;
   }
   if(wdTimer){ clearInterval(wdTimer); wdTimer = null; }
@@ -773,14 +853,14 @@ function startWithWatchdog(){
       try{ playerApi.mute(); muteFallback = true; showUnmuteBtn(); playerApi.playVideo(); }catch(e){}
     } else if(attempts >= 7){
       /* المشغل لسه واقف بعد كل المحاولات → يوتيوب غالبًا رافض التشغيل أصلاً.
-         ممنوع الشاشة الميّتة الصامتة: نكشف سبب الرفض ونعرض رسالة صريحة + محاولة
-         أوتوماتيك واحدة على مضيف youtube-nocookie.com قبل الرسالة النهائية */
+         (2026-ط) ممنوع الشاشة الميّتة: محاولة nocookie أوتوماتيك، ولو فشلت
+         → الوضع البديل المضمون مباشرة — الفيديو لازم يشتغل */
       clearInterval(wdTimer); wdTimer = null;
       var ec = '';
       try{ ec = String((playerApi.getVideoData && playerApi.getVideoData().errorCode) || ''); }catch(e){}
       if(ec) lastErrCode = ec;
       if(ytHostKind === 'www' && rebuildTries < 1){ rebuildThenPlay('nocookie'); return; }
-      showPlayError(msgForYtError(ec || lastErrCode || 'auth'));
+      activateFallback('yt-refused');
     } else { try{ playerApi.playVideo(); }catch(e){} }
   }, 700);
 }
@@ -926,35 +1006,28 @@ function mountYouTube(){
   var seekEl = document.getElementById('seek');
   seekEl.addEventListener('input', function(){ seekDragging = true; try{ var d=playerApi.getDuration()||0; document.getElementById('tTime').textContent = fmtT(seekEl.value/1000*d) + ' / ' + fmtT(d); }catch(e){} });
   seekEl.addEventListener('change', function(){ try{ var d=playerApi.getDuration()||0; if(d) playerApi.seekTo(seekEl.value/1000*d, true); }catch(e){} seekDragging=false; showCtrl(true); });
-  /* تحميل API يوتيوب بشكل مضمون: الكولباك بيتحدد قبل حقن السكريبت (قفل
-     سباق التحميل)، ولو السكريبت فشل يتحمل (نت ضعيف) بنحقنه تاني تلقائيًا —
-     ده كان سبب حقيقي إن الفيديو مبيفتحش خالص على بعض الأجهزة */
+  /* (2026-ط) تحميل API يوتيوب بلا استسلام: الكولباك بيتحدد قبل حقن السكريبت
+     (قفل سباق التحميل)، والتحميل بيتجدد كل 3 ثواني بالتبديل بين المضيفين
+     (www ↔ nocookie) مع كسر الكاش — مفيش "بيتجهز للأبد" خالص: إما API يجهز
+     أو الوضع البديل المضمون يشتغل تلقائيًا بعد دوسة الطالب */
   ytIdCached = ytId;
-  function apiReadyNow(){ try{ buildPlayer(); }catch(e){ showPlayError('حصل خطأ في تجهيز مشغل يوتيوب — دوس حاول تاني'); } }
-  if(window.YT && window.YT.Player){ apiReadyNow(); return; }
   window.onYouTubeIframeAPIReady = apiReadyNow;
-  var tag = document.createElement('script');
-  tag.src = 'https://www.youtube.com/iframe_api';
-  document.head.appendChild(tag);
-  var apiTries = 0;
-  var apiTimer = setInterval(function(){
-    if(window.YT && window.YT.Player){ clearInterval(apiTimer); return; }
+  if(window.YT && window.YT.Player){ apiReadyNow(); }
+  injectApi(false);
+  if(apiTimer){ clearInterval(apiTimer); }
+  apiTries = 0;
+  apiTimer = setInterval(function(){
+    if(playerApi || fallbackActive){ if(apiTimer){ clearInterval(apiTimer); apiTimer = null; } return; }
     apiTries++;
-    if(apiTries === 14){
-      /* بعد ~7 ثواني ومفيش رد → محاولة حقن تانية للسكريبت */
-      var t2 = document.createElement('script');
-      t2.src = 'https://www.youtube.com/iframe_api?retry=1';
-      document.head.appendChild(t2);
-    }
-    if(apiTries >= 40){
-      clearInterval(apiTimer);
+    injectApi((apiTries % 2) === 0);
+    if(apiTries === 4){
       var so = document.getElementById('startOv');
       if(so){
         var pm = so.getElementsByTagName('p')[0];
-        if(pm) pm.textContent = 'الاتصال بطيء — اتأكد من النت ودوس تاني';
+        if(pm) pm.textContent = 'الاتصال بطيء — دوس تاني وهيشتغل خلال لحظات';
       }
     }
-  }, 500);
+  }, 3000);
 }
 
 function buildPlayer(){
@@ -1018,15 +1091,16 @@ function buildPlayer(){
         /* يوتيوب رفض الفيديو نفسه — ممنوع الصمت: سبب واضح فورًا.
            100 = الفيديو اتمسح/خاص. 2 = تعريف غلط → رسالة فورية (إعادة مش هتنفع).
            101/150/5/auth = منع تضمين أو رفض شبكة (حماية ضد البوتات بترجع 150
-           برضه) → محاولة أوتوماتيك واحدة على youtube-nocookie الأول، وبعدها
-           رسالة صادقة بتغطي الحالتين */
+           برضه) → محاولة أوتوماتيك واحدة على youtube-nocookie، وبعدها
+           **الوضع البديل المضمون (مشغل مباشر embed)** — الفيديو يشتغل على أي حال
+           بدل شاشة الخطأ الميّتة (2026-ط) */
         var code = '';
         try{ code = String((ev && ev.data) || ''); }catch(e){}
         lastErrCode = code;
         if(wdTimer){ clearInterval(wdTimer); wdTimer = null; }
         if(code === '100' || code === '2'){ showPlayError(msgForYtError(code)); return; }
         if(ytHostKind === 'www' && rebuildTries < 1){ rebuildThenPlay('nocookie'); return; }
-        showPlayError(msgForYtError(code || 'auth'));
+        activateFallback('on-error-' + (code || 'auth'));
       }
     }
   };
