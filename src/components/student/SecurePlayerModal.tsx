@@ -177,20 +177,27 @@ export function SecurePlayerModal({
   }, [fakeFs, realFs])
 
   // مكان وصلناه آخر مرة → نبدأ من هناك
+  // (2026-ط) ممنوع إن جلب نقطة التكملة يأخّر أو يعلّق فتح الفيديو:
+  // مهلة 3.5 ثواني بالكتير — بعدها المشغل بيفتح عادي من الأول مهما كانت
+  // حالة الطلب (الشبكة البطيئة عمرها ما هتقفل الفيديو تاني)
   useEffect(function () {
     var alive = true
     if (!studentId || !videoId) { setResume(0); return }
+    var settled = false
+    var to = setTimeout(function () { if (!settled && alive) { settled = true; setResume(0) } }, 3500)
     fetch('/api/video-progress?studentId=' + encodeURIComponent(studentId) + '&videoId=' + encodeURIComponent(videoId))
       .then(function (r) { return r.json() })
       .then(function (d) {
-        if (!alive) return
+        if (!alive || settled) return
+        settled = true
+        clearTimeout(to)
         var rows = (d && d.progress) || []
         var w = rows.length ? Number(rows[0].watchedSeconds) || 0 : 0
         // 999999 = علامة "خلص الفيديو" — مش نقطة تكملة → نبدأ من الأول
         setResume(w > 5 && w < 999000 ? w : 0)
       })
-      .catch(function () { if (alive) setResume(0) })
-    return function () { alive = false }
+      .catch(function () { if (alive && !settled) { settled = true; clearTimeout(to); setResume(0) } })
+    return function () { alive = false; clearTimeout(to) }
   }, [studentId, videoId])
 
   // استقبال التقدم من صفحة المشغل المحمية + الحفظ
