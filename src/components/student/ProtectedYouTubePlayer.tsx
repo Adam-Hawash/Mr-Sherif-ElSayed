@@ -344,6 +344,42 @@ export function ProtectedYouTubePlayer({
     lastQualityApplyRef.current = Date.now()
   }
 
+  /* (2026-ي) التبديل القسري **بدون أي إعادة تحميل**:
+     loadVideoById كانت بتعيد تحميل التيار — ويوتيوب بيبدأ أي تيار جديد من
+     360p وبيعلى تدريجيًا، فكل reload كان بيرجّع الجودة تحت تاني.
+     التركيبة الأقوى بدون reload: setPlaybackQualityRange + setPlaybackQuality
+     + سيك صغير بنفس الثانية (بيطلب تيار جديد جوه النطاق المفروض من غير ما
+     نقص جلسة التشغيل أو نقيس النت من أول وجديد) + إعادة تثبيت 3 مرات */
+  function forceQuality(target: string) {
+    var p = playerRef.current
+    if (!target || target === 'auto' || !p) return
+    try { if (p.setPlaybackQualityRange) p.setPlaybackQualityRange(target, target) } catch (e) {}
+    try { if (p.setPlaybackQuality) p.setPlaybackQuality(target) } catch (e) {}
+    try {
+      var t = (p.getCurrentTime ? p.getCurrentTime() : 0) || 0
+      if (p.seekTo) p.seekTo(Math.max(0, t + 0.01), true)
+    } catch (e) {}
+    setTimeout(function () {
+      var pp = playerRef.current
+      if (!pp) return
+      try { if (pp.setPlaybackQualityRange) pp.setPlaybackQualityRange(target, target) } catch (e) {}
+      try { if (pp.setPlaybackQuality) pp.setPlaybackQuality(target) } catch (e) {}
+    }, 1000)
+    setTimeout(function () {
+      var pp = playerRef.current
+      if (!pp) return
+      try { if (pp.setPlaybackQualityRange) pp.setPlaybackQualityRange(target, target) } catch (e) {}
+      try { if (pp.setPlaybackQuality) pp.setPlaybackQuality(target) } catch (e) {}
+    }, 3000)
+    setTimeout(function () {
+      var pp = playerRef.current
+      if (!pp) return
+      try { if (pp.setPlaybackQualityRange) pp.setPlaybackQualityRange(target, target) } catch (e) {}
+      try { if (pp.setPlaybackQuality) pp.setPlaybackQuality(target) } catch (e) {}
+    }, 6000)
+    lastQualityApplyRef.current = Date.now()
+  }
+
   /* create player */
   useEffect(function () {
     var cancelled = false
@@ -497,11 +533,14 @@ export function ProtectedYouTubePlayer({
            (أو 'top' = الأعلى المتاح) شغال، والـ HARD enforcement بيستخدم نفس
            المستوى المطلوب */
         var wanted = selectedQualityRef.current
-        /* عرض الجودة الفعلية الحية على زرار الجودة (بدل المطلوب بس) */
+        /* عرض الجودة: تلقائي/عالية → الفعلية الحية؛ اختيار محدد → **يثبت على
+           اختيار الطالب** زي قائمة يوتيوب نفسها (مش بيرقص كل نص ثانية) */
         if (p.getPlaybackQuality) {
           try {
             var aq = p.getPlaybackQuality()
-            if (aq && aq !== 'unknown' && aq !== 'auto') setActualQuality(function (prev) { return prev === aq ? prev : aq })
+            if (aq && aq !== 'unknown' && aq !== 'auto' && (wanted === 'auto' || wanted === 'top')) {
+              setActualQuality(function (prev) { return prev === aq ? prev : aq })
+            }
           } catch (e) {}
         }
         if (wanted !== 'auto' && p.getPlaybackQuality) {
@@ -513,24 +552,22 @@ export function ProtectedYouTubePlayer({
           var curRank = qRank[cur] || 0
           var effRank = qRank[eff] || 0
           if (eff && cur && cur !== 'unknown' && curRank < effRank) {
-            /* HARD enforcement: لو يوتيوب استمر في تجاهل الأوامر 4 ثواني →
-               نعيد تحميل التيار بالمستوى المطلوب (سقف 4 مرات للفيديو + كولداون
-               15 ثانية عشان مفيش لوب إعادات تحميل) */
+            /* (2026-ي) HARD enforcement **بدون reload**: لو يوتيوب استمر في
+               تجاهل الأوامر 8 ثواني → نطاق + سيك صغير بيطلب تيار جديد من غير
+               ما نكسر جلسة التشغيل (الـ reload نفسه كان بيرجع الجودة 360p)
+               — سقف 4 مرات + كولداون 20 ثانية */
             if (mismatchSinceRef.current === 0) mismatchSinceRef.current = Date.now()
-            if (Date.now() - mismatchSinceRef.current > 4000 && Date.now() - lastHardReloadRef.current > 15000 && hardReloadCountRef.current < 4) {
+            if (Date.now() - mismatchSinceRef.current > 8000 && Date.now() - lastHardReloadRef.current > 20000 && hardReloadCountRef.current < 4) {
               lastHardReloadRef.current = Date.now()
               mismatchSinceRef.current = 0
               hardReloadCountRef.current++
-              try {
-                var posNow = p.getCurrentTime ? p.getCurrentTime() : 0
-                p.loadVideoById(ytId, Math.max(0, Math.floor(posNow)), eff)
-                try { p.playVideo && p.playVideo() } catch (err) {}
-              } catch (e) {}
+              forceQuality(eff)
             } else {
               applyQuality(wanted)
             }
           } else {
             mismatchSinceRef.current = 0
+            hardReloadCountRef.current = 0
           }
         }
         try { if (p.unloadModule) p.unloadModule('captions') } catch (e) {}
@@ -665,21 +702,12 @@ export function ProtectedYouTubePlayer({
     selectedQualityRef.current = q
     applyQuality(q)
     mismatchSinceRef.current = 0
-    hardReloadCountRef.current = 0 /* اختيار جديد من الطالب = ميزانية إعادة تحميل جديدة */
+    hardReloadCountRef.current = 0 /* اختيار جديد من الطالب = ميزانية جديدة */
     var target = q === 'top' ? highestAvailable(playerRef.current) : q
     if (target && target !== 'auto') {
-      /* HARD enforcement: reload the same video at the same position with the
-         chosen quality as the documented suggestedQuality — this actually
-         switches streams (بيشتغل فعلًا مش كلام) */
-      var p = playerRef.current
-      try {
-        var pos = 0
-        try { pos = (p && p.getCurrentTime ? p.getCurrentTime() : 0) || 0 } catch (err) {}
-        if (p && p.loadVideoById) {
-          p.loadVideoById(ytId, Math.max(0, Math.floor(pos)), target)
-          try { p.playVideo && p.playVideo() } catch (err) {}
-        }
-      } catch (e) {}
+      /* (2026-ي) التبديل القسري بدون reload: نطاق + سيك صغير — بيطلب تيار
+         جديد جوه النطاق المفروض من غير ما يوتيوب يبدأ من 360p تاني */
+      forceQuality(target)
     }
     lastQualityApplyRef.current = Date.now()
     setShowQualityMenu(false)
@@ -964,9 +992,9 @@ export function ProtectedYouTubePlayer({
                 onTouchEnd={function (e) { e.preventDefault(); e.stopPropagation(); setShowQualityMenu(function (v) { return !v }) }}
               >
                 <Settings className={'w-5 h-5 transition-transform ' + (showQualityMenu ? 'rotate-90' : '')} />
-                {/* عرض الجودة **الفعلية الشغالة** (مش المطلوب بس) — عشان الرقم
-                    يكون صادق: 1080p تظهر بس لما التيار يكون 1080p فعلًا */}
-                <span className="text-[10px] font-bold" dir="ltr">{qualityLabel(actualQuality || selectedQuality)}</span>
+                {/* عرض الجودة: تلقائي/عالية → الفعلية الحية؛ اختيار محدد →
+                    **يثبت على اختيار الطالب** زي قائمة يوتيوب نفسها (2026-ي) */}
+                <span className="text-[10px] font-bold" dir="ltr">{qualityLabel((selectedQuality === 'auto' || selectedQuality === 'top') ? (actualQuality || selectedQuality) : selectedQuality)}</span>
               </button>
             </div>
             <button

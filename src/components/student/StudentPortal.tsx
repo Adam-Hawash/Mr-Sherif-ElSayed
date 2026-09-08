@@ -49,16 +49,17 @@ export function StudentPortal() {
     let cancelled = false
     ;(async () => {
       try {
-        const [videosRes, hwRes, examsRes, annRes, resultsRes, actRes, payRes, accessRes, progressRes] = await Promise.all([
+        const [videosRes, hwRes, examsRes, annRes, resultsRes, actRes, payRes, accessRes, progressRes, hwResultsRes] = await Promise.all([
           fetch(`/api/videos?grade=${encodeURIComponent(grade)}&pageSize=100`).then(r => r.json()),
           fetch(`/api/homework?grade=${encodeURIComponent(grade)}&pageSize=50`).then(r => r.json()),
           fetch(`/api/exams?grade=${encodeURIComponent(grade)}&pageSize=50`).then(r => r.json()),
           fetch(`/api/announcements?grade=${encodeURIComponent(grade)}&pageSize=10`).then(r => r.json()),
-          fetch(`/api/exam-results?grade=${encodeURIComponent(grade)}`).then(r => r.json()),
+          fetch(`/api/exam-results?studentId=${studentId}`).then(r => r.json()),
           fetch(`/api/activities?studentId=${studentId}&action=watched_video&pageSize=200`).then(r => r.json()),
           fetch(`/api/payments?studentId=${studentId}&status=approved&pageSize=200`).then(r => r.json()),
           fetch(`/api/video-access?studentId=${studentId}`).then(r => r.json()).catch(() => ({ accesses: [] })),
           fetch(`/api/video-progress?studentId=${studentId}`).then(r => r.json()).catch(() => ({ progress: [] })),
+          fetch(`/api/homework-results?studentId=${studentId}`).then(r => r.json()).catch(() => ({ results: [] })),
         ])
         if (cancelled) return
         const videos = videosRes.videos || []
@@ -86,6 +87,14 @@ export function StudentPortal() {
           approvedVideoIds,
           videoProgress: progressMap,
         })
+        /* الواجبات اللي الطالب سلّمها — عشان "اللي لازم تعمله دلوقتي" ميعرضهالوش تاني */
+        var doneHw: string[] = []
+        ;(hwResultsRes.results || []).forEach(function (r: any) {
+          if (r && r.homeworkId) doneHw.push(r.homeworkId)
+        })
+        if (doneHw.length > 0) {
+          setCompletedHwIds(function (prev) { var n = new Set(prev); doneHw.forEach(function (id) { n.add(id) }); return n })
+        }
       } catch { /* silent */ }
       if (!cancelled) setLoading(false)
     })()
@@ -120,10 +129,14 @@ export function StudentPortal() {
     })
     if (progressCount > 0) avgProgress = Math.round(avgProgress / progressCount)
 
-    var pendingHomework = initialData.homework.length
-    var pendingExams = initialData.exams.filter(function(e) {
-      return !initialData.examResults.find(function(r) { return r.examId === e.id })
-    }).length
+    // المطلوب دلوقتي = الواجبات اللي لسه ماسلّمهاش + الامتحانات اللي ماعملهاش
+    // (اللي خلصهم مش بيترجعلهم تاني — طلب المستر)
+    var pendingHwList = initialData.homework.filter(function (h) { return !completedHwIds.has(h.id) })
+    var pendingExamList = initialData.exams.filter(function (e) {
+      return !initialData.examResults.find(function (r) { return r.examId === e.id })
+    })
+    var pendingHomework = pendingHwList.length
+    var pendingExams = pendingExamList.length
 
     return (
       <div className="flex-1 py-6 px-4 sm:px-6">
@@ -198,7 +211,7 @@ export function StudentPortal() {
                   <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-600 mr-auto">{pendingHomework + pendingExams} حاجة</Badge>
                 </div>
                 <div className="space-y-2">
-                  {initialData.homework.slice(0, 3).map(function(hw) {
+                  {pendingHwList.slice(0, 3).map(function(hw) {
                     var hasMCQ = false
                     try { if ((hw as any).questions) { var parsed = JSON.parse((hw as any).questions); hasMCQ = parsed.length > 0 } } catch {}
                     return (
@@ -219,9 +232,7 @@ export function StudentPortal() {
                       </button>
                     )
                   })}
-                  {initialData.exams.filter(function(e) {
-                    return !initialData.examResults.find(function(r) { return r.examId === e.id })
-                  }).slice(0, 2).map(function(exam) {
+                  {pendingExamList.slice(0, 2).map(function(exam) {
                     return (
                       <button
                         key={exam.id}
