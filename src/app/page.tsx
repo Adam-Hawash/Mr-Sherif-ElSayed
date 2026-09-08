@@ -130,12 +130,12 @@ export default function HomePage() {
           </div>
         </div>
         <div className="text-center space-y-3">
-          <h1 className="text-2xl font-bold text-foreground tracking-wide">
-            <span className="shine-text">منصة مستر شريف السيد</span>
+          <h1 className="text-2xl font-bold text-foreground tracking-wide" dir="ltr">
+            <span className="shine-text">Mr. Sherif ElSayed</span>
           </h1>
-          <div className="flex items-center gap-3 justify-center">
+          <div className="flex items-center gap-3 justify-center" dir="ltr">
             <Loader2 className="h-4 w-4 animate-spin text-[#EA580C]" />
-            <p className="text-muted-foreground text-sm">جاري التحميل...</p>
+            <p className="text-muted-foreground text-sm">Loading...</p>
           </div>
         </div>
       </div>
