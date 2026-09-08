@@ -47,40 +47,51 @@ export function VideoWatermark({ name, phone }: { name?: string; phone?: string 
       className="absolute inset-0 z-[60] pointer-events-none select-none overflow-hidden"
       aria-hidden="true"
     >
-      {/* الووترمارك الكبير في نص الخلفية — اسم ثنائي + الرقم جنب الاسم في
-          سطر واحد — ثابت تمامًا */}
+      {/* الووترمارك الكبير في نص الخلفية — سطرين: الاسم الثنائي فوق
+          والرقم تحته — ثابت تمامًا (طلب المستر: "تحتيه الرقم... لازم الرقم يظهر") */}
       <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
         <div
-          className="text-center font-black leading-tight"
+          className="text-center font-black"
           style={{
             direction: 'rtl',
-            whiteSpace: 'nowrap',
             maxWidth: '94%',
             fontSize: 'clamp(20px, 5.6vw, 72px)',
-            color: 'rgba(0,0,0,0.13)',
-            WebkitTextStroke: '1.8px rgba(0,0,0,0.50)',
-            paintOrder: 'stroke',
-            unicodeBidi: 'plaintext',
-            // هالة بيضاء خفيفة جدًا عشان الحواف السودة تبان حتى على مشهد غامق
-            textShadow: '0 0 18px rgba(255,255,255,0.22)',
             letterSpacing: 0,
           }}
         >
-          {shortName}
-          {/* الرقم جنب الاسم في نفس السطر — أصغر من الاسم عشان مياكلش مساحة */}
+          {/* السطر الأول: الاسم الثنائي */}
+          <div
+            className="leading-tight"
+            style={{
+              whiteSpace: 'nowrap',
+              color: 'rgba(0,0,0,0.13)',
+              WebkitTextStroke: '1.8px rgba(0,0,0,0.50)',
+              paintOrder: 'stroke',
+              unicodeBidi: 'plaintext',
+              // هالة بيضاء خفيفة جدًا عشان الحواف السودة تبان حتى على مشهد غامق
+              textShadow: '0 0 18px rgba(255,255,255,0.22)',
+            }}
+          >
+            {shortName}
+          </div>
+          {/* السطر التاني: رقم الطالب تحته — أصغر لكن واضح ومقروء */}
           {num && shortName !== num && (
-            <span
+            <div
               style={{
                 fontSize: '0.5em',
                 direction: 'ltr',
                 unicodeBidi: 'plaintext',
-                verticalAlign: 'middle',
-                marginInlineStart: '0.35em',
-                WebkitTextStroke: '1.2px rgba(0,0,0,0.45)',
+                marginTop: '0.12em',
+                lineHeight: 1.15,
+                whiteSpace: 'nowrap',
+                color: 'rgba(0,0,0,0.13)',
+                WebkitTextStroke: '1.3px rgba(0,0,0,0.48)',
+                paintOrder: 'stroke',
+                textShadow: '0 0 14px rgba(255,255,255,0.22)',
               }}
             >
               {num}
-            </span>
+            </div>
           )}
         </div>
       </div>

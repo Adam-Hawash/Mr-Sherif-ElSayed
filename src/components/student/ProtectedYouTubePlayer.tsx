@@ -635,30 +635,17 @@ export function ProtectedYouTubePlayer({
         className={rotated ? 'absolute overflow-hidden' : 'absolute inset-0 overflow-hidden'}
         style={stageStyle || undefined}
       >
-      {/* YouTube player — SCALED & CROPPED so NO native YouTube UI can ever
-          be seen. The iframe is oversized and shifted so the crops are
-          SYMMETRIC top/bottom — that keeps the iframe's center exactly on
-          the container's center (±52% in fullscreen), which is where we pin
-          our big play button to cover YouTube's own big play button.
-          • Normal:  10% cropped top + bottom (title bar & pause watermark
-            zones), 5% each side.
-          • Fullscreen: 14% top + 18% bottom (kills YouTube's native
-            fullscreen share/save/quality bar, ~48-56px on any phone),
-            6% each side (mostly eats the pillarbox black bars).
-          • QUALITY FORCING: the iframe itself renders at REAL pixels
-            (1280×720 for HD, 1920×1080 when 1080p+ is selected) and gets
-            scaled with CSS transform to fill the crop box — YouTube picks
-            the stream from the player's pixel size, so the chosen quality
-            actually plays instead of being stuck at 360p on small boxes. */}
+      {/* YouTube player — الفيديو **كامل 100% من غير أي قص** (طلب المستر
+          الصريح 2026: "الفيديو مش كامل إنت قاصص منه الأطراف — لازم يبان كله").
+          واجهة يوتيوب (العنوان/اللوجو) بتتغطى بدل ما نقص الفيديو:
+          • درع علوي متدرج بيظهر لحظة الوقف بيغطي عنوان الفيديو/قناة يوتيوب.
+          • باتش صغير تحت يمين بيغطي لوجو يوتيوب الصغير.
+          • زرار التشغيل الكبير بتاعنا فوق زرار يوتيوب بالظبط في النص.
+          • QUALITY FORCING: الـ iframe بيرندر بمقاس حقيقي (1280×720 للـ HD
+            و 1920×1080 لما 1080p+ يتختار) وبيتصغّر بالـ transform ليملّي
+            الصندوق — عشان يوتيوب يدي تيار HD فعلًا. */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div
-          ref={cropRef}
-          className={
-            fsActive
-              ? 'absolute w-[112%] h-[132%] top-[-14%] left-[-6%]'
-              : 'absolute w-[110%] h-[120%] top-[-10%] left-[-5%]'
-          }
-        >
+        <div ref={cropRef} className="absolute inset-0">
           <div
             ref={playerHostRef}
             style={{
@@ -672,6 +659,17 @@ export function ProtectedYouTubePlayer({
             }}
           />
         </div>
+        {/* درع علوي متدرج — بيغطي عنوان يوتيوب/اسم القناة اللي بيظهروا لحظة
+            الوقف — بديل القص: الفيديو كامل والواجهة متغطية */}
+        <div
+          className={'absolute top-0 left-0 right-0 pointer-events-none transition-opacity duration-300 ' + (started && !playing ? 'opacity-100' : 'opacity-0')}
+          style={{ height: '56px', background: 'linear-gradient(to bottom, rgba(0,0,0,.92), rgba(0,0,0,.55) 55%, rgba(0,0,0,0))' }}
+        />
+        {/* باتش لوجو يوتيوب (تحت يمين) — شفاف غامق خفيف مش ملحوظ */}
+        <div
+          className="absolute pointer-events-none"
+          style={{ bottom: '8px', right: '8px', width: '110px', height: '40px', borderRadius: '10px', background: 'rgba(0,0,0,0.5)' }}
+        />
       </div>
 
       {/* ملاحظة: شيلنا علامة "YouTube" المكتوبة خالص — طلب المستر الصريح:
@@ -727,11 +725,14 @@ export function ProtectedYouTubePlayer({
           we keep a 30% dim on top of it for play-button contrast. */}
       {!started && (
         <div className="absolute inset-0 z-30 pointer-events-none">
-          {poster && (
+          {poster ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={poster} alt="فيديو الدرس" className="w-full h-full object-cover bg-black" draggable={false} />
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src="/images/sherif-profile.jpg" alt="Mr. Sherif ElSayed" className="w-full h-full object-contain bg-black" draggable={false} />
           )}
-          <div className={'absolute inset-0 ' + (poster ? 'bg-black/30' : 'bg-black')}>
+          <div className={'absolute inset-0 ' + (poster ? 'bg-black/30' : 'bg-black/45')}>
             <div
               className="absolute left-0 right-0 flex justify-center -translate-y-1/2"
               style={{ top: fsActive ? '52%' : '50%' }}
