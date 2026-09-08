@@ -61,6 +61,8 @@ var SCHEMA_COLUMNS = [
   ['Exam', 'thumbnail', 'TEXT', "DEFAULT ''"],
   ['Exam', 'fileType', 'TEXT', "DEFAULT ''"],
   ['Exam', 'content', 'TEXT', "DEFAULT ''"],
+  // نماذج الامتحان العشوائية (JSON array) — كل طالب بيشوف نموذج واحد عشوائي
+  ['Exam', 'models', 'TEXT', "DEFAULT ''"],
   ['Exam', 'passScore', 'REAL', 'DEFAULT 50'],
   ['ExamResult', 'score', 'REAL', 'DEFAULT 0'],
   ['ExamResult', 'maxScore', 'REAL', 'DEFAULT 100'],

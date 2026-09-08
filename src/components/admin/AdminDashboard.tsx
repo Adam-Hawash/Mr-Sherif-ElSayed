@@ -970,6 +970,11 @@ function ExamTrackingPanel({ onViewImage }: { onViewImage?: (src: string) => voi
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null)
   const [thumbnailPath, setThumbnailPath] = useState('')
   const [thumbnailUrl, setThumbnailUrl] = useState('')
+  /* نماذج الامتحان العشوائية (طلب المستر): استخراج أكتر من ملف لنفس الامتحان،
+     كل نموذج مفصول لوحده — والطالب بيشوف نموذج واحد بس بيتحدد عشوائيًا
+     ثابت لحسابه على السيرفر (في /api/exams لما الطلب يكون بstudentId) */
+  const [examModels, setExamModels] = useState<Array<{ name: string; filePath: string; fileType: string; questions: any[] }>>([])
+  const [modelExtracting, setModelExtracting] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const answerKeyRef = useRef<HTMLInputElement>(null)
   const thumbnailRef = useRef<HTMLInputElement>(null)
@@ -1088,9 +1093,11 @@ function ExamTrackingPanel({ onViewImage }: { onViewImage?: (src: string) => voi
       if (localAnswerKeyPath) { body.answerKeyPath = localAnswerKeyPath; body.answerKeyType = localAnswerKeyType }
       if (localThumbnailPath) { body.thumbnail = localThumbnailPath }
       if (formQuestions.length > 0) { body.questions = JSON.stringify(formQuestions); body.passScore = String(formPassScore) }
+      // نماذج الامتحان العشوائية — بتبعت مع الامتحان والطالب بياخد واحد بس عشوائي
+      if (examModels.length > 0) { body.models = JSON.stringify(examModels) }
       const res = await fetch('/api/exams', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (res.ok) {
-        toast.success('تم إضافة الامتحان'); setShowForm(false); setFormTitle(''); setFormContent(''); setFormGrade(''); setFormFile(null); setFormFilePath(''); setFormFileType(''); setFormFileUrl(''); setFormQuestions([]); setFormPassScore(50); setAnswerKeyFile(null); setAnswerKeyPath(''); setAnswerKeyType(''); setAnswerKeyUrl(''); setThumbnailFile(null); setThumbnailPath(''); setThumbnailUrl(''); loadExams()
+        toast.success('تم إضافة الامتحان'); setShowForm(false); setFormTitle(''); setFormContent(''); setFormGrade(''); setFormFile(null); setFormFilePath(''); setFormFileType(''); setFormFileUrl(''); setFormQuestions([]); setFormPassScore(50); setAnswerKeyFile(null); setAnswerKeyPath(''); setAnswerKeyType(''); setAnswerKeyUrl(''); setThumbnailFile(null); setThumbnailPath(''); setThumbnailUrl(''); setExamModels([]); loadExams()
       } else { try { const d = await res.json(); toast.error(d.error || 'خطأ', { duration: 8000 }) } catch { toast.error('خطأ في السيرفر - حاول تاني', { duration: 8000 }) } }
     } catch (err: any) { toast.error('خطأ في الاتصال: ' + (err.message || ''), { duration: 8000 }) }
     setSubmitting(false)
@@ -1099,6 +1106,68 @@ function ExamTrackingPanel({ onViewImage }: { onViewImage?: (src: string) => voi
   const handleDeleteExam = async (id: string) => {
     try { await fetch(`/api/exams/${id}`, { method: 'DELETE' }); toast.success('تم حذف الامتحان'); loadExams(); if (selectedExam === id) { setSelectedExam(''); setResults([]); setNotTaken([]) } } catch { toast.error('خطأ') }
   }
+  /* استخراج نموذج جديد للامتحان (نماذج عشوائية — طلب المستر):
+     نفس ملف الأسئلة المختار + نموذج الإجابة → رفع الملف + استخراج أسئلته
+     → بيتضاف كنموذج مستقل (مفصول عن الباقي) وبعدين بنفضي الملف عشان
+     المستر يختار ملف النموذج اللي بعده */
+  const handleAIExtractModel = async () => {
+    if (modelExtracting) return
+    if (!formFile && !formFileUrl.trim()) { toast.error('ارفع ملف النموذج الأول أو حط رابط'); return }
+    setModelExtracting(true)
+    var savedName = ''
+    try {
+      var path = ''
+      var type = ''
+      if (formFile) {
+        setUploading(true)
+        setUploadStatusMsg('جاري رفع ملف النموذج...')
+        const upData = await chunkedUpload(formFile, 'exams', undefined, (msg) => setUploadStatusMsg(msg))
+        path = upData.filePath
+        type = upData.fileType
+        setUploading(false)
+      } else if (formFileUrl.trim()) {
+        path = formFileUrl.trim()
+      }
+      setUploadStatusMsg('جاري استخراج أسئلة النموذج بالذكاء الاصطناعي...')
+      var fd = new FormData()
+      if (formFile) { fd.append('file', formFile) }
+      else if (formFileUrl.trim()) { fd.append('fileUrl', formFileUrl.trim()) }
+      if (answerKeyFile) { fd.append('answerFile', answerKeyFile) }
+      else if (answerKeyUrl.trim()) { fd.append('answerUrl', answerKeyUrl.trim()) }
+      fd.append('type', 'exam')
+      fd.append('grade', formGrade)
+      var ctrl = new AbortController()
+      var tmr = setTimeout(function () { ctrl.abort() }, 180000)
+      var res = await fetch('/api/ai-extract', { method: 'POST', body: fd, signal: ctrl.signal })
+      clearTimeout(tmr)
+      var data = await res.json()
+      if (res.ok && data.extracted && data.extracted.questions && data.extracted.questions.length > 0) {
+        var extracted = data.extracted.questions.map(function (q: any) {
+          if (q.type === 'writing' || q.type === 'essay' || (!q.options || q.options.length === 0) || (Array.isArray(q.options) && q.options.every(function (o: string) { return !o || o === 'N/A' || o === 'لا يوجد' }))) {
+            return { q: q.question || '', options: [] as string[], correct: -1, points: q.points || 5, type: 'writing', modelAnswer: q.modelAnswer || '', acceptedAnswers: q.acceptedAnswers || [] }
+          }
+          return { q: q.question || '', options: (q.options || ['','','','']).slice(0, 4), correct: q.correct || 0, points: q.points || 1, type: 'mcq', modelAnswer: q.modelAnswer || '' }
+        })
+        setExamModels(function (prev) {
+          var letters = ['أ', 'ب', 'ج', 'د', 'هـ', 'و', 'ز', 'ح']
+          var nm = 'النموذج ' + (letters[prev.length] || String(prev.length + 1))
+          savedName = nm
+          return prev.concat([{ name: nm, filePath: path, fileType: type, questions: extracted }])
+        })
+        /* نفضي الملف عشان النموذج اللي بعده يكون ملف مختلف */
+        setFormFile(null); setFormFileUrl(''); setFormFilePath(''); setFormFileType('')
+        if (fileRef.current) fileRef.current.value = ''
+      } else { toast.error(data.error || 'لم يتم استخراج أسئلة — تأكد من وجود GEMINI_API_KEY في الإعدادات') }
+    } catch (err: any) {
+      if (err && err.name === 'AbortError') { toast.error('انتهت مهلة الاستخراج - حاول مرة أخرى') }
+      else { toast.error('خطأ: ' + (err.message || '')) }
+    }
+    setUploading(false)
+    setModelExtracting(false)
+    setUploadStatusMsg('')
+    if (savedName) toast.success('تم إضافة ' + savedName + ' — كل طالب هيشوف نموذج واحد بس عشوائي')
+  }
+
 
   const avgScore = results.length > 0 ? (results.reduce((sum, r) => sum + r.score, 0) / results.length).toFixed(1) : '—'
 
@@ -1107,7 +1176,7 @@ function ExamTrackingPanel({ onViewImage }: { onViewImage?: (src: string) => voi
       <CardHeader className="pb-3">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <CardTitle className="text-lg flex items-center gap-2"><Trophy className="h-5 w-5 text-primary" />تتبع الامتحانات</CardTitle>
-          <Button size="sm" onClick={() => setShowForm(!showForm)}><Plus className="h-4 w-4 ml-1" />إضافة امتحان</Button>
+          <Button size="sm" onClick={() => { setShowForm(!showForm); if (!showForm) setExamModels([]) }}><Plus className="h-4 w-4 ml-1" />إضافة امتحان</Button>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -1221,6 +1290,37 @@ function ExamTrackingPanel({ onViewImage }: { onViewImage?: (src: string) => voi
                 </div>
               )}
             </div>
+
+            {/* ===== النماذج العشوائية للامتحان (طلب المستر) ===== */}
+            <div className="space-y-3 p-3 rounded-lg border border-dashed border-purple-400/50 bg-purple-500/5">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <Label className="text-sm font-semibold text-purple-600 dark:text-purple-400">نماذج عشوائية للامتحان</Label>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">ارفع ملف النموذج فوق واعمل استخراج — كل نموذج بيتضاف مفصول لوحده، والطالب هيشوف نموذج واحد بس عشوائي (مرة أ ومرة ب)</p>
+                </div>
+                <Button type="button" size="sm" variant="outline" className="h-7 text-xs border-purple-500/50 text-purple-600 hover:bg-purple-500/10 shrink-0" onClick={handleAIExtractModel} disabled={modelExtracting || uploading || (!formFile && !formFileUrl.trim())}>
+                  {modelExtracting ? <Loader2 className="h-3 w-3 ml-1 animate-spin" /> : <Sparkles className="h-3 w-3 ml-1" />}
+                  استخراج نموذج جديد
+                </Button>
+              </div>
+              {examModels.length === 0 ? (
+                <p className="text-[11px] text-muted-foreground text-center py-1.5">مفيش نماذج لسه — لو ضفت نموذجين أو أكتر الامتحان هيبقى عشوائي تلقائيًا</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {examModels.map((m, mi) => (
+                    <div key={mi} className="flex items-center justify-between gap-2 p-2 rounded-lg border bg-background">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Badge className="bg-purple-500 text-white text-[10px] shrink-0">{m.name}</Badge>
+                        <span className="text-[11px] text-muted-foreground truncate">{m.questions.length} سؤال {m.filePath ? '• الملف مرفوع ✓' : ''}</span>
+                      </div>
+                      <Button type="button" variant="ghost" size="icon" className="h-6 w-6 p-0 text-destructive shrink-0" onClick={() => setExamModels(examModels.filter((_, i) => i !== mi))}><Trash2 className="h-3 w-3" /></Button>
+                    </div>
+                  ))}
+                  <p className="text-[10px] text-purple-600 dark:text-purple-400 font-medium">✅ الامتحان هيبقى عشوائي: {examModels.length} نماذج — كل طالب هياخد واحد بس منهم</p>
+                </div>
+              )}
+            </div>
+
             <div className="flex gap-2">
               <Button size="sm" onClick={handleAddExam} disabled={submitting || uploading || uploadingAnswerKey}>{submitting || uploading || uploadingAnswerKey ? <Loader2 className="h-4 w-4 animate-spin" /> : 'حفظ'}</Button>
               <Button size="sm" variant="outline" onClick={() => setShowForm(false)}>إلغاء</Button>
@@ -1244,6 +1344,7 @@ function ExamTrackingPanel({ onViewImage }: { onViewImage?: (src: string) => voi
                         {(exam as any).filePath && <Badge variant="outline" className="text-[9px] border-primary/40 text-primary">أسئلة</Badge>}
                         {(exam as any).answerKeyPath && <Badge variant="outline" className="text-[9px] border-amber-500/40 text-amber-600">إجابة</Badge>}
                         {(exam as any).questions && (exam as any).questions !== '' && <Badge variant="outline" className="text-[9px] border-emerald-500/40 text-emerald-600">MCQ</Badge>}
+                        {(exam as any).models && <Badge className="text-[9px] bg-purple-500 text-white">نماذج عشوائية</Badge>}
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">

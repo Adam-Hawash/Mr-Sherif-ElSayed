@@ -52,7 +52,7 @@ export function StudentPortal() {
         const [videosRes, hwRes, examsRes, annRes, resultsRes, actRes, payRes, accessRes, progressRes, hwResultsRes] = await Promise.all([
           fetch(`/api/videos?grade=${encodeURIComponent(grade)}&pageSize=100`).then(r => r.json()),
           fetch(`/api/homework?grade=${encodeURIComponent(grade)}&pageSize=50`).then(r => r.json()),
-          fetch(`/api/exams?grade=${encodeURIComponent(grade)}&pageSize=50`).then(r => r.json()),
+          fetch(`/api/exams?grade=${encodeURIComponent(grade)}&pageSize=50&studentId=${encodeURIComponent(studentId)}`).then(r => r.json()),
           fetch(`/api/announcements?grade=${encodeURIComponent(grade)}&pageSize=10`).then(r => r.json()),
           fetch(`/api/exam-results?studentId=${studentId}`).then(r => r.json()),
           fetch(`/api/activities?studentId=${studentId}&action=watched_video&pageSize=200`).then(r => r.json()),
@@ -1663,6 +1663,12 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
                   </div>
                   <div className="min-w-0 space-y-1.5">
                     <h3 className="font-semibold text-sm">{exam.title}</h3>
+                    {/* النموذج المخصص للطالب عشوائيًا (لو الامتحان فيه نماذج) */}
+                    {(exam as any).modelName && (
+                      <Badge className="text-[10px] bg-purple-500 text-white">
+                        📄 {(exam as any).modelName}
+                      </Badge>
+                    )}
                     {isCompleted ? (
                       <div className="flex items-center gap-2 flex-wrap">
                         <Badge className="text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
