@@ -11,8 +11,8 @@
 //       ومفيش تداخل خالص.
 //  2) ووترمارك كبير واحد بس في نص الخلفية: شفاف بحواف سودة وبالعرض
 //     — **ثابت تمامًا** (من غير أي حركة).
-//  3) الكارت (الاسم الكامل + الرقم) هو **البس** اللي بيتحرك:
-//     بيقف على الحواف في 8 محطات وينتقل ناعم كل 8 ثواني + تعويم خفيف.
+//  3) الكارت (الاسم الكامل + الرقم) **ثابت كمان** تحت الووترمارك الكبير
+//     (طلب المستر: مفيش أي حاجة بتتحرك في الفيديو خالص)
 //  4) الاسم كامل 100% من غير قص أي حرف:
 //     • ممنوع letter-spacing نهائيًا (بيقطع اتصال الحروف العربية)
 //     • paintOrder: 'stroke' عشان الحواف السودة متاكلش الحروف
@@ -38,31 +38,19 @@ var CHIP_SPOTS: Array<Record<string, string>> = [
   { bottom: '2.4%', right: '1.8%' },                               // 8) تحت يمين
 ]
 
-// محطات الكارت الطائر (8 محطات على الحواف) — هو البس اللي بيتحرك
-var CARD_STEPS: Array<{ top: string; left: string; transform: string }> = [
-  { top: '7%', left: '50%', transform: 'translate(-50%, 0%)' },
-  { top: '7%', left: '93%', transform: 'translate(-100%, 0%)' },
-  { top: '47%', left: '93%', transform: 'translate(-100%, -50%)' },
-  { top: '86%', left: '93%', transform: 'translate(-100%, -100%)' },
-  { top: '86%', left: '50%', transform: 'translate(-50%, -100%)' },
-  { top: '86%', left: '7%', transform: 'translate(0%, -100%)' },
-  { top: '47%', left: '7%', transform: 'translate(0%, -50%)' },
-  { top: '7%', left: '7%', transform: 'translate(0%, 0%)' },
-]
+// كارت الطالب — ثابت في مكانه تحت الووترمارك الكبير (مفيش أي حركة خالص)
+var CARD_POS: Record<string, string> = { top: '66%', left: '50%', transform: 'translate(-50%, 0%)' }
 
 export function VideoWatermark({ name, phone }: { name?: string; phone?: string }) {
   const layerRef = useRef<HTMLDivElement>(null)
   const [, setTick] = useState(0)
-  const [cardStep, setCardStep] = useState(0)
 
   useEffect(function () {
     // إعادة رسم لو حد شال الطبقة من الـ DOM (حماية من التلاعب)
     const healTimer = setInterval(function () {
       if (layerRef.current && !document.body.contains(layerRef.current)) setTick(function (t) { return t + 1 })
     }, 6000)
-    // الكارت الطائر — بيتنقل محطة كل 8 ثواني بنعومة
-    const cardTimer = setInterval(function () { setCardStep(function (s) { return s + 1 }) }, 8000)
-    return function () { clearInterval(healTimer); clearInterval(cardTimer) }
+    return function () { clearInterval(healTimer) }
   }, [])
 
   const num = (phone || '').trim()
@@ -71,7 +59,7 @@ export function VideoWatermark({ name, phone }: { name?: string; phone?: string 
   const chipText = [num, nm].filter(Boolean).join('  •  ')
   const bigLine1 = nm || num
   const bigLine2 = nm && num ? num : ''
-  const card = CARD_STEPS[cardStep % CARD_STEPS.length]
+  const card = CARD_POS
 
   return (
     <div
@@ -81,8 +69,7 @@ export function VideoWatermark({ name, phone }: { name?: string; phone?: string 
       aria-hidden="true"
     >
       <style>{`
-        /* الكارت: تعويم خفيف مستمر — هو البس اللي بيتحرك جوه محطته */
-        @keyframes wmCardFloat { 0% { margin-top: -3px } 100% { margin-top: 3px } }
+        /* الكارت: ثابت تمامًا — مفيش أي أنيميشن */
 
         /* الشِپات: سابتة — مفيش أي أنيميشن على الحواف خالص */
         .wm-chip { white-space: nowrap; }
@@ -161,14 +148,13 @@ export function VideoWatermark({ name, phone }: { name?: string; phone?: string 
         )
       })}
 
-      {/* الكارت الطائر — هو البس اللي بيتحرك (الاسم الكامل + الرقم) */}
+      {/* كارت الطالب (الاسم الكامل + الرقم) — ثابت تحت الووترمارك الكبير */}
       <div
         className="absolute z-[61]"
         style={{
           top: card.top,
           left: card.left,
           transform: card.transform,
-          transition: 'top 3.2s ease-in-out, left 3.2s ease-in-out, transform 3.2s ease-in-out',
         }}
       >
         <div
@@ -182,7 +168,6 @@ export function VideoWatermark({ name, phone }: { name?: string; phone?: string 
             textAlign: 'center',
             direction: 'rtl',
             boxShadow: '0 8px 26px rgba(0,0,0,0.55)',
-            animation: 'wmCardFloat 3.4s ease-in-out infinite alternate',
           }}
         >
           <span

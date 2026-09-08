@@ -14,9 +14,9 @@
 //                related-videos end screen)
 //          - NO native controls, NO keyboard shortcuts, NO right-click
 //          - Settings (gear) button → video quality control
-//            (تلقائي 480p [DEFAULT] / تلقائي / 1080p / 720p / 480p / 360p / 240p / 144p)
-//            "تلقائي 480p" = automatic quality CAPPED at 480p (opens fast,
-//            never blurry-hd, saves data). The chosen quality is enforced:
+//            (720p [DEFAULT] / تلقائي / 1080p / 720p / 480p / 360p / 240p / 144p)
+//            DEFAULT = 720p مثبتة (طلب المستر: الجودة تكون 720) — واضحة وسريعة،
+//            والجودة المختارة بتتنفذ بحارس مستمر
 //            soft hints first, then a HARD stream reload if YouTube ignores it.
 //          - RESUME: on open the player fetches the saved progress for this
 //            student+video and seeks there — progress is CUMULATIVE (max ever
@@ -127,12 +127,12 @@ export function ProtectedYouTubePlayer({
   const savedSecondsRef = useRef(0)
   const maxSeenRef = useRef(0)
 
-  /* quality settings state — DEFAULT: 480p PINNED (طلب المستر: الجودة ثابتة
-     على 480 — واضحة وبتفتح سريع وبتوفر داتا). الحارس بيفرضها باستمرار. */
+  /* quality settings state — DEFAULT: 720p PINNED (طلب المستر: الجودة تكون 720
+     — واضحة وسريعة). الحارس بيفرضها باستمرار. */
   const [qualityLevels, setQualityLevels] = useState<string[]>([])
-  const [selectedQuality, setSelectedQuality] = useState<string>('large')
+  const [selectedQuality, setSelectedQuality] = useState<string>('hd720')
   const [showQualityMenu, setShowQualityMenu] = useState(false)
-  const selectedQualityRef = useRef('large')
+  const selectedQualityRef = useRef('hd720')
   const lastQualityApplyRef = useRef(0)
   const mismatchSinceRef = useRef(0)
   const lastHardReloadRef = useRef(0)
