@@ -7,20 +7,24 @@
 //     وبيتفك في الذاكرة لحظة التشغيل بس، فمفيش ID في مصدر الصفحة
 //     ولا في الـ DOM ولا في أي console.log.
 //  2) الملفات المرفوعة بتتخدم بتوكن موقّع قصير العمر مرتبط بالطالب.
-//  3) ووترمارك (مواصفات المستر النهائية 2026-ج): مفيش أي شِپات على الحواف خالص —
-//     ووترمارك كبير واحد في نص الخلفية شفاف بحواف سودة — **اسم ثنائي (أول كلمتين)
-//     في سطر واحد بس** عشان مياكلش الكلام المكتوب في الفيديو — ثابت تمامًا —
-//     والكارت (الاسم الكامل + الرقم) ثابت في **الزاوية تحت على اليمين**
-//     (طلب المستر: مفيش أي حاجة بتتحرك في الفيديو خالص)
+//  3) ووترمارك (مواصفات المستر النهائية 2026-و): مفيش أي شِپات على الحواف خالص —
+//     ووترمارك كبير واحد في نص الخلفية على سطرين (الاسم الثنائي + الرقم تحته)
+//     **شفافية أخف + نبض: يظهر ٦ ثواني ويختفي ١٠ ثواني** (طلب المستر حرفيًا:
+//     "تقللي الشفافية عشان بتاخد من الكلام... تظهر ٥/٦ ثواني وتختفي عشر ثواني")
 //     + بيرجع يرسم لوحه نفسه لو اتمسح + شغال جوه ملء الشاشة.
+//     والكارت (الاسم الكامل + الرقم) ثابت في **الزاوية تحت على اليمين**.
 //  4) حماية فحص: كليك يمين مقفول + F12/Ctrl+Shift+I/J/C/Ctrl+U مقفولين
 //     بتنبيه لطيف + لو أدوات المطور اتفتحت الفيديو بيوقف مؤقتًا.
 //  5) التقدم بيتقال للأب بـ postMessage كل 5 ثواني (مفيش أي لينك).
-//  6) الجودة 720p فعلًا (طلب المستر): يوتيوب بيختار الجودة من **مقاس المشغل بالبكسل**
-//     — فالـ iframe بيرندر بمقاس ثابت 1280×720 بكسل حقيقي وبيتصغّر بالـ CSS
-//     (transform scale) ليملّي الصندوق — كده يوتيوب بيدي تيار 720p بجد بدل ما
-//     يقف على 360p لأن الصندوق صغير + حارس مستمر بيفضّل الجودة مثبتة.
-//  7) التشغيل المضمون: مراقب متدرج (playVideo → loadVideoById → صامت)
+//  6) حماية الفيديو من يوتيوب (طلب المستر 2026-و): اسم قناة يوتيوب/العنوان/
+//     زرار الشير/اللينك — مستحيل يبانوا ولا حد يقدر يدوس عليهم:
+//     **درع علوي دايمًا شغال** (مش بس وقت الوقف) + باتش اللوجو + طبقة التقاط
+//     النقرات (مفيش أي ضغطة توصل لليوتيوب أصلًا) — من غير أي قص للفيديو.
+//  7) الجودة (أهم حاجة للمستر): الـ iframe بيرندر **بمقاس الصندوق الحقيقي
+//     100%** (مفيش transform scale — الخدعة القديمة كانت بتمدد البكسلات
+//     فالفيديو بيبان ناعم حتى لو التيار 1080p) + فرض أعلى جودة بالـ API
+//     (حارس + loadVideoById بسقف إعادات تحميل).
+//  8) التشغيل المضمون: مراقب متدرج (playVideo → loadVideoById → صامت)
 //     + تحميل API يوتيوب بإعادة محاولة + تسجيل طلب التشغيل قبل جهوزية الـ API
 //     + تكملة مشاهدة آمنة (من غير حلقة النهاية).
 // ============================================================
@@ -196,27 +200,29 @@ const PLAYER_PAGE = `<!doctype html>
   #wrap{position:relative;width:100%;max-width:100vw;background:#000;overflow:hidden}
   #wrap.fs{width:100vw;height:100vh;max-width:none}
   #yt,#fileVid{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000}
-  /* ===== الووترمارك (مواصفات المستر النهائية 2026-د) =====
-     • ووترمارك كبير واحد في نص الخلفية: **اسم ثنائي (أول كلمتين) + الرقم
-       جنب الاسم في نفس السطر** شفاف بحواف سودة — ثابت تمامًا مفيش أي حركة
-       — عشان مياكلش كلام الفيديو (الرقم أصغر وجنب الاسم زي ما المستر طلب)
+  /* ===== الووترمارك (مواصفات المستر النهائية 2026-و) =====
+     • ووترمارك كبير واحد في نص الخلفية على سطرين: الاسم الثنائي فوق
+       والرقم تحته — **شفافية أخف + نبض: يظهر 6 ثواني ويختفي ~10 ثواني**
+       (طلب المستر: "تقللي الشفافية عشان بتاخد من الكلام")
      • كارت الطالب (الاسم الكامل + الرقم) ثابت في **الزاوية تحت على اليمين**
      • مفيش أي شِپات على الحواف خالص (اتشالت كلها بطلب المستر) */
+  @keyframes mgWmPulse{0%,37.5%{opacity:var(--wmo,.5)}43.75%,93.75%{opacity:0}100%{opacity:var(--wmo,.5)}}
   .wm{position:absolute;inset:0;z-index:40;pointer-events:none;user-select:none;overflow:hidden}
-  /* الووترمارك الكبير في النص — اسم ثنائي سطر واحد — شفاف بحواف سودة — ثابت تمامًا */
+  /* الووترمارك الكبير في النص — سطرين: الاسم الثنائي + الرقم تحته — نبض 16 ثانية */
   #wmBig{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:41;direction:rtl;
-    text-align:center;max-width:94%;
+    text-align:center;max-width:94%;--wmo:.5;
+    animation:mgWmPulse 16s linear infinite;
     font-weight:900;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
     font-size:clamp(20px,5.6vw,72px);line-height:1.25;
     unicode-bidi:plaintext;letter-spacing:0}
-  #wmBig .b1{display:block;color:rgba(0,0,0,.13);white-space:nowrap;
-    -webkit-text-stroke:1.8px rgba(0,0,0,.5);paint-order:stroke fill;
-    text-shadow:0 0 18px rgba(255,255,255,.22)}
+  #wmBig .b1{display:block;color:rgba(0,0,0,.10);white-space:nowrap;
+    -webkit-text-stroke:1.3px rgba(0,0,0,.42);paint-order:stroke fill;
+    text-shadow:0 0 16px rgba(255,255,255,.16)}
   /* الرقم تحت الاسم في سطر لوحده — أصغر بس واضح ومقروء (لازم الرقم يظهر) */
   #wmBig .b2{display:block;font-size:.5em;direction:ltr;unicode-bidi:plaintext;
-    margin-top:.14em;letter-spacing:0;white-space:nowrap;color:rgba(0,0,0,.13);
-    -webkit-text-stroke:1.3px rgba(0,0,0,.48);paint-order:stroke fill;
-    text-shadow:0 0 14px rgba(255,255,255,.22)}
+    margin-top:.14em;letter-spacing:0;white-space:nowrap;color:rgba(0,0,0,.10);
+    -webkit-text-stroke:1px rgba(0,0,0,.40);paint-order:stroke fill;
+    text-shadow:0 0 12px rgba(255,255,255,.16)}
   /* كارت الطالب — ثابت في الزاوية تحت على اليمين (مفيش أي حاجة بتتحرك) */
   .wmCard{position:absolute;z-index:46;bottom:7.5%;right:2.2%}
   .wmCard .in{display:inline-block;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.28);
@@ -225,8 +231,10 @@ const PLAYER_PAGE = `<!doctype html>
   .wmCard .nm{display:block;font-size:clamp(11px,1.5vw,15px);font-weight:800;unicode-bidi:plaintext;letter-spacing:0;white-space:nowrap;
     text-shadow:0 1px 2px rgba(0,0,0,.8)}
   .wmCard .ph{display:block;font-size:clamp(9.5px,1.2vw,12px);font-weight:700;direction:ltr;unicode-bidi:plaintext;letter-spacing:0;opacity:.85;margin-top:2px}
-  /* درع فوق بيقفل شريط عنوان يوتيوب اللي بيظهر لحظة الوقوف */
-  #topShield{position:absolute;top:0;left:0;right:0;height:60px;z-index:22;pointer-events:none;opacity:0;transition:opacity .35s;
+  /* درع فوق — **دايمًا شغال** (مش بس وقت الوقف): بيغطي عنوان يوتيوب/اسم القناة/
+     زرار الشير اللي بيظهروا وقت الوقف أو بعد التحوال — بديل القص:
+     الفيديو كامل 100% والواجهة مستحيل تبان ولا حد يقدر يدوس عليها */
+  #topShield{position:absolute;top:0;left:0;right:0;height:60px;z-index:22;pointer-events:none;
     background:linear-gradient(to bottom,rgba(0,0,0,.92),rgba(0,0,0,.55) 55%,rgba(0,0,0,0))}
   #fsBtn{position:absolute;bottom:10px;left:10px;z-index:50;width:40px;height:40px;border-radius:10px;border:0;cursor:pointer;
     background:rgba(0,0,0,.55);color:#fff;display:flex;align-items:center;justify-content:center;opacity:.75}
@@ -253,14 +261,15 @@ const PLAYER_PAGE = `<!doctype html>
   #tTime{color:#fff;font-size:12px;font-weight:600;direction:ltr;white-space:nowrap;font-family:system-ui,sans-serif;opacity:.95}
   #centerOv{position:absolute;inset:0;z-index:25;display:none;align-items:center;justify-content:center;pointer-events:none}
   #centerOv .big{width:72px;height:72px;border-radius:50%;background:rgba(0,0,0,.62);border:1px solid rgba(255,255,255,.28);display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:0 4px 24px rgba(0,0,0,.55)}
-  #startOv{position:absolute;inset:0;z-index:35;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:rgba(2,2,8,.92);cursor:pointer}
+  #startOv{position:absolute;inset:0;z-index:35;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(2,2,8,.96);cursor:pointer}
   #startOv .big{width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.35);display:flex;align-items:center;justify-content:center;color:#fff}
   #startOv p{color:#fff;font-size:14px;font-weight:700;margin:0;font-family:system-ui,sans-serif}
   #endOv{position:absolute;inset:0;z-index:36;display:none;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(2,2,8,.94)}
   #endOv p{color:#fff;font-size:16px;font-weight:800;margin:0;font-family:system-ui,sans-serif}
   #endOv button{padding:10px 20px;border-radius:10px;border:0;background:rgba(255,255,255,.16);color:#fff;font-weight:700;font-size:14px;cursor:pointer}
-  /* باتش مكان لوجو يوتيوب (تحت يمين) — أسود شفاف مع كارت الطالب فوقه */
-  #logoPatch{position:absolute;bottom:8px;right:8px;z-index:26;width:110px;height:40px;border-radius:10px;background:rgba(0,0,0,.55);pointer-events:none}
+  /* باتش مكان لوجو/لينك يوتيوب (تحت يمين) — بلور + تعتيم خفيف مش ملحوظ */
+  #logoPatch{position:absolute;bottom:8px;right:8px;z-index:26;width:120px;height:42px;border-radius:10px;background:rgba(0,0,0,.55);
+    backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);pointer-events:none}
   /* ===== حماية الفحص ===== */
   #devshield{position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;background:rgba(5,5,10,.92);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
   #devshield .box{text-align:center;color:#e5e7eb;direction:rtl;padding:24px}
@@ -298,12 +307,14 @@ function deobfuscate(b64, key){
   }catch(e){ return ''; }
 }
 
-/* ===== الووترمارك (مواصفات المستر النهائية 2026-د) =====
-   • ووترمارك كبير واحد في نص الخلفية — **اسم ثنائي (أول كلمتين من الاسم)
-     + الرقم جنب الاسم في نفس السطر** شفاف بحواف سودة — ثابت تمامًا
-     (مفيش أي حركة) — عشان مياكلش الكلام المكتوب في الفيديو
+/* ===== الووترمارك (مواصفات المستر النهائية 2026-و) =====
+   • ووترمارك كبير واحد في نص الخلفية على **سطرين** — زي ما المستر طلب
+     حرفيًا: "الاسم الثنائي وتحتيه الرقم — لازم الرقم يظهر":
+     السطر الأول: الاسم الثنائي (أول كلمتين من الاسم)
+     السطر التاني: رقم الطالب تحته (أصغر — واضح ومقروء)
+     **شفافية أخف + نبض: يظهر 6 ثواني ويختفي ~10 ثواني** (طلب المستر:
+     "تقللي الشفافية عشان بتاخد من الكلام... تظهر ٥/٦ ثواني وتختفي عشر ثواني")
    • كارت الطالب (الاسم الكامل + الرقم) ثابت في الزاوية تحت على اليمين
-   • مفيش أي شِپات على الحواف خالص — طلب المستر
    • الاسم من غير قص أي حرف — ممنوع letter-spacing
      وpaint-order:stroke عشان الحواف السودة متاكلش الحروف */
 var wmName = String(CFG.wm.name || '').trim();
@@ -319,17 +330,19 @@ function buildWm(){
   if(old) old.parentNode.removeChild(old);
   var layer = document.createElement('div');
   layer.id = 'wm'; layer.className = 'wm';
-  /* 1) الووترمارك الكبير — سطرين: الاسم الثنائي فوق والرقم تحته — ثابت تمامًا
-        (طلب المستر: "تحتيه الرقم... لازم الرقم يظهر") */
+  /* 1) الووترمارك الكبير — سطرين: الاسم الثنائي فوق والرقم تحته — ثابت تمامًا */
   var big1 = wmShortName() || wmPhone;
   if(big1){
     var big = document.createElement('div');
     big.id = 'wmBig';
     var nameLine = '<span class="b1">' + esc(big1) + '</span>';
-    /* الرقم تحت الاسم في سطر لوحده — لازم يبان */
+    /* الرقم تحت الاسم في سطر لوحده — لازم يبان زي ما المستر طلب */
     var numLine = (wmName && wmPhone) ? '<span class="b2">' + esc(wmPhone) + '</span>' : '';
     big.innerHTML = nameLine + numLine;
-    big.style.opacity = String(Math.min(1, (Number(CFG.wm.opacity) || 0.55) * 1.15));
+    /* شفافية أخف عشان مش يغطي الكلام (النبض نفسه جوه الـ CSS keyframes
+       بيقرا المتغير ده — الافتراضي 0.5 وأقصى حاجة 0.6) */
+    var wmo = Math.min(0.6, Math.max(0.3, (Number(CFG.wm.opacity) || 0.55) * 0.85));
+    big.style.setProperty('--wmo', String(wmo));
     layer.appendChild(big);
   }
   /* 2) كارت الطالب (الاسم الكامل + الرقم) — ثابت في الزاوية تحت على اليمين */
@@ -341,7 +354,8 @@ function buildWm(){
   }
   wrap.appendChild(layer);
 }
-/* درع الشريط العلوي — بيتعمل مرة واحدة بس (حتى لو الووترمارك مطفي) */
+/* درع الشريط العلوي — **دايمًا شغال** بيغطي عنوان يوتيوب/اسم القناة/زرار
+   الشير — بديل القص: الفيديو كامل 100% والواجهة مستحيل تبان */
 function ensureTopShield(){
   if(document.getElementById('topShield')) return;
   var ts = document.createElement('div'); ts.id='topShield'; wrap.appendChild(ts);
@@ -375,34 +389,37 @@ function clearRot(){
   wrap.style.width=''; wrap.style.height='';
 }
 /* ===== عرض الفيديو **كامل 100% من غير أي قص** (طلب المستر 2026-هـ:
-   "الفيديو مش كامل إنت قاصص منه الأطراف — لازم يبان كله"). أي واجهة
-   يوتيوب بتتغطى بالدروع (الدرع العلوي + باتش اللوجو + الووترمارك)
-   مش بقص الفيديو. الدالة بتفضل موجودة عشان التوافق بس من غير قص. */
-function applyYtCrop(fs){
-  var h = document.getElementById('ytCrop');
-  if(!h) return;
-  h.style.width='100%'; h.style.height='100%'; h.style.top='0'; h.style.left='0';
-  sizeYtHost();
+   "الفيديو مش كامل إنت قاصص منه الأطراف — لازم يبان كله") — مفيش أي قص،
+   وأي واجهة يوتيوب بتتغطى بالدروع (الدرع العلوي + باتش اللوجو + الووترمارك). */
+/* ===== الجودة (أهم حاجة — 2026-و) =====
+   يوتيوب بيحدد **سقف الجودة بمقاس المشغل**: مشغل 1280×720 بيرفض 1080p+
+   حتى مع setPlaybackQuality/loadVideoById (اتختبر فعليًا). عشان كده:
+   الـ iframe بيرندر بمقاس **1920×1080 كحد أدنى** (أو مقاس الصندوق لو أكبر)
+   وبيتصغّر بالـ CSS بـ **min (contain)** — تصغير مش تكبير:
+   • يوتيوب بيسمح بتيار 1080p فعلًا (المقاس الكبير)
+   • مفيش أي تمديد بكسلات (التصغير بيحافظ على الحدة 100%)
+   • مفيش أي قص (contain — الفيديو كامل دايمًا) */
+function hostRasterFor(boxW){
+  if(boxW > 0 && boxW < 640) return { w: 1280, h: 720 };  // صناديق صغيرة جدًا (موبايل جوه الصفحة)
+  return { w: 1920, h: 1080 };                            // الكونتينر العادي/ملء الشاشة
 }
-/* تحجيم الـ iframe بمقاسه الحقيقي (1280×720 للـ HD و 1920×1080 للـ Full HD)
-   ليملّي منطقة العرض — scale موحد من غير تشويه لأن الاتنين 16:9 — وده اللي
-   بيخلي يوتيوب تدينا تيار بجودة المستوى المطلوب فعلاً */
-var effLevel = '';
-function hostDimFor(q){ return (q === 'hd1080' || q === 'hd1440' || q === 'hd2160' || q === 'highres') ? { w: 1920, h: 1080 } : { w: 1280, h: 720 }; }
 function sizeYtHost(){
   var c = document.getElementById('ytCrop'), h = document.getElementById('ytHost');
   if(!c || !h) return;
-  var dim = hostDimFor(effLevel);
-  h.style.width = dim.w + 'px'; h.style.height = dim.h + 'px';
   var w = c.offsetWidth || 0, hh = c.offsetHeight || 0;
+  var dim = hostRasterFor(w);
+  /* لو الشاشة نفسها أكبر من 1080p → نرندر بمقاس الشاشة (scale=1 بلا تمديد) */
+  if(w > dim.w || hh > dim.h){ dim = { w: Math.max(w, 1), h: Math.max(hh, 1) }; }
+  h.style.width = dim.w + 'px'; h.style.height = dim.h + 'px';
   if(w > 0 && hh > 0){
-    var s = Math.max(w / dim.w, hh / dim.h);
+    /* contain: تصغير بس — مفيش تكبير ومفيش قص أبدًا */
+    var s = Math.min(w / dim.w, hh / dim.h);
     h.style.transform = 'translate(-50%,-50%) scale(' + s + ')';
   }
 }
 function layoutWrap(){
   var fs = isFs() || isFakeFs || parentFs;
-  applyYtCrop(fs);
+  sizeYtHost();
   if(!fs){
     wrap.className='';
     clearRot();
@@ -527,22 +544,23 @@ function highestAvail(){
   return 'hd720';
 }
 function wantedLevel(){ return qSel === 'top' ? highestAvail() : (qSel === 'auto' ? '' : qSel); }
+/* ترتيب الجودة — الحارس بيفرض **الترقية بس** (لو يوتيوب نزّل الجودة تحت المطلوب)
+   وبيقبل أي جودة أعلى من اختيار الطالب بدون إعادات تحميل بلا لزوم */
+var qRank = { highres:10, hd2160:10, hd1440:9, hd1080:8, hd720:7, large:6, medium:5, small:4, tiny:3 };
+function qRankOf(q){ return qRank[q] || 0; }
 function applyQ(){
   try{
     if(qSel === 'top'){
-      var best = highestAvail(); effLevel = best;
+      var best = highestAvail();
       try{ playerApi.setPlaybackQualityRange(best, best); }catch(e){}
       try{ playerApi.setPlaybackQuality(best); }catch(e){}
     } else if(qSel === 'auto'){
-      effLevel = '';
       try{ playerApi.setPlaybackQualityRange('auto', 'auto'); }catch(e){}
       try{ playerApi.setPlaybackQuality('auto'); }catch(e){}
     } else {
-      effLevel = qSel;
       try{ playerApi.setPlaybackQualityRange(qSel, qSel); }catch(e){}
       try{ playerApi.setPlaybackQuality(qSel); }catch(e){}
     }
-    sizeYtHost();
   }catch(e){}
 }
 function qLabel(q){ var m = { highres:'2160p+', hd2160:'2160p', hd1440:'1440p', hd1080:'1080p', hd720:'720p', large:'480p', medium:'360p', small:'240p', tiny:'144p' }; return m[q] || q; }
@@ -599,32 +617,42 @@ function svgFs(){ return '<svg width="18" height="18" viewBox="0 0 24 24" fill="
 function fmtT(s){ s=Math.max(0,Math.floor(s||0)); var h=Math.floor(s/3600),m=Math.floor((s%3600)/60),x=s%60; var ss=(x<10?'0':'')+x; return h? (h+':'+(m<10?'0':'')+m+':'+ss) : (m+':'+ss); }
 var seekDragging = false;
 function ytState(){ try{ return playerApi && playerApi.getPlayerState ? playerApi.getPlayerState() : -1; }catch(e){ return -1; } }
-function setPP(playing){ var el=document.getElementById('ppBtn'); if(el) el.innerHTML = playing? svgPause():svgPlay(); var c=document.getElementById('centerOv'); if(c) c.style.display = playing? 'none':'flex'; var ts=document.getElementById('topShield'); if(ts) ts.style.opacity = playing? '0':'1'; }
+function setPP(playing){ var el=document.getElementById('ppBtn'); if(el) el.innerHTML = playing? svgPause():svgPlay(); var c=document.getElementById('centerOv'); if(c) c.style.display = playing? 'none':'flex'; }
 var ctrlTimer = null;
 function showCtrl(autohide){ var b=document.getElementById('ytCtrl'); if(!b) return; b.className=''; if(ctrlTimer)clearTimeout(ctrlTimer); if(autohide) ctrlTimer=setTimeout(function(){ if(ytState()===1) { b=document.getElementById('ytCtrl'); if(b) b.className='hide'; } }, 3200); }
 function mountYouTube(){
   var ytId = deobfuscate(CFG.blob, CFG.key);
   if(!ytId){ wrap.innerHTML = '<p style="color:#fca5a5;font-family:sans-serif;padding:24px;direction:rtl">حصل خطأ في تحميل الفيديو</p>'; return; }
   // الطبقة الداخلية: iframe بيتعمله inject بالجافاسكريبت — مش مكتوب في مصدر الصفحة
-  // الـ iframe مكبّر ومقصوص من كل الجهات (CROP على #ytCrop) — أي واجهة يوتيوب
-  // (عنوان/قناة/لوجو) بتترسم بره المنطقة اللي باينة خالص.
-  // + فرض الجودة: الـ iframe نفسه بمقاس ثابت 1280×720 بكسل حقيقي وبيتصغّر بالـ CSS
-  // (transform scale) ليملّي الصندوق — يوتيوب بيختار الجودة من مقاس المشغل بالبكسل،
-  // فالمقاس الكبير ده بيضمن تيار 720p فعلاً بدل ما يقف على 360p.
+  // **الفيديو كامل 100% من غير أي قص** (طلب المستر) — واجهة يوتيوب بتتغطي
+  // بالدروع (topShield/logoPatch/الوترمارك) مش بقص أطراف الفيديو.
+  // + الجودة (أهم حاجة): الـ iframe بيرندر **بمقاس الصندوق الحقيقي 100%**
+  //   (مفيش transform scale خالص — الخدعة القديمة بمقاس ثابت كانت بتمدد
+  //   البكسلات على الشاشات الكبيرة فالفيديو بيبان ناعم) والجودة نفسها
+  //   بيتفرض عليها بالـ API (حارس + loadVideoById).
   var ytCrop = document.createElement('div');
   ytCrop.id = 'ytCrop'; ytCrop.style.cssText = 'position:absolute;width:100%;height:100%;top:0;left:0;overflow:hidden';
   var host = document.createElement('div');
   host.id = 'ytHost';
-  host.style.cssText = 'position:absolute;top:50%;left:50%;width:1280px;height:720px;transform:translate(-50%,-50%) scale(1);transform-origin:center center';
+  /* يرندر 1920×1080 (كحد أدنى) ويصغّر بـ contain — يوتيوب يسمح بـ 1080p+
+     والصورة حادة 100% والفيديو كامل من غير قص */
+  host.style.cssText = 'position:absolute;top:50%;left:50%;width:1920px;height:1080px;transform:translate(-50%,-50%) scale(0.5);transform-origin:center center';
   ytCrop.appendChild(host);
   wrap.appendChild(ytCrop);
-  // شاشة البداية (بتغطي أي عنوان/برanding بتاع يوتيوب لحظة التحميل)
+  /* إعادة حساب المقاس مع أي تغيير (فتح الصفحة/ملء الشاشة/دوران) */
+  setTimeout(sizeYtHost, 0);
+  setTimeout(sizeYtHost, 300);
+  try{ new ResizeObserver(sizeYtHost).observe(ytCrop); }catch(e){}
+  // شاشة البداية — **صورة الفيديو الحقيقية من يوتيوب** (مش صورة خارجية —
+  // طلب المستر: صورة البرواز الدهبي ملهاش علاقة بالمنصة اتشالت خالص)
+  // بتغطي أي عنوان/برanding بتاع يوتيوب لحظة التحميل
   var startOv = document.createElement('div');
   startOv.id='startOv';
-  startOv.innerHTML = '<img src="/images/sherif-profile.jpg" alt="Mr. Sherif ElSayed" ' +
-    'style="max-width:min(58%,300px);max-height:52%;object-fit:contain;border-radius:18px;' +
-    'border:2px solid rgba(249,115,22,.55);box-shadow:0 12px 40px rgba(0,0,0,.6);pointer-events:none">' +
-    '<div class="big"><svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg></div><p>اضغط للمشاهدة</p>';
+  startOv.innerHTML = '<img src="https://i.ytimg.com/vi/' + ytId + '/maxresdefault.jpg" ' +
+    'onerror="this.onerror=null;this.src=\\'https://i.ytimg.com/vi/' + ytId + '/hqdefault.jpg\\';" ' +
+    'alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;' +
+    'filter:brightness(.34) saturate(.92);pointer-events:none">' +
+    '<div class="big" style="position:relative"><svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg></div><p style="position:relative">اضغط للمشاهدة</p>';
   startOv.addEventListener('click', function(){ if(!tapOk()) return; startWithWatchdog(); showCtrl(true); });
   startOv.addEventListener('touchend', function(e){ e.preventDefault(); if(!tapOk()) return; startWithWatchdog(); showCtrl(true); });
   wrap.appendChild(startOv);
@@ -798,15 +826,16 @@ function buildPlayer(){
         }
         /* تثبيت اختيار الجودة (الأعلى متاح أو اختيار الطالب): لو يوتيوب نزّلها
            لوحده → نعيد الأمر، ولو استمر → إعادة تحميل التيار بالمستوى المطلوب
-           (مرتين كحد أقصى للفيديو عشان مفيش لوب) */
+           (4 مرات كحد أقصى للفيديو + كولداون 15 ثانية عشان مفيش لوب) */
         if(ytState() === 1 && qSel !== 'auto'){
           var q = '';
           try{ q = playerApi.getPlaybackQuality() || ''; }catch(e){}
           var eff = wantedLevel();
-          if(eff && q && q !== 'unknown' && q !== eff){
+          if(eff && q && q !== 'unknown' && qRankOf(q) < qRankOf(eff)){
+            /* الجودة الحالية **أقل** من المطلوب → فرض (أول بأول زي ما المستر عايز) */
             if(!qMissAt) qMissAt = Date.now();
-            if(Date.now() - qMissAt > 5000){
-              if(qReloads < 2 && Date.now() - lastQReload > 18000){
+            if(Date.now() - qMissAt > 4000){
+              if(qReloads < 4 && Date.now() - lastQReload > 15000){
                 qReloads++; lastQReload = Date.now(); qMissAt = 0;
                 try{ playerApi.loadVideoById(ytIdCached, Math.max(0, Math.floor(playerApi.getCurrentTime() || 0)), eff); }catch(e){}
               } else {

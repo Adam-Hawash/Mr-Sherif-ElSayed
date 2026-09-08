@@ -131,10 +131,27 @@ var DEFAULTS = {
 
 export async function GET() {
   try {
+    /* إعادة ضبط لمرة واحدة (favicon_reset_v1): أي قيمة favicon_url قديمة
+       مخزنة بتتشال — عشان أيقونة التبويب تبقى صورة المستر الرسمية (/favicon.png
+       = البرواز الدهبي) زي ما المستر طلب حرفيًا. الأدمن بعدها يقدر يغيرها
+       عادي من لوحة التحكم (هتتخزن من جديد لو غيّرها). */
+    try {
+      var flag = await db.siteConfig.findUnique({ where: { key: 'favicon_reset_v1' } })
+      if (!flag) {
+        await db.siteConfig.deleteMany({ where: { key: 'favicon_url' } })
+        await db.siteConfig.upsert({
+          where: { key: 'favicon_reset_v1' },
+          update: { value: '1', updatedAt: new Date() },
+          create: { key: 'favicon_reset_v1', value: '1' },
+        })
+      }
+    } catch (e) {}
+
     var configs = await db.siteConfig.findMany()
     var map = Object.assign({}, DEFAULTS)
     for (var i = 0; i < configs.length; i++) {
       var c = configs[i]
+      if (c.key === 'favicon_reset_v1') continue
       map[c.key] = c.value
     }
     return NextResponse.json(map)
