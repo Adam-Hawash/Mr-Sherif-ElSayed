@@ -7,15 +7,19 @@
 //     وبيتفك في الذاكرة لحظة التشغيل بس، فمفيش ID في مصدر الصفحة
 //     ولا في الـ DOM ولا في أي console.log.
 //  2) الملفات المرفوعة بتتخدم بتوكن موقّع قصير العمر مرتبط بالطالب.
-//  3) ووترمارك (مواصفات المستر النهائية): أسود بالكامل — 8 شِپات سابتين في مكانهم
-//     (3 فوق + 2 في النص + 3 تحت) + ووترمارك كبير في نص الخلفية شفاف بحواف سودة وبالعرض
-//     — ثابت تمامًا — والكارت (الاسم الكامل + الرقم) ثابت كمان تحت الووترمارك الكبير
+//  3) ووترمارك (مواصفات المستر النهائية 2026-ج): مفيش أي شِپات على الحواف خالص —
+//     ووترمارك كبير واحد في نص الخلفية شفاف بحواف سودة — **اسم ثنائي (أول كلمتين)
+//     في سطر واحد بس** عشان مياكلش الكلام المكتوب في الفيديو — ثابت تمامًا —
+//     والكارت (الاسم الكامل + الرقم) ثابت في **الزاوية تحت على اليمين**
 //     (طلب المستر: مفيش أي حاجة بتتحرك في الفيديو خالص)
 //     + بيرجع يرسم لوحه نفسه لو اتمسح + شغال جوه ملء الشاشة.
 //  4) حماية فحص: كليك يمين مقفول + F12/Ctrl+Shift+I/J/C/Ctrl+U مقفولين
 //     بتنبيه لطيف + لو أدوات المطور اتفتحت الفيديو بيوقف مؤقتًا.
 //  5) التقدم بيتقال للأب بـ postMessage كل 5 ثواني (مفيش أي لينك).
-//  6) الجودة مثبتة على 720p بطلب المستر (واضحة + سريعة) بحارس مستمر.
+//  6) الجودة 720p فعلًا (طلب المستر): يوتيوب بيختار الجودة من **مقاس المشغل بالبكسل**
+//     — فالـ iframe بيرندر بمقاس ثابت 1280×720 بكسل حقيقي وبيتصغّر بالـ CSS
+//     (transform scale) ليملّي الصندوق — كده يوتيوب بيدي تيار 720p بجد بدل ما
+//     يقف على 360p لأن الصندوق صغير + حارس مستمر بيفضّل الجودة مثبتة.
 //  7) التشغيل المضمون: مراقب متدرج (playVideo → loadVideoById → صامت)
 //     + تحميل API يوتيوب بإعادة محاولة + تسجيل طلب التشغيل قبل جهوزية الـ API
 //     + تكملة مشاهدة آمنة (من غير حلقة النهاية).
@@ -192,44 +196,29 @@ const PLAYER_PAGE = `<!doctype html>
   #wrap{position:relative;width:100%;max-width:100vw;background:#000;overflow:hidden}
   #wrap.fs{width:100vw;height:100vh;max-width:none}
   #yt,#fileVid{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000}
-  /* ===== الووترمارك (مواصفات المستر) =====
-     سابتين في مكانهم: 4 على منتصفات الحواف + 2 في الزوايا (شكل سنبوكس)
-     + ووترمارك كبير في نص الخلفية شفاف بحواف سودة وبالعرض — هو بس اللي بينطف ناعم
-     مفيش كارت طائر — كل شِپ في مسافة كافية والبيانات جواه كلها باينة */
+  /* ===== الووترمارك (مواصفات المستر النهائية 2026-ج) =====
+     • ووترمارك كبير واحد في نص الخلفية: **اسم ثنائي (أول كلمتين) في سطر واحد**
+       شفاف بحواف سودة — ثابت تمامًا مفيش أي حركة — عشان مياكلش كلام الفيديو
+     • كارت الطالب (الاسم الكامل + الرقم) ثابت في **الزاوية تحت على اليمين**
+     • مفيش أي شِپات على الحواف خالص (اتشالت كلها بطلب المستر) */
   .wm{position:absolute;inset:0;z-index:40;pointer-events:none;user-select:none;overflow:hidden}
-  /* الووترمارك الكبير في النص — شفاف بحواف سودة، بالعرض، وهو بس اللي بيتحرك */
+  /* الووترمارك الكبير في النص — اسم ثنائي سطر واحد — شفاف بحواف سودة — ثابت تمامًا */
   #wmBig{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:41;direction:rtl;
-    text-align:center;max-width:86%;white-space:normal;
+    text-align:center;max-width:94%;white-space:nowrap;
     font-weight:900;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
     font-size:clamp(20px,5.6vw,72px);line-height:1.3;
     unicode-bidi:plaintext;letter-spacing:0}
   #wmBig .b1{display:block;color:rgba(0,0,0,.13);
     -webkit-text-stroke:1.8px rgba(0,0,0,.5);paint-order:stroke fill;
     text-shadow:0 0 18px rgba(255,255,255,.22)}
-  #wmBig .b2{display:block;font-size:.36em;font-weight:800;direction:ltr;unicode-bidi:plaintext;letter-spacing:0;
-    color:rgba(0,0,0,.13);-webkit-text-stroke:1.2px rgba(0,0,0,.45);paint-order:stroke fill}
-  /* كارت الطالب — ثابت في مكانه تحت الووترمارك الكبير (الكل ثابت — مفيش أي حاجة بتتحرك) */
-  .wmCard{position:absolute;z-index:46;top:66%;left:50%;transform:translate(-50%,0)}
+  /* كارت الطالب — ثابت في الزاوية تحت على اليمين (مفيش أي حاجة بتتحرك) */
+  .wmCard{position:absolute;z-index:46;bottom:7.5%;right:2.2%}
   .wmCard .in{display:inline-block;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.28);
     color:#fff;border-radius:14px;padding:7px 18px;text-align:center;direction:rtl;
     box-shadow:0 8px 26px rgba(0,0,0,.55)}
   .wmCard .nm{display:block;font-size:clamp(11px,1.5vw,15px);font-weight:800;unicode-bidi:plaintext;letter-spacing:0;white-space:nowrap;
     text-shadow:0 1px 2px rgba(0,0,0,.8)}
   .wmCard .ph{display:block;font-size:clamp(9.5px,1.2vw,12px);font-weight:700;direction:ltr;unicode-bidi:plaintext;letter-spacing:0;opacity:.85;margin-top:2px}
-  @keyframes cardFloat{0%{margin-top:0}100%{margin-top:0}}
-  /* الشِپات الصغيرة — سابتين في مكانهم، مفيش أي حركة خالص */
-  .wmChip{position:absolute;z-index:44;direction:rtl;text-align:center}
-  .wmChip .in{display:inline-block;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.20);
-    color:rgba(255,255,255,.95);font-size:clamp(8.5px,1.05vw,11px);font-weight:700;font-family:system-ui,-apple-system,sans-serif;
-    padding:3px 11px;border-radius:999px;white-space:nowrap;letter-spacing:0;overflow:hidden;
-    text-shadow:0 1px 2px rgba(0,0,0,.8);unicode-bidi:plaintext}
-  .wmChip .short{display:none}
-  @media (max-width:640px){
-    .wmChip .in{font-size:8.5px;padding:2px 8px;border-radius:999px}
-    /* على الموبايل: الجانبية والزوايا تعرض الرقم بس عشان مفيش تداخل */
-    .wmChip.compact .full{display:none}
-    .wmChip.compact .short{display:inline}
-  }
   /* درع فوق بيقفل شريط عنوان يوتيوب اللي بيظهر لحظة الوقوف */
   #topShield{position:absolute;top:0;left:0;right:0;height:60px;z-index:22;pointer-events:none;opacity:0;transition:opacity .35s;
     background:linear-gradient(to bottom,rgba(0,0,0,.92),rgba(0,0,0,.55) 55%,rgba(0,0,0,0))}
@@ -294,88 +283,42 @@ function deobfuscate(b64, key){
   }catch(e){ return ''; }
 }
 
-/* ===== الووترمارك (مواصفات المستر النهائية) =====
-   • الست شِپات سابتين في مكانهم مفيش حاجة بتتحرك:
-     4 على الخطوط (منتصف فوق + منتصف تحت + منتصف شمال + منتصف يمين)
-     + 2 في الزوايا (شكل السنبوكس): فوق شمال + تحت يمين
-     كل واحدة في مسافة كافية — البيانات جوه كلها باينة
-   • ووترمارك كبير واحد في نص الخلفية: شفاف بحواف سودة وبالعرض —
-     وهو **البس** اللي بيتحرك (نطفة ناعمة مستمرة)
-   • الاسم كامل 100% من غير قص أي حرف — ممنوع letter-spacing
+/* ===== الووترمارك (مواصفات المستر النهائية 2026-ج) =====
+   • ووترمارك كبير واحد في نص الخلفية — **اسم ثنائي (أول كلمتين من الاسم)
+     في سطر واحد بس** شفاف بحواف سودة — ثابت تمامًا (مفيش أي حركة) —
+     عشان مياكلش الكلام المكتوب في الفيديو
+   • كارت الطالب (الاسم الكامل + الرقم) ثابت في الزاوية تحت على اليمين
+   • مفيش أي شِپات على الحواف خالص — طلب المستر
+   • الاسم من غير قص أي حرف — ممنوع letter-spacing
      وpaint-order:stroke عشان الحواف السودة متاكلش الحروف */
-var WM_SPOTS = [
-  {t:'2.4%', l:'50%',   tx:'-50%',  ty:'0%'},   /* 1) top-center */
-  {t:'2.4%', l:'1.8%',  tx:'0%',    ty:'0%'},   /* 2) top-left */
-  {t:'2.4%', l:'98.2%', tx:'-100%', ty:'0%'},   /* 3) top-right (NEW) */
-  {t:'50%',  l:'1.8%',  tx:'0%',    ty:'-50%'}, /* 4) mid-left */
-  {t:'50%',  l:'98.2%', tx:'-100%', ty:'-50%'}, /* 5) mid-right */
-  {b:'2.4%', l:'1.8%',  tx:'0%',    ty:'0%'},   /* 6) bottom-left (NEW) */
-  {b:'2.4%', l:'50%',   tx:'-50%',  ty:'0%'},   /* 7) bottom-center */
-  {b:'2.4%', l:'98.2%', tx:'-100%', ty:'0%'}    /* 8) bottom-right */
-];
-/* كارت الطالب — ثابت في مكانه تحت الووترمارك الكبير (طلب المستر: مفيش حاجة بتتحرك خالص) */
-var WM_CARD_POS = {t:'66%', l:'50%', tx:'-50%', ty:'0%'};
-var wmCardEl = null;
-function wmCardApply(){
-  if(!wmCardEl || !wmCardEl.parentNode) return;
-  var p = WM_CARD_POS;
-  wmCardEl.style.top = p.t; wmCardEl.style.left = p.l;
-  wmCardEl.style.transform = 'translate(' + p.tx + ',' + p.ty + ')';
-}
-var chipEls = [];
 var wmName = String(CFG.wm.name || '').trim();
 var wmPhone = String(CFG.wm.phone || '').trim();
-function wmChipText(){ return [wmPhone, wmName].filter(Boolean).join(' • '); }
-function applySpot(el, p){
-  if(p.b != null){ el.style.top = 'auto'; el.style.bottom = p.b; }
-  else { el.style.bottom = 'auto'; el.style.top = p.t; }
-  el.style.left = p.l;
-  el.style.transform = 'translate(' + (p.tx || '0%') + ',' + (p.ty || '0%') + ')';
+/* الاسم الثنائي: أول كلمتين بس — سطر واحد في النص بدل الاسم كله */
+function wmShortName(){
+  var p = wmName.split(/\\s+/).filter(Boolean);
+  return p.slice(0, 2).join(' ');
 }
 function buildWm(){
   if(!CFG.wm.enabled) return;
   var old = document.getElementById('wm');
   if(old) old.parentNode.removeChild(old);
-  chipEls = [];
   var layer = document.createElement('div');
   layer.id = 'wm'; layer.className = 'wm';
-  /* 1) الووترمارك الكبير في نص الخلفية — شفاف بحواف سودة وبالعرض — هو بس اللي بيتحرك */
-  var bigLine1 = wmName || wmPhone;
-  var bigLine2 = (wmName && wmPhone) ? wmPhone : '';
-  if(bigLine1){
+  /* 1) الووترمارك الكبير — اسم ثنائي في سطر واحد — ثابت تمامًا */
+  var big1 = wmShortName() || wmPhone;
+  if(big1){
     var big = document.createElement('div');
     big.id = 'wmBig';
-    big.innerHTML = '<span class="b1">' + esc(bigLine1) + '</span>' + (bigLine2 ? '<span class="b2">' + esc(bigLine2) + '</span>' : '');
+    big.innerHTML = '<span class="b1">' + esc(big1) + '</span>';
     big.style.opacity = String(Math.min(1, (Number(CFG.wm.opacity) || 0.55) * 1.15));
     layer.appendChild(big);
   }
-  /* 2) الست شِپات على الحواف — سابتين في مكانهم بالظبط، مفيش أي حركة */
-  var chipText = wmChipText();
-  if(chipText){
-    for(var ci = 0; ci < WM_SPOTS.length; ci++){
-      var chip = document.createElement('div');
-      /* على الموبايل الشِپات الجانبية والزوايا تعرض الرقم بس عشان مفيش تداخل */
-      chip.className = 'wmChip' + ((ci !== 0 && ci !== 6) ? ' compact' : '');
-      applySpot(chip, WM_SPOTS[ci]);
-      chip.style.opacity = String(Math.min(1, (Number(CFG.wm.opacity) || 0.55) + 0.05));
-      var inner = document.createElement('span');
-      inner.className = 'in';
-      inner.innerHTML = '<span class="full">' + esc(chipText) + '</span><span class="short">' + esc(wmPhone) + '</span>';
-      chip.appendChild(inner);
-      layer.appendChild(chip);
-      chipEls.push(chip);
-    }
-  }
-  /* 3) كارت الطالب (الاسم الكامل + الرقم) — ثابت تحت الووترمارك الكبير */
-  if(chipText){
+  /* 2) كارت الطالب (الاسم الكامل + الرقم) — ثابت في الزاوية تحت على اليمين */
+  if(wmName || wmPhone){
     var card = document.createElement('div');
     card.className = 'wmCard';
-    card.innerHTML = '<div class="in"><span class="nm">' + esc(bigLine1) + '</span>' + (bigLine2 ? '<span class="ph">' + esc(bigLine2) + '</span>' : '') + '</div>';
+    card.innerHTML = '<div class="in"><span class="nm">' + esc(wmName || wmPhone) + '</span>' + ((wmName && wmPhone) ? '<span class="ph">' + esc(wmPhone) + '</span>' : '') + '</div>';
     layer.appendChild(card);
-    wmCardEl = card;
-    wmCardApply();
-  } else {
-    wmCardEl = null;
   }
   wrap.appendChild(layer);
 }
@@ -388,7 +331,6 @@ function ensureTopShield(){
 function ensureWm(){
   if(!CFG.wm.enabled) return;
   if(!document.getElementById('wm')) buildWm();
-  else if(document.getElementById('wm') && chipEls.length === 0 && wmChipText()) buildWm();
 }
 setInterval(ensureWm, 4000);
 try{ new MutationObserver(ensureWm).observe(wrap, {childList:true, subtree:true}); }catch(e){}
@@ -415,10 +357,22 @@ function clearRot(){
 }
 /* ===== قص أطراف الـ iframe — يوتيوب بيرسم أي حاجة بره المنطقة الباينة ===== */
 function applyYtCrop(fs){
-  var h = document.getElementById('ytHost');
+  var h = document.getElementById('ytCrop');
   if(!h) return;
   if(fs){ h.style.width='112%'; h.style.height='132%'; h.style.top='-14%'; h.style.left='-6%'; }
   else { h.style.width='110%'; h.style.height='120%'; h.style.top='-10%'; h.style.left='-5%'; }
+  sizeYtHost();
+}
+/* تحجيم الـ iframe الثابت (1280×720) ليملّي منطقة العرض — scale موحد من غير
+   تشويه لأن الاتنين 16:9 — وده اللي بيخلي يوتيوب تدينا تيار 720p فعلاً */
+function sizeYtHost(){
+  var c = document.getElementById('ytCrop'), h = document.getElementById('ytHost');
+  if(!c || !h) return;
+  var w = c.offsetWidth || 0, hh = c.offsetHeight || 0;
+  if(w > 0 && hh > 0){
+    var s = Math.max(w / 1280, hh / 720);
+    h.style.transform = 'translate(-50%,-50%) scale(' + s + ')';
+  }
 }
 function layoutWrap(){
   var fs = isFs() || isFakeFs || parentFs;
@@ -576,7 +530,7 @@ function startWithWatchdog(){
       /* الضربة القوية: loadVideoById بيحمّل التيار من الأول وبيشتغل فورًا —
          أقوى بكتير من playVideo في المتصفحات العنيدة */
       var cur = 0; try{ cur = playerApi.getCurrentTime() || 0; }catch(e){}
-      try{ playerApi.loadVideoById(ytIdCached, Math.max(0, Math.floor(cur)), 'large'); }catch(e){}
+      try{ playerApi.loadVideoById(ytIdCached, Math.max(0, Math.floor(cur)), 'hd720'); }catch(e){}
     } else if(attempts >= 5){
       clearInterval(wdTimer); wdTimer = null;
       try{ playerApi.mute(); muteFallback = true; showUnmuteBtn(); playerApi.playVideo(); }catch(e){}
@@ -596,11 +550,18 @@ function mountYouTube(){
   var ytId = deobfuscate(CFG.blob, CFG.key);
   if(!ytId){ wrap.innerHTML = '<p style="color:#fca5a5;font-family:sans-serif;padding:24px;direction:rtl">حصل خطأ في تحميل الفيديو</p>'; return; }
   // الطبقة الداخلية: iframe بيتعمله inject بالجافاسكريبت — مش مكتوب في مصدر الصفحة
-  // الـ iframe مكبّر ومقصوص من كل الجهات (CROP) — أي واجهة يوتيوب (عنوان/قناة/لوجو)
-  // بتترسم بره المنطقة اللي باينة خالص. المميز فوق والباتش تحت تغطية إضافية.
+  // الـ iframe مكبّر ومقصوص من كل الجهات (CROP على #ytCrop) — أي واجهة يوتيوب
+  // (عنوان/قناة/لوجو) بتترسم بره المنطقة اللي باينة خالص.
+  // + فرض الجودة: الـ iframe نفسه بمقاس ثابت 1280×720 بكسل حقيقي وبيتصغّر بالـ CSS
+  // (transform scale) ليملّي الصندوق — يوتيوب بيختار الجودة من مقاس المشغل بالبكسل،
+  // فالمقاس الكبير ده بيضمن تيار 720p فعلاً بدل ما يقف على 360p.
+  var ytCrop = document.createElement('div');
+  ytCrop.id = 'ytCrop'; ytCrop.style.cssText = 'position:absolute;width:110%;height:120%;top:-10%;left:-5%;overflow:hidden';
   var host = document.createElement('div');
-  host.id = 'ytHost'; host.style.cssText = 'position:absolute;width:110%;height:120%;top:-10%;left:-5%';
-  wrap.appendChild(host);
+  host.id = 'ytHost';
+  host.style.cssText = 'position:absolute;top:50%;left:50%;width:1280px;height:720px;transform:translate(-50%,-50%) scale(1);transform-origin:center center';
+  ytCrop.appendChild(host);
+  wrap.appendChild(ytCrop);
   // شاشة البداية (بتغطي أي عنوان/برanding بتاع يوتيوب لحظة التحميل)
   var startOv = document.createElement('div');
   startOv.id='startOv';
@@ -674,7 +635,9 @@ function buildPlayer(){
   var ytId = ytIdCached;
   playerApi = new YT.Player('ytHost', {
     videoId: ytId,
-    // controls:0 → مفيش أي واجهة يوتيوب (لا عنوان ولا لوجو لا حاجة) — كل الكنترولز بتاعتنا
+    width: '100%',
+    height: '100%',
+    // controls:0 → مفيش أي واجهة يوتيوب (لا عنوان لا لوجو لا حاجة) — كل الكنترولز بتاعنا
     playerVars: { autoplay:1, controls:0, rel:0, modestbranding:1, playsinline:1, iv_load_policy:3, fs:0, disablekb:1, enablejsapi:1, origin: location.origin },
     events: {
       onReady: function(ev){

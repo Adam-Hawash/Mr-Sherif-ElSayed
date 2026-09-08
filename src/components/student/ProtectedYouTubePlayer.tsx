@@ -123,6 +123,13 @@ export function ProtectedYouTubePlayer({
   const mutedFallbackRef = useRef(false)
   const [needsUnmute, setNeedsUnmute] = useState(false)
 
+  /* فرض الجودة بمقاس المشغل: يوتيوب بيختار الجودة من مقاس الـ iframe بالبكسل —
+     فبنرندر الـ iframe بمقاس ثابت 1280×720 بكسل حقيقي وبنعمله scale بالـ CSS
+     ليملّي الصندوق — النتيجة تيار 720p فعلًا بدل ما يقف على 360p (مشكلة الجودة
+     الضعيفة اللي المستر وصفها: الفيديو ثابت على نفس البكسلات مهما علّينا الجودة) */
+  const cropRef = useRef<HTMLDivElement>(null)
+  const [hostScale, setHostScale] = useState(1)
+
   /* resume + cumulative progress state */
   const savedSecondsRef = useRef(0)
   const maxSeenRef = useRef(0)
@@ -139,6 +146,26 @@ export function ProtectedYouTubePlayer({
 
   useEffect(function () { selectedQualityRef.current = selectedQuality }, [selectedQuality])
   useEffect(function () { onWatchRef.current = onWatch }, [onWatch])
+
+  /* قياس منطقة العرض (المقصوصة) وتحديث scale الـ iframe الثابت 1280×720 —
+     بيتحدث مع أي تغيير مقاس (ملء الشاشة / دوران / تكبير نافذة) */
+  useEffect(function () {
+    function measure() {
+      var el = cropRef.current
+      if (!el) return
+      var w = el.clientWidth || 0
+      var h = el.clientHeight || 0
+      if (w > 0 && h > 0) setHostScale(Math.max(w / 1280, h / 720))
+    }
+    measure()
+    var ro: any = null
+    try { ro = new (window as any).ResizeObserver(measure); if (cropRef.current) ro.observe(cropRef.current) } catch (e) {}
+    window.addEventListener('resize', measure)
+    return function () {
+      try { if (ro) ro.disconnect() } catch (e) {}
+      window.removeEventListener('resize', measure)
+    }
+  }, [])
 
   /* orientation helpers — rotate the phone to landscape while fullscreen so
      the 16:9 video FILLS the screen instead of a tiny letterboxed strip in
@@ -569,16 +596,34 @@ export function ProtectedYouTubePlayer({
             zones), 5% each side.
           • Fullscreen: 14% top + 18% bottom (kills YouTube's native
             fullscreen share/save/quality bar, ~48-56px on any phone),
-            6% each side (mostly eats the pillarbox black bars). */}
+            6% each side (mostly eats the pillarbox black bars).
+          • QUALITY FORCING: the iframe itself renders at a FIXED 1280×720
+            real pixels and gets scaled down with CSS transform to fill the
+            crop box — YouTube picks the stream from the player's pixel size,
+            so this guarantees a true 720p stream instead of being stuck at
+            360p on small boxes (the exact "same pixels" problem the teacher
+            reported). */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div
+          ref={cropRef}
           className={
             fsActive
               ? 'absolute w-[112%] h-[132%] top-[-14%] left-[-6%]'
               : 'absolute w-[110%] h-[120%] top-[-10%] left-[-5%]'
           }
         >
-          <div ref={playerHostRef} className="w-full h-full" />
+          <div
+            ref={playerHostRef}
+            style={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              width: '1280px',
+              height: '720px',
+              transform: 'translate(-50%, -50%) scale(' + hostScale + ')',
+              transformOrigin: 'center center',
+            }}
+          />
         </div>
       </div>
 
