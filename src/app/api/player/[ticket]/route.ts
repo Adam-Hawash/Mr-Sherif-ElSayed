@@ -9,12 +9,13 @@
 //  2) الملفات المرفوعة بتتخدم بتوكن موقّع قصير العمر مرتبط بالطالب.
 //  3) ووترمارك (مواصفات المستر النهائية): أسود بالكامل — 8 شِپات سابتين في مكانهم
 //     (3 فوق + 2 في النص + 3 تحت) + ووترمارك كبير في نص الخلفية شفاف بحواف سودة وبالعرض
-//     — ثابت تمامًا — والكارت (الاسم الكامل + الرقم) هو البس اللي بيتحرك على الحواف
+//     — ثابت تمامًا — والكارت (الاسم الكامل + الرقم) ثابت كمان تحت الووترمارك الكبير
+//     (طلب المستر: مفيش أي حاجة بتتحرك في الفيديو خالص)
 //     + بيرجع يرسم لوحه نفسه لو اتمسح + شغال جوه ملء الشاشة.
 //  4) حماية فحص: كليك يمين مقفول + F12/Ctrl+Shift+I/J/C/Ctrl+U مقفولين
 //     بتنبيه لطيف + لو أدوات المطور اتفتحت الفيديو بيوقف مؤقتًا.
 //  5) التقدم بيتقال للأب بـ postMessage كل 5 ثواني (مفيش أي لينك).
-//  6) الجودة مثبتة على 480p بحارس مستمر (يفتح سريع + واضح + يوفر داتا).
+//  6) الجودة مثبتة على 720p بطلب المستر (واضحة + سريعة) بحارس مستمر.
 //  7) التشغيل المضمون: مراقب متدرج (playVideo → loadVideoById → صامت)
 //     + تحميل API يوتيوب بإعادة محاولة + تسجيل طلب التشغيل قبل جهوزية الـ API
 //     + تكملة مشاهدة آمنة (من غير حلقة النهاية).
@@ -207,16 +208,15 @@ const PLAYER_PAGE = `<!doctype html>
     text-shadow:0 0 18px rgba(255,255,255,.22)}
   #wmBig .b2{display:block;font-size:.36em;font-weight:800;direction:ltr;unicode-bidi:plaintext;letter-spacing:0;
     color:rgba(0,0,0,.13);-webkit-text-stroke:1.2px rgba(0,0,0,.45);paint-order:stroke fill}
-  /* flying card - the ONLY moving element (drifts along edges + gentle float) */
-  .wmCard{position:absolute;z-index:46;
-    transition:top 3.2s ease-in-out,left 3.2s ease-in-out,transform 3.2s ease-in-out}
+  /* كارت الطالب — ثابت في مكانه تحت الووترمارك الكبير (الكل ثابت — مفيش أي حاجة بتتحرك) */
+  .wmCard{position:absolute;z-index:46;top:66%;left:50%;transform:translate(-50%,0)}
   .wmCard .in{display:inline-block;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.28);
     color:#fff;border-radius:14px;padding:7px 18px;text-align:center;direction:rtl;
-    box-shadow:0 8px 26px rgba(0,0,0,.55);animation:cardFloat 3.4s ease-in-out infinite alternate}
+    box-shadow:0 8px 26px rgba(0,0,0,.55)}
   .wmCard .nm{display:block;font-size:clamp(11px,1.5vw,15px);font-weight:800;unicode-bidi:plaintext;letter-spacing:0;white-space:nowrap;
     text-shadow:0 1px 2px rgba(0,0,0,.8)}
   .wmCard .ph{display:block;font-size:clamp(9.5px,1.2vw,12px);font-weight:700;direction:ltr;unicode-bidi:plaintext;letter-spacing:0;opacity:.85;margin-top:2px}
-  @keyframes cardFloat{0%{margin-top:-3px}100%{margin-top:3px}}
+  @keyframes cardFloat{0%{margin-top:0}100%{margin-top:0}}
   /* الشِپات الصغيرة — سابتين في مكانهم، مفيش أي حركة خالص */
   .wmChip{position:absolute;z-index:44;direction:rtl;text-align:center}
   .wmChip .in{display:inline-block;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.20);
@@ -313,22 +313,12 @@ var WM_SPOTS = [
   {b:'2.4%', l:'50%',   tx:'-50%',  ty:'0%'},   /* 7) bottom-center */
   {b:'2.4%', l:'98.2%', tx:'-100%', ty:'0%'}    /* 8) bottom-right */
 ];
-/* flying-card stops - the ONLY moving element (lands on edges, every 8s) */
-var WM_CARD_STEPS = [
-  {t:'7%',  l:'50%',  tx:'-50%',  ty:'0%'},
-  {t:'7%',  l:'93%',  tx:'-100%', ty:'0%'},
-  {t:'47%', l:'93%',  tx:'-100%', ty:'-50%'},
-  {t:'86%', l:'93%',  tx:'-100%', ty:'-100%'},
-  {t:'86%', l:'50%',  tx:'-50%',  ty:'-100%'},
-  {t:'86%', l:'7%',   tx:'0%',    ty:'-100%'},
-  {t:'47%', l:'7%',   tx:'0%',    ty:'-50%'},
-  {t:'7%',  l:'7%',   tx:'0%',    ty:'0%'}
-];
-var wmCardEl = null, wmCardStep = 0, wmCardTimer = null;
+/* كارت الطالب — ثابت في مكانه تحت الووترمارك الكبير (طلب المستر: مفيش حاجة بتتحرك خالص) */
+var WM_CARD_POS = {t:'66%', l:'50%', tx:'-50%', ty:'0%'};
+var wmCardEl = null;
 function wmCardApply(){
   if(!wmCardEl || !wmCardEl.parentNode) return;
-  var p = WM_CARD_STEPS[wmCardStep % WM_CARD_STEPS.length];
-  wmCardStep++;
+  var p = WM_CARD_POS;
   wmCardEl.style.top = p.t; wmCardEl.style.left = p.l;
   wmCardEl.style.transform = 'translate(' + p.tx + ',' + p.ty + ')';
 }
@@ -376,7 +366,7 @@ function buildWm(){
       chipEls.push(chip);
     }
   }
-  /* 3) flying card - the ONLY moving element (full name + phone) */
+  /* 3) كارت الطالب (الاسم الكامل + الرقم) — ثابت تحت الووترمارك الكبير */
   if(chipText){
     var card = document.createElement('div');
     card.className = 'wmCard';
@@ -384,11 +374,8 @@ function buildWm(){
     layer.appendChild(card);
     wmCardEl = card;
     wmCardApply();
-    if(wmCardTimer) clearInterval(wmCardTimer);
-    wmCardTimer = setInterval(wmCardApply, 8000);
   } else {
     wmCardEl = null;
-    if(wmCardTimer){ clearInterval(wmCardTimer); wmCardTimer = null; }
   }
   wrap.appendChild(layer);
 }
@@ -548,7 +535,7 @@ var playerApi = null;
    + لو الطالب دس قبل ما الـ API يجهز → الطلب بيتسجل وبيتنفذ أول ما يجهز. */
 var wdTimer = null, muteFallback = false, lastTap = 0;
 var pendingStart = false, pendingResume = 0, ytIdCached = '';
-/* قفل الجودة 480p — عدادات الحارس */
+/* قفل الجودة 720p — عدادات الحارس */
 var qMissAt = 0, qReloads = 0, lastQReload = 0;
 function tapOk(){ var n = Date.now(); if(n - lastTap < 350) return false; lastTap = n; return true; }
 function showUnmuteBtn(){
@@ -694,7 +681,7 @@ function buildPlayer(){
         /* تكملة المشاهدة بنأجلها لأول لحظة تشغيل فعلية — أعلى أمان على الموبايل
            (الـ seek قبل التشغيل كان بعلّق المشغل في حالة cued على بعض الأجهزة) */
         try{ if(Number(CFG.resume) > 5) pendingResume = Number(CFG.resume); }catch(e){}
-        try{ ev.target.setPlaybackQuality('large'); }catch(e){} /* 480p — الجودة الثابتة */
+        try{ ev.target.setPlaybackQuality('hd720'); }catch(e){} /* 720p — الجودة الثابتة */
         if(pendingStart){ pendingStart = false; startWithWatchdog(); }
         layoutWrap();
       },
@@ -711,7 +698,7 @@ function buildPlayer(){
               if(posR > 0){ try{ playerApi.seekTo(posR, true); }catch(e){} }
               pendingResume = 0;
             }
-            try{ ev.target.setPlaybackQuality('large'); }catch(e){} /* 480p ثابتة */
+            try{ ev.target.setPlaybackQuality('hd720'); }catch(e){} /* 720p ثابتة */
             var so=document.getElementById('startOv'); if(so) so.style.display='none';
             var eo=document.getElementById('endOv'); if(eo) eo.style.display='none';
             setPP(true); showCtrl(true);
@@ -738,19 +725,19 @@ function buildPlayer(){
           var eo3=document.getElementById('endOv');
           if(eo3 && eo3.style.display!=='flex'){ eo3.style.display='flex'; try{ playerApi.seekTo(0,true); playerApi.pauseVideo(); }catch(e){} reportEnded(); }
         }
-        /* قفل الجودة على 480p: لو يوتيوب نزّلها لوحده → نعيد الأمر، ولو استمر
-           → إعادة تحميل التيار عند 480p (مرتين كحد أقصى للفيديو عشان مفيش لوب) */
+        /* قفل الجودة على 720p: لو يوتيوب نزّلها لوحده → نعيد الأمر، ولو استمر
+           → إعادة تحميل التيار عند 720p (مرتين كحد أقصى للفيديو عشان مفيش لوب) */
         if(ytState()===1){
           var q = '';
           try{ q = playerApi.getPlaybackQuality() || ''; }catch(e){}
-          if(q && q !== 'large' && q !== 'auto' && q !== 'unknown'){
+          if(q && q !== 'hd720' && q !== 'auto' && q !== 'unknown'){
             if(!qMissAt) qMissAt = Date.now();
             if(Date.now() - qMissAt > 5000){
               if(qReloads < 2 && Date.now() - lastQReload > 18000){
                 qReloads++; lastQReload = Date.now(); qMissAt = 0;
-                try{ playerApi.loadVideoById(ytIdCached, Math.max(0, Math.floor(playerApi.getCurrentTime() || 0)), 'large'); }catch(e){}
+                try{ playerApi.loadVideoById(ytIdCached, Math.max(0, Math.floor(playerApi.getCurrentTime() || 0)), 'hd720'); }catch(e){}
               } else {
-                try{ playerApi.setPlaybackQuality('large'); }catch(e){}
+                try{ playerApi.setPlaybackQuality('hd720'); }catch(e){}
               }
             }
           } else { qMissAt = 0; }

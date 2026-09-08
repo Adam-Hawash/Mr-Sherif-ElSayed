@@ -64,12 +64,27 @@ export async function PUT(
       updateData.creationDeviceId = ''
       updateData.creationDeviceFp = ''
     }
-    // bindDevice: ربط الحساب بجهاز الطالب الحالي (لو المستر عايز يرجّع الربط يدوي)
+    // bindDevice: ربط الحساب بجهاز محدد يدويًا (زرار "اربط جهازي الحالي" في
+    // لوحة التحكم — بيربط الجهاز اللي المستر واقف عليه دلوقتي **بكل بياناته**:
+    // الهوية الفريدة + البصمة + مكوّنات الجهاز + النوع — عشان أول دخول بعدها
+    // يطابق مباشرة من غير أي مساومة)
     // **مهم**: الدخول بيفحص أعمدة الإنشاء الثابتة الأول — فالربط اليدوي لازم
     // يتكتب هناك كمان وإلا الجهاز المربوط يدويًا هيفضل مرفوض 403!
     if (typeof body.bindDevice === 'string' && body.bindDevice) {
       updateData.deviceId = body.bindDevice
       updateData.creationDeviceId = body.bindDevice
+      if (typeof body.bindDeviceFp === 'string' && body.bindDeviceFp) {
+        updateData.deviceFp = body.bindDeviceFp
+        updateData.creationDeviceFp = body.bindDeviceFp
+      }
+      if (typeof body.bindDeviceTraits === 'string' && body.bindDeviceTraits.length <= 4000) {
+        updateData.deviceTraits = body.bindDeviceTraits
+      }
+      if (typeof body.bindDeviceType === 'string' && ['mobile', 'tablet', 'computer'].indexOf(body.bindDeviceType) !== -1) {
+        updateData.deviceType = body.bindDeviceType
+      }
+      // أي ربط يدوي بيلغي السماح المفتوح (الربط بقى محدد بدقة)
+      if (existing.allowAllDevices === true) updateData.allowAllDevices = false
     }
 
     const student = await db.student.update({
@@ -82,6 +97,21 @@ export async function PUT(
       await db.studentActivity.create({
         data: { studentId: id, action: 'status_changed_to_' + status, details: 'Status changed from ' + existing.status + ' to ' + status },
       })
+    }
+
+    // Record device actions (للمستر يقدر يتتبع مين ااتربط وإمتى)
+    if (updateData.creationDeviceId && updateData.creationDeviceId !== existing.creationDeviceId) {
+      try {
+        await db.studentActivity.create({
+          data: { studentId: id, action: 'device_manual_bind', details: 'المستر ربط الحساب يدويًا بجهاز جديد من لوحة التحكم — الجهاز ده بقى جهاز الحساب' },
+        })
+      } catch (e) {}
+    } else if (body.resetDevice === true) {
+      try {
+        await db.studentActivity.create({
+          data: { studentId: id, action: 'device_unlinked', details: 'المستر فك ربط الجهاز — أول جهاز يسجل دخول بعد كده هيبقى هو جهاز الحساب' },
+        })
+      } catch (e) {}
     }
 
     return NextResponse.json({ message: 'Student updated', student })

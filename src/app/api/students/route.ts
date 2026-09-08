@@ -231,7 +231,13 @@ export async function GET(request: NextRequest) {
         // بحماية ضد المشاركة: الهوية الجديدة ممنوع تكون مربوطة بحساب تاني.
         if (hasAnyBinding && !deviceTrusted && !allowAll) {
           var sameDevice = false
-          if (traitsMatchSameDevice(storedTraits, freshTraits) && current.uuid) {
+          // **الإنقاذ بمطابقة المكوّنات حتى من غير هوية**: بعض المتصفحات/الإعدادات
+          // بتقفل localStorage والكوكيز مع بعض — فالمتصفح مبيبعتش أي dev_ خالص
+          // (هوية جديدة كل مرة). لو مكوّنات الجهاز الواردة مطابقة للمخزنة مع الحساب
+          // يبقى ده نفس الجهاز فعلًا — ومن غير الحركة دي الجهاز ده كان محجوب للأبد
+          // (وهي بالظبط حالة "مش هيدخل على أي حاجة لحد" اللي المستر بلّغ عنها).
+          var traitsHit = traitsMatchSameDevice(storedTraits, freshTraits)
+          if (traitsHit && current.uuid) {
             try {
               var others = await db.student.findMany({
                 where: { id: { not: student.id }, OR: [{ deviceId: current.uuid }, { creationDeviceId: current.uuid }] },
@@ -242,6 +248,9 @@ export async function GET(request: NextRequest) {
               // الفيزيائية: كلها متطابقة = نفس الجهاز فعلًا (مش مشاركة)
               sameDevice = checkOthersSamePhysicalDevice(others, freshTraits)
             } catch (gErr) { sameDevice = false }
+          } else if (traitsHit && !current.uuid) {
+            // مفيش هوية واردة أصلًا → مفيش خطر مشاركة نكشفه — المكوّنات كافية
+            sameDevice = true
           }
           // حساب قديم اتسجل قبل نظام المكوّنات خالص (مكوّنات فاضية) ومفيش أي
           // هوية/بصمة مطابقة — مفيش أي طريقة نتحقق بيها من الجهاز ده نهائيًا،
@@ -280,6 +289,7 @@ export async function GET(request: NextRequest) {
           }
           if (sameDevice && freshTraits) {
             // نفس الجهاز فعلًا — نحدّث الهوية والبصمة المخزنة (جهاز واحد لسه واحد)
+            // لو مفيش هوية واردة (تخزين متقفل) → نسيب المخزنة زي ما هي ومننشئش فاضية
             var newId2 = current.uuid || creationId || storedId
             var newFp2 = current.fp || creationFp || storedFp
             try {
@@ -317,11 +327,13 @@ export async function GET(request: NextRequest) {
               var diagUuid = !!checkId && checkId.indexOf('dev_') === 0 && current.uuids.indexOf(checkId) !== -1
               var diagFp = !!checkFp && current.dv3.concat(current.dv2).indexOf(checkFp) !== -1
               var diagTraits = String(traitsMatchSameDevice(storedTraits, freshTraits))
+              // تشخيص واضح للمستر: الهوية المخزنة مع الحساب مقابل الهوية الواردة —
+              // كده أي حجب بيكون مفهوم من لوحة التحكم من غير تخمين
               await db.studentActivity.create({
                 data: {
                   studentId: student.id,
                   action: 'device_blocked',
-                  details: 'محاولة دخول من جهاز غريب — النوع: ' + (inDeviceType || 'غير معروف') + ' — الهوية: ' + (current.uuid || 'فاضية') + ' — بصمات: ' + ((current.dv3[0] || current.dv2[0] || 'فاضية').slice(0, 24)) + ' — التطابق: هوية=' + (diagUuid ? 'نعم' : 'لا') + ' بصمة=' + (diagFp ? 'نعم' : 'لا') + ' مكوّنات=' + diagTraits,
+                  details: 'محاولة دخول من جهاز غريب — النوع: ' + (inDeviceType || 'غير معروف') + ' — الهوية الواردة: ' + ((current.uuid || current.fp || 'فاضية').slice(0, 24)) + ' — الهوية المخزنة: ' + ((checkId || checkFp || 'فاضية').slice(0, 24)) + ' — التطابق: هوية=' + (diagUuid ? 'نعم' : 'لا') + ' بصمة=' + (diagFp ? 'نعم' : 'لا') + ' مكوّنات=' + diagTraits,
                 },
               })
             }
@@ -493,8 +505,25 @@ export async function GET(request: NextRequest) {
       watchMap[watchedVideos[w].studentId] = watchedVideos[w]._count.id
     }
 
+    // آخر محاولة حجب جهاز لكل طالب — المستر يشوف **سبب الحجب** جوه الصف نفسه
+    // (التطابق: هوية/بصمة/مكوّنات) من غير ما يفتح سجل الأنشطة
+    var blockMap: Record<string, { details: string; createdAt: Date }> = {}
+    if (allStudentIds.length > 0) {
+      try {
+        var recentBlocks = await db.studentActivity.findMany({
+          where: { studentId: { in: allStudentIds }, action: 'device_blocked' },
+          orderBy: { createdAt: 'desc' },
+          take: 300,
+        })
+        for (var bi = 0; bi < recentBlocks.length; bi++) {
+          var bStu = recentBlocks[bi].studentId
+          if (!blockMap[bStu]) blockMap[bStu] = { details: recentBlocks[bi].details || '', createdAt: recentBlocks[bi].createdAt }
+        }
+      } catch (bkErr) {}
+    }
+
     var studentsWithStats = students.map(function(s) {
-      return { ...s, watchedVideoCount: watchMap[s.id] || 0 }
+      return { ...s, watchedVideoCount: watchMap[s.id] || 0, lastDeviceBlock: blockMap[s.id] || null }
     })
 
     return NextResponse.json({
