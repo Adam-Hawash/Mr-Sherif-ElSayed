@@ -198,7 +198,7 @@ const PLAYER_PAGE = `<!doctype html>
 <title>__TITLE__</title>
 <style>
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden;font-family:system-ui,-apple-system,'Segoe UI',sans-serif}
+  html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
   #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#000}
   #wrap{position:relative;width:100%;max-width:100vw;background:#000;overflow:hidden}
   #wrap.fs{width:100vw;height:100vh;max-width:none}
@@ -295,6 +295,15 @@ const PLAYER_PAGE = `<!doctype html>
   #devshield .box .ic{font-size:44px;margin-bottom:10px}
   #devshield .box p{font-size:16px;font-weight:700;line-height:2;margin:0}
   #devshield .box small{display:block;margin-top:6px;color:#9ca3af;font-size:12px}
+  /* درع منع السكرين شوت على الموبايل (طلب المستر 2026-و) — بيتغطي فورًا
+     أول ما الصفحة تختفي/تفقد الفوكس (تبديل تطبيق/فتح مسجل شاشة) عشان
+     أي تصوير يطلع شاشة سودة بدل المحتوى */
+  #capShield{position:fixed;inset:0;z-index:10000;display:none;align-items:center;justify-content:center;background:#050508}
+  #capShield .box{text-align:center;color:#e5e7eb;direction:rtl;padding:28px;max-width:86%}
+  #capShield .box .ic{font-size:52px;margin-bottom:12px}
+  #capShield .box p{font-size:17px;font-weight:800;line-height:2;margin:0}
+  #capShield .box small{display:block;margin-top:8px;color:#9ca3af;font-size:13px;line-height:1.9}
+  #capShield .box button{margin-top:18px;background:#e5e7eb;color:#0b0b0f;border:0;border-radius:999px;padding:11px 26px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit}
   #toast{position:fixed;top:18px;right:50%;transform:translateX(50%);z-index:10000;background:rgba(20,20,28,.95);color:#fff;
     border:1px solid rgba(255,255,255,.18);padding:10px 18px;border-radius:12px;font-size:13px;font-weight:600;direction:rtl;
     opacity:0;pointer-events:none;transition:opacity .25s;box-shadow:0 6px 24px rgba(0,0,0,.5)}
@@ -304,6 +313,7 @@ const PLAYER_PAGE = `<!doctype html>
 <body>
 <div id="stage"><div id="wrap"></div></div>
 <div id="devshield"><div class="box"><div class="ic">🛡️</div><p>وضع الفحص مش مسموح هنا</p><small>اقفل أدوات المطوّر عشان تكمل مشاهدة الفيديو</small></div></div>
+<div id="capShield"><div class="box"><div class="ic">🛡️</div><p>المحتوى محمي — السكرين شوت والتسجيل ممنوع</p><small>الفيديو اتوقف تلقائي عشان حماية المحتوى.<br>اضغط زرار المتابعة عشان ترجع تشوف تاني.</small><button type="button" id="capResume">متابعة المشاهدة ▶</button></div></div>
 <div id="toast"></div>
 <script>
 'use strict';
@@ -536,30 +546,56 @@ document.addEventListener('keydown', function(e){
     try{ if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText('🔒 المحتوى محمي').catch(function(){}); }catch(err){}
   }
 });
-/* ===== مضاد التصوير (طلب المستر 2026-ح — زي منع F12 بالظبط) =====
+/* ===== مضاد التصوير + درع منع السكرين شوت (طلب المستر 2026-و) =====
    Win/⌘ + Shift + R و Win/⌘ + Shift + S (أداة القص) — الاتنين متصطادين
-   في مستمع keydown اللي فوق. والأهم: برامج تسجيل الشاشة وأداة القص بيسحبوا
-   الفوكس من نافذة المتصفح — فأول ما النافذة تفقد الفوكس أو التاب يتخفي
-   والفيديو شغال → بنوقفه فورًا + رسالة "التسجيل ممنوع". فمفيش أي تسجيل
-   يطلع غير إطار واقف عليه الووترمارك باسم الطالب ورقمه.
-   ملاحظة تقنية صادقة: اختصارات النظام نفسها (Win+Shift+S) بتتشال من
-   ويندوز قبل ما توصل للمتصفح — فالمتصفح مش بيشوفها أصلًا. لكن اللقطة
-   اللي هياخدها هتبقى لصفحة وقفها الفيديو بالفعل (فقدان الفوكس) — وده
-   أقصى حماية ممكنة من غير برامج خارجية. */
+   في مستمع keydown اللي فوق.
+   **درع الموبايل الجديد**: أول ما الصفحة تختفي (visibilitychange) أو النافذة
+   تفقد الفوكس (blur — تبديل تطبيق/فتح مسجل شاشة/سكرين شوت بأداة خارجية)
+   → **إيقاف الفيديو فورًا + درع أسود كامل** عشان أي تسجيل يطلع شاشة سودة
+   بدل المحتوى، والرجوع محتاج دوسة "متابعة" يدوية (عمدًا — friction إضافي).
+   ملاحظة تقنية صادقة: زرار السكرين شوت في الموبايل نفسه (زرار الطاقة + الصوت)
+   فوق صلاحية أي موقع في العالم — حتى يوتيوب ونتفليكس مش بيعرفوا يمنعوه —
+   لكن اللي بينفع فعلًا: المحتوى بيتغطى لحظة الخروج من التطبيق، والووترمارك
+   باسم الطالب ورقمه واصلة في كل إطار لو الراجل صنّع. */
 (function(){
-  function antiCapturePause(){
-    try{ if(playerApi && playerApi.getPlayerState){ var st = playerApi.getPlayerState(); if(st === 1 || st === 3){ playerApi.pauseVideo(); toast('🚫 التسجيل ممنوع — الفيديو اتوقف'); } } }catch(e){}
-    try{ if(fileApi && !fileApi.paused){ fileApi.pause(); toast('🚫 التسجيل ممنوع — الفيديو اتوقف'); } }catch(e){}
+  var shieldOn = false, wasPlayingCap = false, bootGraceUntil = Date.now() + 1500;
+  function pauseAllMedia(){
+    try{ if(playerApi && playerApi.getPlayerState){ var st = playerApi.getPlayerState(); if(st === 1 || st === 3){ playerApi.pauseVideo(); } } }catch(e){}
+    try{ if(fileApi && !fileApi.paused){ fileApi.pause(); } }catch(e){}
   }
+  function showShield(){
+    if(shieldOn) return; shieldOn = true;
+    var s = document.getElementById('capShield'); if(s) s.style.display = 'flex';
+  }
+  function hideShield(){
+    shieldOn = false;
+    var s = document.getElementById('capShield'); if(s) s.style.display = 'none';
+  }
+  function onHidden(){
+    if(Date.now() < bootGraceUntil) return;
+    try{ if(playerApi && playerApi.getPlayerState){ var st = playerApi.getPlayerState(); wasPlayingCap = wasPlayingCap || st === 1 || st === 3; } }catch(e){}
+    try{ if(fileApi && !fileApi.paused) wasPlayingCap = true; }catch(e){}
+    pauseAllMedia();
+    showShield();
+  }
+  /* الرجوع محتاج دوسة يدوية — عمدًا عشان أي أداة تصوير تلاقي شاشة سودة */
+  var resumeBtn = document.getElementById('capResume');
+  if(resumeBtn) resumeBtn.addEventListener('click', function(e){
+    e.stopPropagation();
+    hideShield();
+    if(wasPlayingCap){ try{ if(playerApi && playerApi.playVideo) playerApi.playVideo(); }catch(e){} try{ if(fileApi && fileApi.paused) fileApi.play(); }catch(e){} }
+    wasPlayingCap = false;
+  });
   /* لو الإناء جوه صفحة المنصة → بنراقب نافذة المتصفح العلوية (نفس الدومين
-     فمسموح): blur بتاعها معناه إن تطبيق تاني (تسجيل/قص) سحب الفوكس —
-     مش بنراقب blur الإناء نفسه عشان الضغط جوه الصفحة ميبقاش بيقف الفيديو غلط */
+     فمسموح): blur بتاعها معناه إن تطبيق تاني (تسجيل/قص/سكرين شوت) سحب الفوكس
+     — مش بنراقب blur الإناء نفسه عشان الضغط جوه الصفحة ميبقاش بيقف الفيديو غلط */
   var gw = window, gd = document;
   try{ if(window.top && window.top !== window){ gw = window.top; gd = window.top.document; } }catch(e){ gw = null; }
   if(gw){
-    gw.addEventListener('blur', function(){ antiCapturePause(); });
-    try{ gd.addEventListener('visibilitychange', function(){ try{ if(gd.hidden) antiCapturePause(); }catch(e){} }); }catch(e){}
+    gw.addEventListener('blur', function(){ onHidden(); });
+    try{ gd.addEventListener('visibilitychange', function(){ try{ if(gd.hidden) onHidden(); }catch(e){} }); }catch(e){}
   }
+  document.addEventListener('visibilitychange', function(){ try{ if(document.hidden) onHidden(); }catch(e){} });
 })();
 var devOpen = false, wasPlayingBeforeDev = false;
 // هنقيس على نافذة التاب العلوية (نفس الدومين فمسموح) — لو قسنا على الـ iframe
@@ -818,7 +854,7 @@ function qLabel(q){ var m = { highres:'2160p+', hd2160:'2160p', hd1440:'1440p', 
 function updateQBtn(){ var l = document.getElementById('qLbl'); if(l) l.textContent = qSel === 'top' ? 'عالية' : (qSel === 'auto' ? 'تلقائي' : qLabel(qSel)); }
 /* آخر سلاح في سلم الجودة: **تبديل تيار حقيقي واحد** — loadVideoById بنفس
    الثانية والمستوى المطلوب (suggestedQuality بيطلب التيار بالمستوى ده من
-   أول لحظة). مش بنكرره (سقف 3 + كولداون من الحارس) */
+   أول لحظة). مش بنكرره (سقف 5 + كولداون من الحارس) */
 function hardReloadQ(target){
   try{
     if(!playerApi || !playerApi.loadVideoById || !ytIdCached) return;
@@ -826,6 +862,19 @@ function hardReloadQ(target){
     playerApi.loadVideoById({ videoId: ytIdCached, startSeconds: Math.max(0, Math.floor(t)), suggestedQuality: target });
   }catch(e){}
   lastQAssert = Date.now();
+}
+/* (2026-و) تبديل الجودة الحقيقي — بيتستخدم لما الطالب يختار مستوى من
+   القائمة بيده: مفيش فايدة من setPlaybackQuality (يوتيوب لغتها) —
+   **loadVideoById بـ suggestedQuality هو الوحيد اللي بيغير التيار فعلًا**
+   (بنفس الثانية عشان المشاهدة ما تتقطعش، ولو كان واقف بيرجع واقف) */
+function switchQ(target){
+  if(!target || target === 'auto' || !playerApi || !playerApi.loadVideoById || !ytIdCached) return;
+  try{
+    var t = playerApi.getCurrentTime() || 0;
+    qPendingPause = (ytState() === 2);
+    playerApi.loadVideoById({ videoId: ytIdCached, startSeconds: Math.max(0, Math.floor(t)), suggestedQuality: target });
+  }catch(e){}
+  lastQAssert = Date.now(); qLowSince = 0;
 }
 function tapOk(){ var n = Date.now(); if(n - lastTap < 350) return false; lastTap = n; return true; }
 function showUnmuteBtn(){
@@ -1002,12 +1051,11 @@ function mountYouTube(){
             /* تلقائي = تحرير الجودة ليوتيوب يظبطها لوحده */
             applyQ();
           } else {
-            /* (2026-ي) التبديل القسري بدون reload: نطاق + سيك صغير —
-               الرقم بيثبت على اختيار الطالب على الزرار فورًا وبيتحدث من
-               التيار الفعلي أول ما يتغير */
-            var tgt = (q === 'top') ? highestAvail() : q;
-            qPendingPause = (ytState() === 2); /* كان واقف → يرجع واقف بعد التبديل */
-            forceQ(tgt);
+            /* (2026-و) اختيار الطالب بيده = **تبديل تيار حقيقي** بـ
+               loadVideoById + suggestedQuality (الـ API القديم مبتغيرش
+               التيار فعلًا — ده اللي كان بيخلي الرقم بيتغير كتابيًا بس) */
+            var tgt = (q === 'top') ? highestAvail() : resolveLockLevel(q);
+            switchQ(tgt);
           }
           updateQBtn();
           qMenu.style.display = 'none';
@@ -1066,6 +1114,17 @@ function buildPlayer(){
         /* تكملة المشاهدة بنأجلها لأول لحظة تشغيل فعلية — أعلى أمان على الموبايل
            (الـ seek قبل التشغيل كان بعلّق المشغل في حالة cued على بعض الأجهزة) */
         try{ if(Number(CFG.resume) > 5) pendingResume = Number(CFG.resume); }catch(e){}
+        /* (2026-و) **الحل الحقيقي لـ"بيبدأ 144 وبعدين يعلّى لـ360 ومش بيوصل 480"**:
+           التحميل الأولي من الـ constructor بييجي من غير تلميح جودة — يوتيوب بيبدأ
+           أدنى تيار (tiny=144) وبيعلى تدريجيًا حسب قياس سرعة النت (ABR) وغالبًا
+           بيقف عند 360 على شبكات الموبايل. cueVideoById بـ suggestedQuality
+           بيطلب **تيار 480p من أول لحظة** — دي أقوى نقطة تحكم حقيقية متبقية
+           في IFrame API (setPlaybackQuality اتلغت رسميًا من يوتيوب).
+           cue مش load عشان مفيش تشغيل مفاجئ — لسه مستنيين دوسة الطالب */
+        try{
+          var qHint = (qSel === 'auto') ? 'default' : resolveLockLevel(qSel);
+          playerApi.cueVideoById({ videoId: ytIdCached, startSeconds: 0, suggestedQuality: qHint });
+        }catch(eCue){}
         applyQ(); /* الجودة الافتراضية: **480p مقفولة تلقائيًا** (طلب المستر) */
         if(pendingStart){ pendingStart = false; startWithWatchdog(); }
         layoutWrap();
@@ -1179,7 +1238,7 @@ function buildPlayer(){
           if(qMismatch){
             if(!qLowSince) qLowSince = Date.now();
             var misFor = Date.now() - qLowSince;
-            if(misFor > 25000 && Date.now() - lastQHard > 30000 && qHardTries < 3){
+            if(misFor > 20000 && Date.now() - lastQHard > 25000 && qHardTries < 5){
               qHardTries++; lastQHard = Date.now(); qLowSince = Date.now();
               hardReloadQ(eff);
             } else if(misFor > 10000){

@@ -30,7 +30,7 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await request.json()
-    const { title, content, grade, questions, models } = body
+    const { title, content, grade, questions, models, modelMode, fixedModel } = body
 
     const existing = await db.exam.findUnique({ where: { id } })
     if (!existing) {
@@ -46,6 +46,9 @@ export async function PUT(
         ...(questions !== undefined && { questions: typeof questions === 'string' ? questions : JSON.stringify(questions) }),
         // نماذج الامتحان العشوائية (اختياري)
         ...(models !== undefined && { models: typeof models === 'string' ? models : JSON.stringify(models) }),
+        // طريقة التوزيع (2026-و): عشوائي أو نموذج واحد ثابت للكل
+        ...(modelMode !== undefined && { modelMode: modelMode === 'fixed' ? 'fixed' : 'random' }),
+        ...(fixedModel !== undefined && { fixedModel: modelMode === 'fixed' ? String(fixedModel || '') : '' }),
       },
     })
 
