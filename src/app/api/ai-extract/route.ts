@@ -251,12 +251,13 @@ export async function POST(request) {
       if (!extracted) {
         return NextResponse.json({ error: 'Could not parse AI response', raw: (singleRes.text || '').substring(0, 500) }, { status: 500 })
       }
-      // If we got questions but writing questions have empty modelAnswer, try a second pass to extract answers
-      var writingWithEmptyModel = (extracted.questions || []).filter(function(q: any) {
-        return (q.type === 'writing' || q.type === 'essay') && !(q.modelAnswer || q.answer || '').trim()
+      // If we got questions but some have empty modelAnswer (the document had
+      // no answers for them) → smart answer pass: extract-or-SOLVE (2026-ز)
+      var missingAnswers = (extracted.questions || []).filter(function(q: any) {
+        return !(q.modelAnswer || q.answer || '').trim()
       })
-      if (writingWithEmptyModel.length > 0) {
-        console.log('[AI Extract] Found', writingWithEmptyModel.length, 'writing questions with empty modelAnswer. Running answer extraction pass...')
+      if (missingAnswers.length > 0) {
+        console.log('[AI Extract] Found', missingAnswers.length, 'questions with empty modelAnswer. Running smart answer pass (extract-or-solve)...')
         var answersPrompt = buildAnswersOnlyPrompt(grade, type, extracted.questions)
         var answersParts = [{ text: answersPrompt }, qPart]
         var answersRes = await callGemini(apiKey, answersParts)
@@ -374,6 +375,12 @@ function buildSingleFilePrompt(grade: string, type: string): string {
   lines.push('- Do NOT skip any question from the document')
   lines.push('- Preserve the order of questions as they appear in the document')
   lines.push('- Match each question with its correct answer/solution')
+  lines.push('')
+  lines.push('SMART ANSWER RULE (very important — the teacher relies on this):')
+  lines.push('* If the document CONTAINS the answer for a question → extract THAT exact answer as written in the document.')
+  lines.push('* If a question has NO answer anywhere in the document → SOLVE it yourself completely: you are an expert math teacher, so produce a correct, clear, step-by-step solution that matches the grade curriculum level (Grade: ' + grade + ').')
+  lines.push('* NEVER leave modelAnswer empty. EVERY question must end up with a full modelAnswer (extracted from the document OR solved by you).')
+  lines.push('* For writing questions you solved yourself, also fill acceptedAnswers with the acceptable final answers.')
   lines.push('- Grade: ' + grade + ' | Type: ' + type)
   lines.push('')
   lines.push('Return ONE single valid JSON object — no text before or after, no markdown fences, no fields outside the object:')
@@ -449,7 +456,9 @@ function buildAnswersOnlyPrompt(grade: string, type: string, questions: any[]): 
   lines.push('- For MCQ: the correct option index (0=A, 1=B, 2=C, 3=D) and a step-by-step modelAnswer')
   lines.push('- For WRITING: a complete step-by-step modelAnswer AND an array of acceptedAnswers (acceptable final answers)')
   lines.push('')
-  lines.push('If an answer is not found in the document, return empty values for that question.')
+  lines.push('SMART RULE: If the answer for a question IS found in the document → extract it exactly as written in the document.')
+  lines.push('If the answer is NOT found in the document → SOLVE that question yourself completely: expert math teacher, correct, clear step-by-step solution matching the grade curriculum level (Grade: ' + grade + ').')
+  lines.push('NEVER return empty values: EVERY question must get a complete modelAnswer (extracted OR solved by you). For writing questions also fill acceptedAnswers.')
   lines.push('')
   lines.push('Rules:')
   lines.push('- ALL output text in English')

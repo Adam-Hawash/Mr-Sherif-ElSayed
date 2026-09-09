@@ -4,20 +4,20 @@
 // ============================================================
 // شغال في **كل صفحات المنصة** (متحمّل في الـ root layout) — زي منع F12
 // اللي في مشغل الفيديو بالظبط:
-//  • Win/⌘ + Shift + R → رسالة "🚫 التسجيل ممنوع" (تسجيل الشاشة)
-//  • Win/⌘ + Shift + S → رسالة "🚫 التسجيل ممنوع" (أداة القص)
+//  • Win/⌘ + Shift + R → "🛡️ الخاصية دي ممنوعة" (تسجيل الشاشة)
+//  • Win/⌘ + Shift + S → "🛡️ الخاصية دي ممنوعة" (أداة القص)
 //  • زرار PrintScreen  → رسالة + تفريغ الحافظة
 //  • F12 + Ctrl/Cmd+Shift+I/J/C + Ctrl+U → "🛡️ دي خاصية مقفولة"
-//  • (2026-و) منع السكرين شوت على الموبايل — أقصى الممكن من موقع ويب:
+//  • منع السكرين شوت/حفظ المحتوى على الموبايل — أقصى الممكن من موقع ويب:
 //     • كليك يمين + الضغط المطول ممنوعين (مفيش حفظ صورة/فيديو)
 //     • -webkit-touch-callout:none → قائمة iOS المطولة مختفية
 //     • تحديد النص ممنوع على المحتوى (مسموح بس في الحقول)
-//     • أول ما الصفحة تختفي (تبديل تطبيق/فتح مسجل) والرجوع → تنبيه
-//       "المحتوى محمي" — والفيديوهات نفسها ليها درع أقوى جوه المشغل.
-// ملاحظة صادقة: زرار السكرين شوت في الموبايل نفسه (الطاقة + الصوت) فوق
-// صلاحية أي موقع — حتى يوتيوب ونتفليكس مش قادرين يمنعوه — لكن كل محاولات
-// الحفظ/التسجيل من جوه التطبيق بتتكشف والمحتوى بيتغطى، والووترمارك باسم
-// الطالب ورقمه واصلة في كل إطار.
+//  • (2026-ز) مفيش أي شاشة أو تنبيه بيطلع لوحده — طلب المستر الحرفي:
+//    "ما تجبهاليش خالص" — مفيش دروع ولا رسائل مفاجئة على الشاشة.
+// ملاحظة صادقة: زرار السكرين شوت/التسجيل في الموبايل نفسه (الطاقة + الصوت
+// أو مسجل الشاشة) فوق صلاحية أي موقع في العالم — حتى يوتيوب ونتفليكس
+// مش قادرين يمنعوه — الووترمارك باسم الطالب ورقمه هو الخصم الحقيقي
+// لأي صورة/فيديو مسرب.
 // ============================================================
 import { useEffect } from 'react'
 
@@ -47,11 +47,12 @@ export function RecordingGuard() {
       var k = (e.key || '').toLowerCase()
       /* Win أو ⌘ — بنحاول نمسك المفتاح حتى لو المتصفح مبعتش metaKey كامل */
       var metaPressed = !!(e.metaKey || e.key === 'OS' || e.key === 'Meta' || e.keyCode === 91 || e.keyCode === 92)
-      /* Win/⌘ + Shift + R أو S → تسجيل شاشة / أداة القص */
+      /* Win/⌘ + Shift + R أو S → تسجيل شاشة / أداة القص (2026-ز طلب المستر:
+         الرسالة القصيرة "الخاصية دي ممنوعة") */
       if (metaPressed && e.shiftKey && (k === 'r' || k === 's')) {
         e.preventDefault()
         e.stopPropagation()
-        toast('🚫 التسجيل ممنوع')
+        toast('🛡️ الخاصية دي ممنوعة')
         return
       }
       /* Ctrl + Shift + R / S (طلب المستر حرفيًا 2026-ح: "منع كنترول شفت آر
@@ -60,12 +61,12 @@ export function RecordingGuard() {
       if (e.ctrlKey && e.shiftKey && (k === 'r' || k === 's')) {
         e.preventDefault()
         e.stopPropagation()
-        toast('🚫 العملية دي ممنوعة')
+        toast('🛡️ الخاصية دي ممنوعة')
         return
       }
       /* زرار PrintScreen → تنبيه + تفريغ الحافظة */
       if (k === 'printscreen' || e.keyCode === 44) {
-        toast('🚫 التسجيل ممنوع')
+        toast('🛡️ الخاصية دي ممنوعة')
         try {
           if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText('🔒 المحتوى محمي').catch(function () {})
         } catch (err) {}
@@ -95,23 +96,11 @@ export function RecordingGuard() {
       'input,textarea,[contenteditable]{-webkit-user-select:text!important;user-select:text!important}' +
       'img,video{-webkit-touch-callout:none!important;-webkit-user-drag:none!important}'
     document.head.appendChild(styleEl)
-    /* الرجوع من خفاء الصفحة (تبديل تطبيق/مسجل شاشة) → تنبيه تحمي موثّق */
-    var warnedReturn = 0
-    function onVis() {
-      try {
-        if (!document.hidden && Date.now() - warnedReturn > 60000) {
-          warnedReturn = Date.now()
-          toast('🛡️ المحتوى محمي — التصوير والتسجيل ممنوع')
-        }
-      } catch (e) {}
-    }
     window.addEventListener('keydown', onKey, true)
     document.addEventListener('contextmenu', onCtx, true)
-    document.addEventListener('visibilitychange', onVis, true)
     return function () {
       window.removeEventListener('keydown', onKey, true)
       document.removeEventListener('contextmenu', onCtx, true)
-      document.removeEventListener('visibilitychange', onVis, true)
       if (toastTimer) clearTimeout(toastTimer)
       var t = document.getElementById('rg-toast')
       if (t && t.parentNode) t.parentNode.removeChild(t)
