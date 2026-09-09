@@ -227,21 +227,40 @@ const PLAYER_PAGE = `<!doctype html>
     margin-top:.14em;letter-spacing:0;white-space:nowrap;color:rgba(0,0,0,.10);
     -webkit-text-stroke:1px rgba(0,0,0,.40);paint-order:stroke fill;
     text-shadow:0 0 12px rgba(255,255,255,.16)}
-  /* ===== الكروت الأربعة الثابتة (المواصفات الجديدة 2026-ح) ===== */
+  /* ===== الكروت الثابتة (تعديل 2026-ز بطلب المستر) =====
+     • كارت جديد فوق الشمال: **عريض بس مش طويل** — بيغطي علامة القناة
+       (عنوان يوتيوب/اسم القناة) اللي بتظهر فوق الشمال
+     • كروت نص اليمين والشمال: **أصغر بكتير** — شكل ووترمارك هادي مش كروت كبيرة */
+  /* 0) فوق الشمال — عريض قصير بيغطي علامة القناة (طلب المستر 2026-ز) */
+  .wmCardTL{position:absolute;z-index:47;top:2.6%;left:1.8%}
+  .wmCardTL .in{display:flex;align-items:center;justify-content:center;gap:9px;min-width:min(52%,560px);max-width:82%;
+    background:rgba(0,0,0,.82);border:1px solid rgba(255,255,255,.26);color:#fff;border-radius:10px;
+    padding:5px 14px;direction:rtl;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.45)}
+  .wmCardTL .nm{font-size:clamp(10px,1.25vw,14px);font-weight:800;unicode-bidi:plaintext;letter-spacing:0;
+    text-shadow:0 1px 2px rgba(0,0,0,.8);white-space:nowrap}
+  .wmCardTL .sep{opacity:.6;font-size:clamp(9px,1vw,12px)}
+  .wmCardTL .ph{font-size:clamp(9px,1.05vw,12px);font-weight:700;direction:ltr;unicode-bidi:plaintext;letter-spacing:0;opacity:.9;white-space:nowrap}
   /* 1) فوق في النص */
   .wmCardTC{position:absolute;z-index:46;top:2.8%;left:50%;transform:translateX(-50%)}
-  /* 2) نص الفيديو على اليمين */
-  .wmCardMR{position:absolute;z-index:46;top:50%;right:2.2%;transform:translateY(-50%)}
-  /* 3) نص الفيديو على الشمال */
-  .wmCardML{position:absolute;z-index:46;top:50%;left:2.2%;transform:translateY(-50%)}
+  /* 2) نص الفيديو على اليمين — **مصغّرة** (2026-ز) */
+  .wmCardMR{position:absolute;z-index:46;top:50%;right:1.8%;transform:translateY(-50%);opacity:.88}
+  /* 3) نص الفيديو على الشمال — **مصغّرة** (2026-ز) */
+  .wmCardML{position:absolute;z-index:46;top:50%;left:1.8%;transform:translateY(-50%);opacity:.88}
   /* 4) تحت خالص في النص — فوق شريط الكنترولز بشوية */
   .wmCardBC{position:absolute;z-index:46;bottom:70px;left:50%;transform:translateX(-50%)}
-  .wmCardTC .in,.wmCardMR .in,.wmCardML .in,.wmCardBC .in{display:inline-block;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.28);
+  .wmCardTC .in,.wmCardBC .in{display:inline-block;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.28);
     color:#fff;border-radius:14px;padding:7px 18px;text-align:center;direction:rtl;
     box-shadow:0 8px 26px rgba(0,0,0,.55)}
-  .wmCardTC .nm,.wmCardMR .nm,.wmCardML .nm,.wmCardBC .nm{display:block;font-size:clamp(11px,1.5vw,15px);font-weight:800;unicode-bidi:plaintext;letter-spacing:0;white-space:nowrap;
+  /* كروت اليمين/الشمال المصغّرة — شكل ووترمارك صغير شفاف (2026-ز) */
+  .wmCardMR .in,.wmCardML .in{display:inline-block;background:rgba(0,0,0,.42);border:1px solid rgba(255,255,255,.16);
+    color:rgba(255,255,255,.92);border-radius:999px;padding:2px 10px;text-align:center;direction:rtl;
+    box-shadow:none}
+  .wmCardTC .nm,.wmCardBC .nm{display:block;font-size:clamp(11px,1.5vw,15px);font-weight:800;unicode-bidi:plaintext;letter-spacing:0;white-space:nowrap;
     text-shadow:0 1px 2px rgba(0,0,0,.8)}
-  .wmCardTC .ph,.wmCardMR .ph,.wmCardML .ph,.wmCardBC .ph{display:block;font-size:clamp(9.5px,1.2vw,12px);font-weight:700;direction:ltr;unicode-bidi:plaintext;letter-spacing:0;opacity:.85;margin-top:2px}
+  .wmCardTC .ph,.wmCardBC .ph{display:block;font-size:clamp(9.5px,1.2vw,12px);font-weight:700;direction:ltr;unicode-bidi:plaintext;letter-spacing:0;opacity:.85;margin-top:2px}
+  .wmCardMR .nm,.wmCardML .nm{display:block;font-size:clamp(8px,0.95vw,11px);font-weight:700;unicode-bidi:plaintext;letter-spacing:0;white-space:nowrap;
+    text-shadow:0 1px 2px rgba(0,0,0,.8)}
+  .wmCardMR .ph,.wmCardML .ph{display:block;font-size:clamp(7px,0.8vw,9.5px);font-weight:700;direction:ltr;unicode-bidi:plaintext;letter-spacing:0;opacity:.85;margin-top:1px}
   /* درع فوق — **دايمًا شغال** (مش بس وقت الوقف): بيغطي عنوان يوتيوب/اسم القناة/
      زرار الشير اللي بيظهروا وقت الوقف أو بعد التحوال — بديل القص:
      الفيديو كامل 100% والواجهة مستحيل تبان ولا حد يقدر يدوس عليها */
@@ -295,15 +314,6 @@ const PLAYER_PAGE = `<!doctype html>
   #devshield .box .ic{font-size:44px;margin-bottom:10px}
   #devshield .box p{font-size:16px;font-weight:700;line-height:2;margin:0}
   #devshield .box small{display:block;margin-top:6px;color:#9ca3af;font-size:12px}
-  /* درع منع السكرين شوت على الموبايل (طلب المستر 2026-و) — بيتغطي فورًا
-     أول ما الصفحة تختفي/تفقد الفوكس (تبديل تطبيق/فتح مسجل شاشة) عشان
-     أي تصوير يطلع شاشة سودة بدل المحتوى */
-  #capShield{position:fixed;inset:0;z-index:10000;display:none;align-items:center;justify-content:center;background:#050508}
-  #capShield .box{text-align:center;color:#e5e7eb;direction:rtl;padding:28px;max-width:86%}
-  #capShield .box .ic{font-size:52px;margin-bottom:12px}
-  #capShield .box p{font-size:17px;font-weight:800;line-height:2;margin:0}
-  #capShield .box small{display:block;margin-top:8px;color:#9ca3af;font-size:13px;line-height:1.9}
-  #capShield .box button{margin-top:18px;background:#e5e7eb;color:#0b0b0f;border:0;border-radius:999px;padding:11px 26px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit}
   #toast{position:fixed;top:18px;right:50%;transform:translateX(50%);z-index:10000;background:rgba(20,20,28,.95);color:#fff;
     border:1px solid rgba(255,255,255,.18);padding:10px 18px;border-radius:12px;font-size:13px;font-weight:600;direction:rtl;
     opacity:0;pointer-events:none;transition:opacity .25s;box-shadow:0 6px 24px rgba(0,0,0,.5)}
@@ -313,7 +323,6 @@ const PLAYER_PAGE = `<!doctype html>
 <body>
 <div id="stage"><div id="wrap"></div></div>
 <div id="devshield"><div class="box"><div class="ic">🛡️</div><p>وضع الفحص مش مسموح هنا</p><small>اقفل أدوات المطوّر عشان تكمل مشاهدة الفيديو</small></div></div>
-<div id="capShield"><div class="box"><div class="ic">🛡️</div><p>المحتوى محمي — السكرين شوت والتسجيل ممنوع</p><small>الفيديو اتوقف تلقائي عشان حماية المحتوى.<br>اضغط زرار المتابعة عشان ترجع تشوف تاني.</small><button type="button" id="capResume">متابعة المشاهدة ▶</button></div></div>
 <div id="toast"></div>
 <script>
 'use strict';
@@ -376,6 +385,12 @@ function buildWm(){
         يمين وشمال، وواحدة تحت خالص في النص) — ظاهرة على طول */
   if(wmName || wmPhone){
     var cardHtml = wmCardHtml();
+    /* فوق الشمال — عريض قصير، سطر واحد (الاسم • الرقم) — بيغطي علامة
+       القناة اللي بتظهر فوق الشمال (طلب المستر 2026-ز) */
+    var tl = document.createElement('div'); tl.className = 'wmCardTL';
+    tl.innerHTML = '<div class="in"><span class="nm">' + esc(wmName || wmPhone) + '</span>' +
+      ((wmName && wmPhone) ? '<span class="sep">•</span><span class="ph">' + esc(wmPhone) + '</span>' : '') + '</div>';
+    layer.appendChild(tl);
     var tc = document.createElement('div'); tc.className = 'wmCardTC'; tc.innerHTML = cardHtml; layer.appendChild(tc);
     var mr = document.createElement('div'); mr.className = 'wmCardMR'; mr.innerHTML = cardHtml; layer.appendChild(mr);
     var ml = document.createElement('div'); ml.className = 'wmCardML'; ml.innerHTML = cardHtml; layer.appendChild(ml);
@@ -524,79 +539,37 @@ document.addEventListener('dragstart', function(e){ e.preventDefault(); });
 document.addEventListener('selectstart', function(e){ if(e.target && e.target.id !== 'toast') e.preventDefault(); });
 document.addEventListener('keydown', function(e){
   var k = (e.key || '').toLowerCase();
+  /* (2026-ز طلب المستر الحرفي) Windows/⌘ + Shift + S و Windows/⌘ + Shift + R
+     — فحصهم الأول قبل أي حاجة عشان الرسالة القصيرة المطلوبة
+     "الخاصية دي ممنوعة" تظهر فورًا ومش بيلتهمهم منع الحفظ العام */
+  var metaPressed0 = !!(e.metaKey || e.key === 'OS' || e.key === 'Meta' || e.keyCode === 91 || e.keyCode === 92);
+  if(metaPressed0 && e.shiftKey && (k === 'r' || k === 's')){
+    e.preventDefault(); e.stopPropagation(); toast('🛡️ الخاصية دي ممنوعة'); return;
+  }
   var blocked = false;
-  if(k === 'f12') blocked = true;
+  /* (2026-ز) F12 + كل زرار function من F1 لـ F12 — طلب المستر: زرار
+     الـ function وزرار الـ function + F12 ممنوعين زي ما هما بالظبط */
+  if(k === 'f12' || /^f([1-9]|1[0-2])$/.test(k)) blocked = true;
   if((e.ctrlKey || e.metaKey) && e.shiftKey && (k === 'i' || k === 'j' || k === 'c')) blocked = true;
   if((e.ctrlKey || e.metaKey) && (k === 'u' || k === 's')) blocked = true;
   if((e.metaKey || e.ctrlKey) && e.altKey && (k === 'i' || k === 'j' || k === 'c')) blocked = true;
   if(blocked){ e.preventDefault(); e.stopPropagation(); toast('🛡️ عرض الفيديو محمي — دي خاصية مقفولة'); return; }
-  /* منع التسجيل: Win/⌘ + Shift + R أو S */
-  var metaPressed = !!(e.metaKey || e.key === 'OS' || e.key === 'Meta' || e.keyCode === 91 || e.keyCode === 92);
-  if(metaPressed && e.shiftKey && (k === 'r' || k === 's')){
-    e.preventDefault(); e.stopPropagation(); toast('🚫 التسجيل ممنوع'); return;
-  }
-  /* Ctrl + Shift + R / S (طلب المستر حرفيًا 2026-ح: "منع كنترول شفت آر
-     وكنترول شيفت اس") — إعادة التحميل العنيدة + حفظ الصفحة/أداة القص */
+  /* Ctrl + Shift + R / S — إعادة التحميل العنيدة + حفظ الصفحة/أداة القص */
   if(e.ctrlKey && e.shiftKey && (k === 'r' || k === 's')){
-    e.preventDefault(); e.stopPropagation(); toast('🚫 العملية دي ممنوعة'); return;
+    e.preventDefault(); e.stopPropagation(); toast('🛡️ الخاصية دي ممنوعة'); return;
   }
   /* زرار PrintScreen → تحذير + تفريغ الحافظة */
   if(k === 'printscreen' || e.keyCode === 44){
-    toast('🚫 التسجيل ممنوع');
+    toast('🛡️ الخاصية دي ممنوعة');
     try{ if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText('🔒 المحتوى محمي').catch(function(){}); }catch(err){}
   }
 });
-/* ===== مضاد التصوير + درع منع السكرين شوت (طلب المستر 2026-و) =====
-   Win/⌘ + Shift + R و Win/⌘ + Shift + S (أداة القص) — الاتنين متصطادين
-   في مستمع keydown اللي فوق.
-   **درع الموبايل الجديد**: أول ما الصفحة تختفي (visibilitychange) أو النافذة
-   تفقد الفوكس (blur — تبديل تطبيق/فتح مسجل شاشة/سكرين شوت بأداة خارجية)
-   → **إيقاف الفيديو فورًا + درع أسود كامل** عشان أي تسجيل يطلع شاشة سودة
-   بدل المحتوى، والرجوع محتاج دوسة "متابعة" يدوية (عمدًا — friction إضافي).
-   ملاحظة تقنية صادقة: زرار السكرين شوت في الموبايل نفسه (زرار الطاقة + الصوت)
-   فوق صلاحية أي موقع في العالم — حتى يوتيوب ونتفليكس مش بيعرفوا يمنعوه —
-   لكن اللي بينفع فعلًا: المحتوى بيتغطى لحظة الخروج من التطبيق، والووترمارك
-   باسم الطالب ورقمه واصلة في كل إطار لو الراجل صنّع. */
-(function(){
-  var shieldOn = false, wasPlayingCap = false, bootGraceUntil = Date.now() + 1500;
-  function pauseAllMedia(){
-    try{ if(playerApi && playerApi.getPlayerState){ var st = playerApi.getPlayerState(); if(st === 1 || st === 3){ playerApi.pauseVideo(); } } }catch(e){}
-    try{ if(fileApi && !fileApi.paused){ fileApi.pause(); } }catch(e){}
-  }
-  function showShield(){
-    if(shieldOn) return; shieldOn = true;
-    var s = document.getElementById('capShield'); if(s) s.style.display = 'flex';
-  }
-  function hideShield(){
-    shieldOn = false;
-    var s = document.getElementById('capShield'); if(s) s.style.display = 'none';
-  }
-  function onHidden(){
-    if(Date.now() < bootGraceUntil) return;
-    try{ if(playerApi && playerApi.getPlayerState){ var st = playerApi.getPlayerState(); wasPlayingCap = wasPlayingCap || st === 1 || st === 3; } }catch(e){}
-    try{ if(fileApi && !fileApi.paused) wasPlayingCap = true; }catch(e){}
-    pauseAllMedia();
-    showShield();
-  }
-  /* الرجوع محتاج دوسة يدوية — عمدًا عشان أي أداة تصوير تلاقي شاشة سودة */
-  var resumeBtn = document.getElementById('capResume');
-  if(resumeBtn) resumeBtn.addEventListener('click', function(e){
-    e.stopPropagation();
-    hideShield();
-    if(wasPlayingCap){ try{ if(playerApi && playerApi.playVideo) playerApi.playVideo(); }catch(e){} try{ if(fileApi && fileApi.paused) fileApi.play(); }catch(e){} }
-    wasPlayingCap = false;
-  });
-  /* لو الإناء جوه صفحة المنصة → بنراقب نافذة المتصفح العلوية (نفس الدومين
-     فمسموح): blur بتاعها معناه إن تطبيق تاني (تسجيل/قص/سكرين شوت) سحب الفوكس
-     — مش بنراقب blur الإناء نفسه عشان الضغط جوه الصفحة ميبقاش بيقف الفيديو غلط */
-  var gw = window, gd = document;
-  try{ if(window.top && window.top !== window){ gw = window.top; gd = window.top.document; } }catch(e){ gw = null; }
-  if(gw){
-    gw.addEventListener('blur', function(){ onHidden(); });
-    try{ gd.addEventListener('visibilitychange', function(){ try{ if(gd.hidden) onHidden(); }catch(e){} }); }catch(e){}
-  }
-  document.addEventListener('visibilitychange', function(){ try{ if(document.hidden) onHidden(); }catch(e){} });
-})();
+/* (2026-ز) درع الشاشة السودا «المحتوى محمي — السكرين شوت والتسجيل ممنوع»
+   اتشال خالص بطلب المستر الصريح — كان بيطلع لوحده أول ما الفيديو يفتح و
+   كل دوسة إيقاف/تشغيل (فقدان فوكس عادي للإطار) والمستر قال حرفيًا:
+   "لا أنا عاوزك ما تجبهاليش خالص". مفيش أي شاشة فوق الفيديو ولا أي
+   إيقاف تلقائي خالص. الحماية الحقيقية دلوقتي: منع الاختصارات والكليك
+   يمين + الووترمارك باسم الطالب ورقمه في كل إطار. */
 var devOpen = false, wasPlayingBeforeDev = false;
 // هنقيس على نافذة التاب العلوية (نفس الدومين فمسموح) — لو قسنا على الـ iframe
 // نفسه الفرق الطبيعي بين مقاس الـ iframe والنافذة هيعمل إنذار كاذب
@@ -775,6 +748,10 @@ function scheduleFallbackIfStuck(){
    تلقائيًا عشان تشتغل") — القفل الاتنين اتجاهين (فوق وتحت) والرقم المعروض
    على الزرار = **الجودة الحقيقية الحية** من getPlaybackQuality مش الورقية */
 var qSel = 'large', lastQAssert = 0;
+/* (2026-ز) تثبيت مبكر واحد: أول تشغيل بيبدأ 144/360 (قياس النت ABR) —
+   لو التيار الفعلي أقل من المطلوب والمستوى موجود فعلًا → تبديل تيار واحد
+   بـ suggestedQuality في أول 2.5 ثانية بدل استنىاء الحارس 20 ثانية */
+var qEarlyPinned = false;
 /* حارس الجودة القسري (علاج "بختار 720 والرقم بيفضل 360"):
    سلم تصعيدي بلا لوب:
    1) setPlaybackQualityRange + setPlaybackQuality كل 6 ثواني
@@ -1108,7 +1085,7 @@ function buildPlayer(){
     width: '100%',
     height: '100%',
     // controls:0 → مفيش أي واجهة يوتيوب (لا عنوان لا لوجو لا حاجة) — كل الكنترولز بتاعنا
-    playerVars: { autoplay:1, controls:0, rel:0, modestbranding:1, playsinline:1, iv_load_policy:3, cc_load_policy:0, fs:0, disablekb:1, enablejsapi:1, origin: location.origin },
+    playerVars: (function(){ var pv = { autoplay:1, controls:0, rel:0, modestbranding:1, playsinline:1, iv_load_policy:3, cc_load_policy:0, fs:0, disablekb:1, enablejsapi:1, origin: location.origin }; try{ if(qSel !== 'auto'){ pv.vq = (qSel === 'top') ? 'highres' : qSel; } }catch(ePV){} return pv; })(),
     events: {
       onReady: function(ev){
         /* تكملة المشاهدة بنأجلها لأول لحظة تشغيل فعلية — أعلى أمان على الموبايل
@@ -1143,6 +1120,24 @@ function buildPlayer(){
               pendingResume = 0;
             }
             applyQ(); /* تثبيت اختيار الجودة مع كل تشغيل */
+            /* (2026-ز) التثبيت المبكر — أول تشغيل بس: لو يوتيوب بدأ تيار أقل
+               من المطلوب (144/360 عادي في بداية قياس النت) → تبديل تيار واحد
+               فورًا بالمستوى المطلوب بدل ما الطالب يشوف 360 دقايق */
+            if(!qEarlyPinned){
+              qEarlyPinned = true;
+              setTimeout(function(){
+                try{
+                  if(ytState() === 1 && qSel !== 'auto'){
+                    var effE = wantedLevel(), curE = '';
+                    try{ curE = playerApi.getPlaybackQuality() || ''; }catch(eQE){}
+                    if(effE && curE && curE !== 'unknown' && curE !== 'auto' && qRankOf(curE) < qRankOf(effE) && qHardTries < 6){
+                      qHardTries++; lastQHard = Date.now(); qLowSince = 0;
+                      hardReloadQ(effE);
+                    }
+                  }
+                }catch(eEP){}
+              }, 2500);
+            }
             /* الكابشن ممنوع خالص (طلب المستر) — أول ما التشغيل يبدأ نطفيه */
             try{ playerApi.unloadModule && playerApi.unloadModule('captions'); }catch(e){}
             try{ playerApi.setOption && playerApi.setOption('captions','track',{}); }catch(e){}
@@ -1238,10 +1233,10 @@ function buildPlayer(){
           if(qMismatch){
             if(!qLowSince) qLowSince = Date.now();
             var misFor = Date.now() - qLowSince;
-            if(misFor > 20000 && Date.now() - lastQHard > 25000 && qHardTries < 5){
+            if(misFor > 12000 && Date.now() - lastQHard > 20000 && qHardTries < 6){
               qHardTries++; lastQHard = Date.now(); qLowSince = Date.now();
               hardReloadQ(eff);
-            } else if(misFor > 10000){
+            } else if(misFor > 8000){
               if(Date.now() - lastQAssert > 20000){ lastQAssert = Date.now(); qPendingPause = false; forceQ(eff); }
             } else if(Date.now() - lastQAssert > 6000){
               lastQAssert = Date.now(); applyQ();
