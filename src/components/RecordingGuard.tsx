@@ -8,10 +8,16 @@
 //  • Win/⌘ + Shift + S → رسالة "🚫 التسجيل ممنوع" (أداة القص)
 //  • زرار PrintScreen  → رسالة + تفريغ الحافظة
 //  • F12 + Ctrl/Cmd+Shift+I/J/C + Ctrl+U → "🛡️ دي خاصية مقفولة"
-// ملاحظة صادقة: اختصارات النظام (Win+Shift+S) بتتشال من ويندوز قبل المتصفح
-// فمينفعش نمنعها 100% من جوه صفحة ويب — لكن أول ما المحاولة توصل بنكشفها
-// وننبّه فورًا، وفي مشغل الفيديو فيه طبقة تانية: أي فقدان فوكس (زي ما
-// برنامج تصوير يفتح) بيوطّف الفيديو فورًا.
+//  • (2026-و) منع السكرين شوت على الموبايل — أقصى الممكن من موقع ويب:
+//     • كليك يمين + الضغط المطول ممنوعين (مفيش حفظ صورة/فيديو)
+//     • -webkit-touch-callout:none → قائمة iOS المطولة مختفية
+//     • تحديد النص ممنوع على المحتوى (مسموح بس في الحقول)
+//     • أول ما الصفحة تختفي (تبديل تطبيق/فتح مسجل) والرجوع → تنبيه
+//       "المحتوى محمي" — والفيديوهات نفسها ليها درع أقوى جوه المشغل.
+// ملاحظة صادقة: زرار السكرين شوت في الموبايل نفسه (الطاقة + الصوت) فوق
+// صلاحية أي موقع — حتى يوتيوب ونتفليكس مش قادرين يمنعوه — لكن كل محاولات
+// الحفظ/التسجيل من جوه التطبيق بتتكشف والمحتوى بيتغطى، والووترمارك باسم
+// الطالب ورقمه واصلة في كل إطار.
 // ============================================================
 import { useEffect } from 'react'
 
@@ -76,12 +82,41 @@ export function RecordingGuard() {
         toast('🛡️ الخاصية دي مقفولة')
       }
     }
+    /* (2026-و) منع السكرين شوت/حفظ المحتوى على الموبايل:
+       1) contextmenu ممنوع (الضغط المطول على أندرويد بينده الحدث ده)
+       2) CSS: قائمة iOS المطولة مختفية + تحديد النص مقفول على المحتوى
+          (مفتوح بس في input/textarea عشان الكتابة تفضل شغالة) */
+    function onCtx(e: Event) { e.preventDefault(); toast('🛡️ المحتوى محمي — الحفظ ممنوع') }
+    var styleEl = document.createElement('style')
+    styleEl.id = 'rg-guard-css'
+    styleEl.textContent =
+      'html{-webkit-touch-callout:none!important}' +
+      'body{-webkit-user-select:none!important;user-select:none!important}' +
+      'input,textarea,[contenteditable]{-webkit-user-select:text!important;user-select:text!important}' +
+      'img,video{-webkit-touch-callout:none!important;-webkit-user-drag:none!important}'
+    document.head.appendChild(styleEl)
+    /* الرجوع من خفاء الصفحة (تبديل تطبيق/مسجل شاشة) → تنبيه تحمي موثّق */
+    var warnedReturn = 0
+    function onVis() {
+      try {
+        if (!document.hidden && Date.now() - warnedReturn > 60000) {
+          warnedReturn = Date.now()
+          toast('🛡️ المحتوى محمي — التصوير والتسجيل ممنوع')
+        }
+      } catch (e) {}
+    }
     window.addEventListener('keydown', onKey, true)
+    document.addEventListener('contextmenu', onCtx, true)
+    document.addEventListener('visibilitychange', onVis, true)
     return function () {
       window.removeEventListener('keydown', onKey, true)
+      document.removeEventListener('contextmenu', onCtx, true)
+      document.removeEventListener('visibilitychange', onVis, true)
       if (toastTimer) clearTimeout(toastTimer)
       var t = document.getElementById('rg-toast')
       if (t && t.parentNode) t.parentNode.removeChild(t)
+      var s = document.getElementById('rg-guard-css')
+      if (s && s.parentNode) s.parentNode.removeChild(s)
     }
   }, [])
   return null

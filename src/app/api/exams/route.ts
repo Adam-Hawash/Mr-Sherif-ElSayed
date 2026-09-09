@@ -34,11 +34,23 @@ function pickModelIdx(examId: string, studentId: string, n: number): number {
   for (var i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0
   return n > 0 ? h % n : 0
 }
-function applyRandomModel(exam: any, studentId: string) {
+function applyModelForStudent(exam: any, studentId: string) {
   try {
     var models = exam && exam.models ? JSON.parse(exam.models) : []
     if (!Array.isArray(models) || models.length === 0) return exam
-    var idx = pickModelIdx(exam.id, studentId, models.length)
+    /* (2026-و) طلب المستر: "ما يكونش أساسًا إنه عشوائي — ممكن أحط عشوائي
+       ممكن أحط نموذج واحد بس" → لو المستر اختار "نموذج ثابت" كل الطلاب
+       بيشوفوا **نفس النموذج** اللي هو حدده (fixedModel)، ولو عشوائي
+       يفضل الوضع القديم (نموذج ثابت لكل حساب بالهاش) */
+    var idx = -1
+    if (exam.modelMode === 'fixed' && exam.fixedModel) {
+      for (var f = 0; f < models.length; f++) {
+        if (models[f] && models[f].name === exam.fixedModel) { idx = f; break }
+      }
+      if (idx < 0) idx = 0 /* النموذج المحدد اتمسح → الأول */
+    } else {
+      idx = pickModelIdx(exam.id, studentId, models.length)
+    }
     var m = models[idx]
     if (!m) return exam
     // **مهم**: بنشيل حقل النماذج كله من الرد — أسئلة النماذج التانية
@@ -91,8 +103,9 @@ export async function GET(request: NextRequest) {
       db.exam.count({ where }),
     ])
 
-    // توزيع النموذج العشوائي للطالب (لو فيه نماذج) — وإلا الامتحان زي ما هو
-    const outExams = studentId ? exams.map(function (e: any) { return applyRandomModel(e, studentId) }) : exams
+    // توزيع النموذج للطالب (عشوائي ثابت أو نموذج واحد ثابت للكل حسب اختيار
+    // المستر) — وإلا الامتحان زي ما هو
+    const outExams = studentId ? exams.map(function (e: any) { return applyModelForStudent(e, studentId) }) : exams
 
     return NextResponse.json({ exams: outExams, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
   } catch (error: any) {
@@ -104,7 +117,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { title, content, grade, filePath, fileType, questions, models, passScore, answerKeyPath, answerKeyType, thumbnail } = body
+    const { title, content, grade, filePath, fileType, questions, models, modelMode, fixedModel, passScore, answerKeyPath, answerKeyType, thumbnail } = body
 
     if (!title || !grade) {
       return NextResponse.json({ error: 'Title and grade are required' }, { status: 400 })
@@ -122,6 +135,8 @@ export async function POST(request: NextRequest) {
         thumbnail: thumbnail || '',
         questions: questions || '',
         models: models || '',
+        modelMode: modelMode === 'fixed' ? 'fixed' : 'random',
+        fixedModel: (modelMode === 'fixed' && fixedModel) ? String(fixedModel) : '',
         passScore: passScore ? parseFloat(passScore) : 50,
       },
     })

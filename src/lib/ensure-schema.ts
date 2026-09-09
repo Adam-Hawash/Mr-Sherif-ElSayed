@@ -63,6 +63,9 @@ var SCHEMA_COLUMNS = [
   ['Exam', 'content', 'TEXT', "DEFAULT ''"],
   // نماذج الامتحان العشوائية (JSON array) — كل طالب بيشوف نموذج واحد عشوائي
   ['Exam', 'models', 'TEXT', "DEFAULT ''"],
+  // طريقة التوزيع (2026-و): random = عشوائي ثابت لكل طالب | fixed = نموذج واحد للكل
+  ['Exam', 'modelMode', 'TEXT', "DEFAULT 'random'"],
+  ['Exam', 'fixedModel', 'TEXT', "DEFAULT ''"],
   ['Exam', 'passScore', 'REAL', 'DEFAULT 50'],
   ['ExamResult', 'score', 'REAL', 'DEFAULT 0'],
   ['ExamResult', 'maxScore', 'REAL', 'DEFAULT 100'],
