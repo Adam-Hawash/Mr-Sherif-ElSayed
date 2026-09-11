@@ -12,11 +12,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Loader2, Search, Users, X, CheckSquare, Square } from 'lucide-react'
+import { Loader2, Search, Users, X, Check } from 'lucide-react'
 import { toast } from 'sonner'
+
+/* ملاحظة (إصلاح بناء Vercel): بنستخدم checkbox مخصص + overflow div عادي
+   بدل @/components/ui/checkbox وscroll-area — باكدجات radix بتاعتهم
+   مش متسطبة في المنصة (أخطاء tsc الباسلاين) وأي import ليهم بيفشل البيلد */
 
 type StudentRow = { id: string; name: string; phone?: string; grade?: string }
 
@@ -111,6 +113,7 @@ export function StudentTargetPicker({
       var res = await fetch(apiPath + '/' + itemId, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
+        /* (2026-و26) auth الأدمن — الـ PATCH بيتحقق ضد adminId فلازم نبعته */
         body: JSON.stringify({ adminId: adminId || '', targetStudentIds: ids }),
       })
       if (res.ok) {
@@ -159,7 +162,7 @@ export function StudentTargetPicker({
               </Button>
             </div>
 
-            <ScrollArea className="h-[280px] rounded-lg border">
+            <div className="h-[280px] overflow-y-auto rounded-lg border custom-scrollbar" style={{ scrollbarWidth: 'thin' }}>
               <div className="p-1.5 space-y-0.5">
                 {filtered.length === 0 ? (
                   <p className="text-xs text-muted-foreground text-center py-8">مفيش نتائج</p>
@@ -168,18 +171,19 @@ export function StudentTargetPicker({
                   return (
                     <label key={s.id}
                       className={'flex items-center gap-2.5 rounded-md px-2 py-1.5 cursor-pointer transition-colors ' + (checked ? 'bg-primary/10' : 'hover:bg-muted/60')}>
-                      <Checkbox checked={checked} onCheckedChange={function () { toggle(s.id) }} className="shrink-0" />
+                      {/* checkbox مخصص — بدون باكدجات خارجية */}
+                      <span className={'flex h-4 w-4 shrink-0 items-center justify-center rounded border-2 transition-colors ' + (checked ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/40 bg-transparent')}>
+                        {checked && <Check className="h-3 w-3" />}
+                      </span>
                       <div className="min-w-0 flex-1">
                         <p className="text-xs font-medium truncate">{s.name}</p>
                         <p className="text-[10px] text-muted-foreground truncate" dir="ltr">{s.phone}{s.grade ? ' • ' + s.grade : ''}</p>
                       </div>
-                      {checked && <CheckSquare className="h-3.5 w-3.5 text-primary shrink-0" />}
-                      {!checked && <Square className="h-3.5 w-3.5 text-muted-foreground/40 shrink-0" />}
                     </label>
                   )
                 })}
               </div>
-            </ScrollArea>
+            </div>
 
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <Badge variant={selected.size === 0 ? 'secondary' : 'default'} className="text-[10px] gap-1">
