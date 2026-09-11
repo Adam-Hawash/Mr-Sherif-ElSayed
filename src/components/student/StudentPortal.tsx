@@ -372,10 +372,37 @@ function videoKindOf(v: any): 'youtube' | 'file' | 'link' | 'none' {
 function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, videoProgress, studentStatus, isPaidAccess, studentName, studentPhone }: { videos: VideoType[]; watchedIds: Set<string>; approvedVideoIds: Set<string>; studentId: string; grade: string; videoProgress: Record<string, number>; studentStatus?: string; isPaidAccess?: boolean; studentName?: string; studentPhone?: string }) {
   const { setView, setPendingPaymentVideo } = useAppStore()
   const [localWatched, setLocalWatched] = useState(watchedIds)
+  // (2026-ف — رجعة نظام الجدولة القديم زي ما كان بالظبط)
+  const [videoSchedules, setVideoSchedules] = useState<Record<string, any>>({})
+  const [hiddenVideoIds, setHiddenVideoIds] = useState<Set<string>>(new Set())
   const [activeLessonVideo, setActiveLessonVideo] = useState<VideoType | null>(null)
 
-  // ملاحظة: الجدولة (العداد اللي كان بيمنع مشاهدة الفيديو) اتشالت خالص
-  // بطلب المستر — "عايز أغفل الجدولة دي" — فالفيديوهات كلها ظاهرة وقابلة للتشغيل.
+  // Load video schedules for this student
+  useEffect(() => {
+    if (!studentId) return
+    fetch('/api/video-schedule?studentId=' + studentId)
+      .then(function(r) { return r.json() })
+      .then(function(data) {
+        var map: Record<string, any> = {}
+        ;(data.schedules || []).forEach(function(s: any) {
+          map[s.videoId] = s
+        })
+        setVideoSchedules(map)
+        setHiddenVideoIds(new Set(data.hiddenVideoIds || []))
+      })
+      .catch(function() {})
+  }, [studentId])
+
+  // Check if video is locked for this student (scheduled but not yet unlocked)
+  const isVideoLocked = (videoId: string): { locked: boolean; unlockAt?: Date; schedule?: any } => {
+    var sched = videoSchedules[videoId]
+    if (!sched || !sched.unlockAt) return { locked: false }
+    var unlockDate = new Date(sched.unlockAt)
+    if (unlockDate.getTime() > Date.now()) {
+      return { locked: true, unlockAt: unlockDate, schedule: sched }
+    }
+    return { locked: false }
+  }
 
   // Only an explicitly approved, non-paid student gets free access. A paid account always pays for priced videos.
   const isFreeStudent = studentStatus === 'approved' && isPaidAccess !== true
@@ -466,6 +493,8 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
     <>
       <div className="grid gap-4 md:grid-cols-2">
       {orderedVideos.map((video) => {
+        // Skip hidden videos entirely (الجدولة القديمة — الإخفاء)
+        if (hiddenVideoIds.has(video.id)) return null
         const kind = videoKindOf(video)
         const isVideoFile = kind === 'file'
         const isWatched = localWatched.has(video.id)
@@ -480,6 +509,27 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
         const isSeqLocked = lockedMap[video.id] === true
         const prevVideoId = prevVideoMap[video.id]
         const prevPct = prevVideoId ? (mergedProgress[prevVideoId] || 0) : 0
+        const scheduleInfo = isVideoLocked(video.id)
+
+        // If video is scheduled and locked, show countdown instead (الجدولة القديمة)
+        if (scheduleInfo.locked && scheduleInfo.unlockAt) {
+          return (
+            <Card key={video.id} className="overflow-hidden border-amber-500/30">
+              <div className="relative aspect-video bg-gradient-to-br from-amber-900/50 to-black flex flex-col items-center justify-center gap-3 p-4">
+                <div className="h-14 w-14 rounded-full bg-amber-500/20 flex items-center justify-center">
+                  <Lock className="h-7 w-7 text-amber-400" />
+                </div>
+                <div className="text-center">
+                  <p className="text-white font-bold text-sm mb-1">الفيديو هيفتح بعد ما تحضر الحصة بتاعتك</p>
+                  <CountdownTimer unlockAt={scheduleInfo.unlockAt} />
+                </div>
+              </div>
+              <CardContent className="p-3">
+                <h3 className="font-semibold text-sm">{video.title}</h3>
+              </CardContent>
+            </Card>
+          )
+        }
 
         return (
           <Card key={video.id} className={`overflow-hidden transition-all ${isWatched ? 'border-emerald-500/30' : ''}`}>
@@ -2626,3 +2676,49 @@ function StudentGuide({ onClose, onEnterPortal }: { onClose: () => void; onEnter
   )
 }
 
+
+/* ========== Countdown Timer for scheduled videos (الجدولة القديمة) ========== */
+function CountdownTimer({ unlockAt }: { unlockAt: Date }) {
+  const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 })
+
+  useEffect(() => {
+    var interval = setInterval(function() {
+      var now = Date.now()
+      var diff = unlockAt.getTime() - now
+      if (diff <= 0) {
+        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 })
+        clearInterval(interval)
+        return
+      }
+      var days = Math.floor(diff / (1000 * 60 * 60 * 24))
+      var hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+      var minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+      var seconds = Math.floor((diff % (1000 * 60)) / 1000)
+      setTimeLeft({ days, hours, minutes, seconds })
+    }, 1000)
+    return function() { clearInterval(interval) }
+  }, [unlockAt])
+
+  return (
+    <div className="flex items-center justify-center gap-2 text-white">
+      {timeLeft.days > 0 && (
+        <div className="text-center">
+          <div className="text-2xl font-bold bg-white/10 rounded-lg px-2 py-1 min-w-[40px]">{timeLeft.days}</div>
+          <div className="text-[9px] text-white/70">يوم</div>
+        </div>
+      )}
+      <div className="text-center">
+        <div className="text-2xl font-bold bg-white/10 rounded-lg px-2 py-1 min-w-[40px]">{String(timeLeft.hours).padStart(2, '0')}</div>
+        <div className="text-[9px] text-white/70">ساعة</div>
+      </div>
+      <div className="text-center">
+        <div className="text-2xl font-bold bg-white/10 rounded-lg px-2 py-1 min-w-[40px]">{String(timeLeft.minutes).padStart(2, '0')}</div>
+        <div className="text-[9px] text-white/70">دقيقة</div>
+      </div>
+      <div className="text-center">
+        <div className="text-2xl font-bold bg-white/10 rounded-lg px-2 py-1 min-w-[40px]">{String(timeLeft.seconds).padStart(2, '0')}</div>
+        <div className="text-[9px] text-white/70">ثانية</div>
+      </div>
+    </div>
+  )
+}

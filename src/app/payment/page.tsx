@@ -31,7 +31,7 @@ function PaymentContent() {
   const [method, setMethod] = useState("فودافون كاش (Vodafone Cash)");
   const [studentName, setStudentName] = useState(student?.name || "");
   const [studentPhone, setStudentPhone] = useState(student?.phone || "");
-  const [studentGrade, setStudentGrade] = useState(student?.grade || "الصف الثالث الثانوي");
+  const [studentGrade, setStudentGrade] = useState(student?.grade || "أولى بكالوريا");
   const [transactionRef, setTransactionRef] = useState("");
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(false);

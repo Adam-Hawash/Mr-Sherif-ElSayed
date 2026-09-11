@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
         name: String(name).trim(),
         phone: cleanPhone,
         password: String(password),
-        grade: grade || "الصف الثالث الإعدادي",
+        grade: grade || "تالتة إعدادي",
         parentName: parentName ? String(parentName).trim() : "",
         parentPhone: parentPhone ? String(parentPhone).trim() : "",
         status: "active",

@@ -74,9 +74,9 @@ export function PublicVideosSection() {
           {[
             { value: 'all', label: 'الكل' },
             { value: 'الصف السادس الابتدائي', label: 'الصف السادس' },
-            { value: 'الصف الأول الاعدادي', label: 'الأول الإعدادي' },
-            { value: 'الصف الثاني الاعدادي', label: 'الثاني الإعدادي' },
-            { value: 'الصف الثالث الاعدادي', label: 'الثالث الإعدادي' },
+            { value: 'أولى إعدادي', label: 'الأول الإعدادي' },
+            { value: 'تانية إعدادي', label: 'التاني الإعدادي' },
+            { value: 'تالتة إعدادي', label: 'التالت الإعدادي' },
             { value: 'أولى بكالوريا', label: 'أولى بكالوريا' },
           ].map(function (g) {
             var isActive = gradeFilter === g.value

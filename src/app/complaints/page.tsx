@@ -19,13 +19,13 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Loader2, MessageSquareHeart, Send, CheckCircle2, Home, Phone, User, GraduationCap } from 'lucide-react'
 
+// (2026-ف) الصفوف بتوع المنصة بالظبط — نفس قايمة app-store GRADES
 var GRADES = [
-  'الصف الأول الإعدادي',
-  'الصف الثاني الإعدادي',
-  'الصف الثالث الإعدادي',
-  'الصف الأول الثانوي',
-  'الصف الثاني الثانوي',
-  'الصف الثالث الثانوي',
+  'الصف السادس الابتدائي',
+  'أولى إعدادي',
+  'تانية إعدادي',
+  'تالتة إعدادي',
+  'أولى بكالوريا',
 ]
 
 export default function PublicComplaintsPage() {
@@ -80,7 +80,7 @@ export default function PublicComplaintsPage() {
             </span>
             <span className="hidden sm:inline">الصفحة الرئيسية</span>
           </Link>
-          <span className="text-[11px] text-muted-foreground">شكواك بتوصل للمستر على طول</span>
+          <span className="text-[11px] text-muted-foreground">رسالتك بتوصل للإدارة على طول</span>
         </div>
       </header>
 
@@ -93,9 +93,9 @@ export default function PublicComplaintsPage() {
                 <span className="mx-auto h-16 w-16 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
                   <CheckCircle2 className="h-9 w-9" />
                 </span>
-                <h1 className="text-2xl font-extrabold">شكواك وصلت للمستر ✅</h1>
+                <h1 className="text-2xl font-extrabold">تم إرسال رسالتك ✅</h1>
                 <p className="text-sm text-muted-foreground leading-relaxed max-w-sm mx-auto">
-                  المستر هيشوف شكواك في أقرب وقت، ولو كتبت رقم تليفون صحيح هيتم التواصل معاك.
+                  رسالتك وصلت وهيترد عليك في أقرب وقت، ولو كتبت رقم تليفون صحيح هيتم التواصل معاك.
                 </p>
                 <Button asChild className="mt-2">
                   <Link href="/">
@@ -116,7 +116,7 @@ export default function PublicComplaintsPage() {
                 <CardDescription className="leading-relaxed">
                   عندك مشكلة ومش عارف تدخل على حسابك؟ أو أي حاجة تانية؟
                   <br />
-                  اكتب اسمك ورقم تليفونك والشكوى — والمستر هيشوفها فورًا. <span className="text-xs">(من غير تسجيل دخول)</span>
+                  اكتب اسمك ورقم تليفونك ورسالتك — وهيترد عليك في أقرب وقت. <span className="text-xs">(من غير تسجيل دخول)</span>
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -162,7 +162,7 @@ export default function PublicComplaintsPage() {
 
                   <Button type="submit" disabled={sending} className="w-full h-11 text-sm font-bold">
                     {sending ? <Loader2 className="h-4 w-4 animate-spin ml-1.5" /> : <Send className="h-4 w-4 ml-1.5" />}
-                    {sending ? 'جاري الإرسال…' : 'إرسال الشكوى للمستر'}
+                    {sending ? 'جاري الإرسال…' : 'ابعت الرسالة'}
                   </Button>
 
                   <p className="text-[11px] text-muted-foreground text-center leading-relaxed">
