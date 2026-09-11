@@ -11,7 +11,7 @@ async function ensureExamFeatureColumns() {
   try { await db.$executeRawUnsafe("ALTER TABLE Exam ADD COLUMN targetStudentIds TEXT DEFAULT ''") } catch (e) {}
 }
 
-// GET /api/exams/[id] - 获取单个考试
+// GET /api/exams/[id] - جلب امتحان بالمعرف
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -21,13 +21,13 @@ export async function GET(
     const exam = await db.exam.findUnique({ where: { id } })
 
     if (!exam) {
-      return NextResponse.json({ error: '考试不存在' }, { status: 404 })
+      return NextResponse.json({ error: 'الامتحان غير موجود' }, { status: 404 })
     }
 
     return NextResponse.json({ exam })
   } catch (error) {
-    console.error('获取考试详情失败:', error)
-    return NextResponse.json({ error: '服务器内部错误' }, { status: 500 })
+    console.error('فشل جلب الامتحان:', error)
+    return NextResponse.json({ error: 'حدث خطأ في السيرفر' }, { status: 500 })
   }
 }
 
@@ -106,11 +106,11 @@ export async function PATCH(
     return NextResponse.json({ message: 'تم تحديث إعدادات الامتحان', exam })
   } catch (error) {
     console.error('PATCH exam error:', error)
-    return NextResponse.json({ error: '服务器内部错误' }, { status: 500 })
+    return NextResponse.json({ error: 'حدث خطأ في السيرفر' }, { status: 500 })
   }
 }
 
-// PUT /api/exams/[id] - 更新考试
+// PUT /api/exams/[id] - تحديث الامتحان
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -122,7 +122,7 @@ export async function PUT(
 
     const existing = await db.exam.findUnique({ where: { id } })
     if (!existing) {
-      return NextResponse.json({ error: '考试不存在' }, { status: 404 })
+      return NextResponse.json({ error: 'الامتحان غير موجود' }, { status: 404 })
     }
 
     const exam = await db.exam.update({
@@ -140,14 +140,14 @@ export async function PUT(
       },
     })
 
-    return NextResponse.json({ message: '考试更新成功', exam })
+    return NextResponse.json({ message: 'تم تحديث الامتحان بنجاح', exam })
   } catch (error) {
-    console.error('更新考试失败:', error)
-    return NextResponse.json({ error: '服务器内部错误' }, { status: 500 })
+    console.error('تحديث الامتحانفشل:', error)
+    return NextResponse.json({ error: 'حدث خطأ في السيرفر' }, { status: 500 })
   }
 }
 
-// DELETE /api/exams/[id] - 删除考试
+// DELETE /api/exams/[id] - حذف الامتحان
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -157,7 +157,7 @@ export async function DELETE(
 
     const existing = await db.exam.findUnique({ where: { id } })
     if (!existing) {
-      return NextResponse.json({ error: '考试不存在' }, { status: 404 })
+      return NextResponse.json({ error: 'الامتحان غير موجود' }, { status: 404 })
     }
 
     // (2026-و16) طلب المستر حرفيًا: «أي امتحان أمسحه — النقاط بتاعته تختفي
@@ -184,9 +184,9 @@ export async function DELETE(
       await db.exam.delete({ where: { id } })
     }
 
-    return NextResponse.json({ message: '考试删除成功' })
+    return NextResponse.json({ message: 'تم حذف الامتحان بنجاح' })
   } catch (error) {
-    console.error('删除考试失败:', error)
-    return NextResponse.json({ error: '服务器内部错误' }, { status: 500 })
+    console.error('حذف الامتحانفشل:', error)
+    return NextResponse.json({ error: 'حدث خطأ في السيرفر' }, { status: 500 })
   }
 }
