@@ -2,7 +2,7 @@
 // ============================================================
 // صفحة الشكاوي — واجهة الطالب
 // الطالب يكتب مشكلته، والاسم والتليفون بيتحطوا تلقائي من حسابه.
-// الشكوى بتوصل للأدمن بس، والطالب يشوف شكاواه هو وحالتها ورد المستر.
+// الشكوى بتوصل للإدارة بس، والطالب يشوف شكاواه هو حالتها والرد عليها.
 // ============================================================
 import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
@@ -145,7 +145,7 @@ export function StudentComplaints({ studentId, studentName, studentPhone, grade 
                     <p className="text-sm whitespace-pre-wrap break-words">{c.message}</p>
                     {c.reply ? (
                       <div className="rounded-lg bg-primary/5 border border-primary/20 p-2.5">
-                        <p className="text-[10px] font-bold text-primary mb-1">رد المستر:</p>
+                        <p className="text-[10px] font-bold text-primary mb-1">الرد عليك:</p>
                         <p className="text-xs whitespace-pre-wrap break-words">{c.reply}</p>
                       </div>
                     ) : null}

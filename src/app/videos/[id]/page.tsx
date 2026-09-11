@@ -72,7 +72,7 @@ export default function VideoDetailPage({ params }: { params: Promise<{ id: stri
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b pb-4">
         <div>
           <span className="text-xs bg-blue-100 text-blue-800 font-bold px-3 py-1 rounded-lg">
-            {video.grade || "الصف الثالث الثانوي"}
+            {video.grade || "أولى بكالوريا"}
           </span>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900 mt-2">{video.title}</h1>
         </div>

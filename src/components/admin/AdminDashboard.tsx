@@ -720,7 +720,15 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
   const [uploading, setUploading] = useState(false)
   const [uploadStatus, setUploadStatus] = useState('')
   const [filterGrade, setFilterGrade] = useState('')
-  // ملاحظة: خاصية الجدولة (العداد/الإخفاء للفيديوهات) اتشالت خالص بطلب المستر
+  // (2026-ف — رجعة نظام الجدولة القديم زي ما كان بالظبط)
+  // الجدولة: وقت فتح + طلاب هيشوفوا عداد تنازلي + إخفاء الفيديو عن طلاب
+  const [scheduleOpen, setScheduleOpen] = useState(false)
+  const [selectedVideoForSchedule, setSelectedVideoForSchedule] = useState<Video | null>(null)
+  const [scheduleStudents, setScheduleStudents] = useState<string[]>([])
+  const [hiddenStudents, setHiddenStudents] = useState<string[]>([])
+  const [scheduleUnlockAt, setScheduleUnlockAt] = useState('')
+  const [scheduleSaving, setScheduleSaving] = useState(false)
+  const [allStudents, setAllStudents] = useState<any[]>([])
   const videoFileRef = useRef<HTMLInputElement>(null)
   const thumbFileRef = useRef<HTMLInputElement>(null)
 
@@ -815,6 +823,69 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
       loadVideos(false)
       onStatsRefresh()
     } catch { toast.error('خطأ في الحذف') }
+  }
+
+  // ===== أدوات الجدولة القديمة (زي نظام الفيديوهات الأول بالظبط) =====
+  const loadStudentsForSchedule = async (grade: string) => {
+    try {
+      var res = await fetch('/api/students?pageSize=200' + (grade ? '&grade=' + encodeURIComponent(grade) : ''))
+      var data = await res.json()
+      setAllStudents((data.students || []).filter(function(s: any) { return s.status === 'approved' || s.status === 'paid' }))
+    } catch { setAllStudents([]) }
+  }
+
+  const loadExistingSchedule = async (videoId: string) => {
+    try {
+      var res = await fetch('/api/video-schedule?videoId=' + videoId)
+      var data = await res.json()
+      if (data.schedules && data.schedules.length > 0) {
+        var sch = data.schedules[0]
+        setScheduleStudents(sch.studentIds || [])
+        setHiddenStudents(sch.hiddenStudentIds || [])
+        if (sch.unlockAt) {
+          var d = new Date(sch.unlockAt)
+          var local = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+          setScheduleUnlockAt(local.toISOString().slice(0, 16))
+        } else {
+          setScheduleUnlockAt('')
+        }
+      } else {
+        setScheduleStudents([])
+        setHiddenStudents([])
+        setScheduleUnlockAt('')
+      }
+    } catch {}
+  }
+
+  const handleScheduleSave = async () => {
+    if (!selectedVideoForSchedule) return
+    if (!scheduleUnlockAt && scheduleStudents.length === 0 && hiddenStudents.length === 0) {
+      toast.error('حدد وقت أو طلاب للجدولة أو الإخفاء')
+      return
+    }
+    setScheduleSaving(true)
+    try {
+      var res = await fetch('/api/video-schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videoId: selectedVideoForSchedule.id,
+          studentIds: scheduleStudents,
+          unlockAt: scheduleUnlockAt ? new Date(scheduleUnlockAt).toISOString() : null,
+          hiddenStudentIds: hiddenStudents,
+        }),
+      })
+      if (res.ok) {
+        toast.success('تم الحفظ - الجدولة والإخفاء')
+        setScheduleOpen(false)
+        setScheduleStudents([])
+        setHiddenStudents([])
+        setScheduleUnlockAt('')
+      } else {
+        toast.error('فشل الحفظ')
+      }
+    } catch { toast.error('خطأ في الاتصال') }
+    setScheduleSaving(false)
   }
 
   const getYouTubeId = (url: string) => {
@@ -964,6 +1035,9 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
                     </div>
                     <p className="text-[10px] text-muted-foreground">{new Date(v.createdAt).toLocaleDateString('ar-EG')}</p>
                     <div className="flex items-center gap-1">
+                      <Button size="sm" variant="ghost" className="flex-1 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-xs h-7" onClick={() => { setSelectedVideoForSchedule(v); setScheduleOpen(true); loadStudentsForSchedule(v.grade); loadExistingSchedule(v.id) }}>
+                        <Clock className="h-3.5 w-3.5 mr-1" />جدولة
+                      </Button>
                       <Button size="sm" variant="ghost" className="flex-1 text-destructive hover:text-destructive hover:bg-destructive/10 text-xs h-7" onClick={() => handleDelete(v.id)}>
                         <Trash2 className="h-3.5 w-3.5 mr-1" />حذف
                       </Button>
@@ -976,6 +1050,107 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
         )}
       </CardContent>
 
+      {/* Schedule popup - select students + unlock time (الجدولة القديمة زي ما كانت) */}
+      {scheduleOpen && selectedVideoForSchedule && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setScheduleOpen(false)}>
+          <div className="bg-card border border-border rounded-xl p-5 shadow-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto" onClick={function(e) { e.stopPropagation() }}>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h3 className="font-bold text-sm">جدولة فيديو: {selectedVideoForSchedule.title}</h3>
+                <p className="text-[10px] text-muted-foreground">حدد الطلاب اللي مش هتشوف الفيديو غير بعد الوقت ده</p>
+              </div>
+              <button type="button" onClick={() => setScheduleOpen(false)} className="text-muted-foreground hover:text-foreground">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Unlock time */}
+            <div className="mb-3">
+              <Label className="text-xs font-semibold">وقت فتح الفيديو</Label>
+              <Input
+                type="datetime-local"
+                value={scheduleUnlockAt}
+                onChange={function(e) { setScheduleUnlockAt(e.target.value) }}
+                className="mt-1"
+              />
+              <p className="text-[10px] text-muted-foreground mt-1">الطلاب المحددين هيشوفوا عداد تنازلي لحد الوقت ده</p>
+            </div>
+
+            {/* Select students for scheduling */}
+            <div className="mb-3">
+              <div className="flex items-center justify-between mb-2">
+                <Label className="text-xs font-semibold">جدولة: الطلاب اللي هيشوفوا عداد ({scheduleStudents.length})</Label>
+                <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={() => { loadStudentsForSchedule(selectedVideoForSchedule.grade); loadExistingSchedule(selectedVideoForSchedule.id) }}>
+                  تحميل + عرض الموجود
+                </Button>
+              </div>
+              <div className="max-h-[150px] overflow-y-auto border rounded-md p-2 space-y-1">
+                {allStudents.length === 0 ? (
+                  <p className="text-[10px] text-muted-foreground text-center py-4">اضغط "تحميل" لعرض الطلاب</p>
+                ) : (
+                  allStudents.map(function(s) {
+                    var isSelected = scheduleStudents.includes(s.id)
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={function() {
+                          if (isSelected) { setScheduleStudents(scheduleStudents.filter(function(id) { return id !== s.id })) }
+                          else { setScheduleStudents([...scheduleStudents, s.id]) }
+                        }}
+                        className={"w-full flex items-center gap-2 p-2 rounded-md text-xs transition-colors " + (isSelected ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-500/30' : 'bg-muted/30 hover:bg-muted/50')}
+                      >
+                        <div className={"h-4 w-4 rounded border-2 flex items-center justify-center " + (isSelected ? 'border-blue-500 bg-blue-500' : 'border-muted-foreground/30')}>
+                          {isSelected && <Check className="h-3 w-3 text-white" />}
+                        </div>
+                        <span className="font-medium">{s.name}</span>
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+            </div>
+
+            {/* Hide video from students */}
+            <div className="mb-3">
+              <Label className="text-xs font-semibold text-red-600">إخفاء الفيديو عن طلاب ({hiddenStudents.length})</Label>
+              <p className="text-[10px] text-muted-foreground mb-2">الطلاب دول مش هيشوفوا الفيديو خالص</p>
+              <div className="max-h-[150px] overflow-y-auto border rounded-md p-2 space-y-1">
+                {allStudents.length === 0 ? (
+                  <p className="text-[10px] text-muted-foreground text-center py-4">اضغط "تحميل" فوق</p>
+                ) : (
+                  allStudents.map(function(s) {
+                    var isHidden = hiddenStudents.includes(s.id)
+                    return (
+                      <button
+                        key={'hide-' + s.id}
+                        type="button"
+                        onClick={function() {
+                          if (isHidden) { setHiddenStudents(hiddenStudents.filter(function(id) { return id !== s.id })) }
+                          else { setHiddenStudents([...hiddenStudents, s.id]) }
+                        }}
+                        className={"w-full flex items-center gap-2 p-2 rounded-md text-xs transition-colors " + (isHidden ? 'bg-red-50 dark:bg-red-900/20 border border-red-500/30' : 'bg-muted/30 hover:bg-muted/50')}
+                      >
+                        <div className={"h-4 w-4 rounded border-2 flex items-center justify-center " + (isHidden ? 'border-red-500 bg-red-500' : 'border-muted-foreground/30')}>
+                          {isHidden && <Check className="h-3 w-3 text-white" />}
+                        </div>
+                        <span className="font-medium">{s.name}</span>
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <Button onClick={handleScheduleSave} disabled={scheduleSaving} className="flex-1">
+                {scheduleSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'حفظ الجدولة'}
+              </Button>
+              <Button variant="outline" onClick={() => setScheduleOpen(false)}>إلغاء</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </Card>
   )
 }
