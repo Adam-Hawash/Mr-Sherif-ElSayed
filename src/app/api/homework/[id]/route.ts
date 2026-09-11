@@ -10,7 +10,7 @@ async function ensureHomeworkFeatureColumns() {
   try { await db.$executeRawUnsafe("ALTER TABLE Homework ADD COLUMN targetStudentIds TEXT DEFAULT ''") } catch (e) {}
 }
 
-// GET /api/homework/[id] - 获取单个作业
+// GET /api/homework/[id] - جلب واجب بالمعرف
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -20,13 +20,13 @@ export async function GET(
     const homework = await db.homework.findUnique({ where: { id } })
 
     if (!homework) {
-      return NextResponse.json({ error: '作业不存在' }, { status: 404 })
+      return NextResponse.json({ error: 'الواجب غير موجود' }, { status: 404 })
     }
 
     return NextResponse.json({ homework })
   } catch (error) {
-    console.error('获取作业详情失败:', error)
-    return NextResponse.json({ error: '服务器内部错误' }, { status: 500 })
+    console.error('فشل جلب الواجب:', error)
+    return NextResponse.json({ error: 'حدث خطأ في السيرفر' }, { status: 500 })
   }
 }
 
@@ -92,11 +92,11 @@ export async function PATCH(
     return NextResponse.json({ message: 'تم تحديث إعدادات الواجب', homework })
   } catch (error) {
     console.error('PATCH homework error:', error)
-    return NextResponse.json({ error: '服务器内部错误' }, { status: 500 })
+    return NextResponse.json({ error: 'حدث خطأ في السيرفر' }, { status: 500 })
   }
 }
 
-// PUT /api/homework/[id] - 更新作业
+// PUT /api/homework/[id] - تحديث الواجب
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -108,7 +108,7 @@ export async function PUT(
 
     const existing = await db.homework.findUnique({ where: { id } })
     if (!existing) {
-      return NextResponse.json({ error: '作业不存在' }, { status: 404 })
+      return NextResponse.json({ error: 'الواجب غير موجود' }, { status: 404 })
     }
 
     const homework = await db.homework.update({
@@ -121,14 +121,14 @@ export async function PUT(
       },
     })
 
-    return NextResponse.json({ message: '作业更新成功', homework })
+    return NextResponse.json({ message: 'تم تحديث الواجب بنجاح', homework })
   } catch (error) {
-    console.error('更新作业失败:', error)
-    return NextResponse.json({ error: '服务器内部错误' }, { status: 500 })
+    console.error('تحديث الواجبفشل:', error)
+    return NextResponse.json({ error: 'حدث خطأ في السيرفر' }, { status: 500 })
   }
 }
 
-// DELETE /api/homework/[id] - 删除作业
+// DELETE /api/homework/[id] - حذف الواجب
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -138,7 +138,7 @@ export async function DELETE(
 
     const existing = await db.homework.findUnique({ where: { id } })
     if (!existing) {
-      return NextResponse.json({ error: '作业不存在' }, { status: 404 })
+      return NextResponse.json({ error: 'الواجب غير موجود' }, { status: 404 })
     }
 
     // (2026-و16) طلب المستر حرفيًا: «أي واجب أمسحه — النقاط بتاعته تختفي
@@ -166,9 +166,9 @@ export async function DELETE(
       await db.homework.delete({ where: { id } })
     }
 
-    return NextResponse.json({ message: '作业删除成功' })
+    return NextResponse.json({ message: 'تم حذف الواجب بنجاح' })
   } catch (error) {
-    console.error('删除作业失败:', error)
-    return NextResponse.json({ error: '服务器内部错误' }, { status: 500 })
+    console.error('حذف الواجبفشل:', error)
+    return NextResponse.json({ error: 'حدث خطأ في السيرفر' }, { status: 500 })
   }
 }

@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
-// GET /api/announcements - 获取所有公告
+// GET /api/announcements - جلب كل الإعلانات
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -37,28 +37,28 @@ export async function GET(request: NextRequest) {
       totalPages: Math.ceil(total / pageSize),
     })
   } catch (error) {
-    console.error('获取公告列表失败:', error)
-    return NextResponse.json({ error: '服务器内部错误' }, { status: 500 })
+    console.error('فشل جلب الإعلانات:', error)
+    return NextResponse.json({ error: 'حدث خطأ في السيرفر' }, { status: 500 })
   }
 }
 
-// POST /api/announcements - 创建公告
+// POST /api/announcements - إنشاء الإعلان
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const { title, content, grade } = body
 
     if (!title || !content || !grade) {
-      return NextResponse.json({ error: '标题、内容和年级不能为空' }, { status: 400 })
+      return NextResponse.json({ error: 'العنوان والمحتوى والصف مطلوبين' }, { status: 400 })
     }
 
     const announcement = await db.announcement.create({
       data: { title, content, grade },
     })
 
-    return NextResponse.json({ message: '公告创建成功', announcement }, { status: 201 })
+    return NextResponse.json({ message: 'تم إنشاء الإعلان بنجاح', announcement }, { status: 201 })
   } catch (error) {
-    console.error('创建公告失败:', error)
-    return NextResponse.json({ error: '服务器内部错误' }, { status: 500 })
+    console.error('فشل إنشاء الإعلان:', error)
+    return NextResponse.json({ error: 'حدث خطأ في السيرفر' }, { status: 500 })
   }
 }
