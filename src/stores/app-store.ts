@@ -29,8 +29,10 @@ export interface ExamResult {
   id: string
   examId: string
   studentId: string
-  score: number
-  maxScore: number
+  /* 2026-و12 — النتيجة ممنوعة على الطالب (طلب المستر) — الـ API للطالب
+     مبيرجعش درجات خالص، فالحقول دي بقت اختيارية */
+  score?: number
+  maxScore?: number
   submittedAt: string
   student?: { name: string; phone: string; grade: string; status: string }
 }

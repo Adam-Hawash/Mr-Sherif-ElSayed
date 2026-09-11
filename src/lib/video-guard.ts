@@ -82,6 +82,11 @@ export async function ensurePlayTicketTable(force = false): Promise<void> {
   }
 }
 
+// (ملغاة 2026-و4) self-heal عمود nativeEmbed + extractEmbedSrc — ميزة
+// «إضافة فيديو من كود HTML» اتنست بطلب المستر نفسه (كانت بتجيب واجهة
+// يوتيوب ومفيش تحكم فعلي في الجودة). العمود القديم في داتابيز قديمة هيفضل
+// موجود بس مش بيتقري من أي كود.
+
 export async function getStudentAnyStatus(studentId: string | null | undefined) {
   if (!studentId) return null
   try {

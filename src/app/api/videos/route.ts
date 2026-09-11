@@ -14,8 +14,17 @@ import { isAdmin, getStudentAnyStatus, safeThumb, getYouTubeId, mediaIdFromPath 
 
 export const dynamic = 'force-dynamic'
 
+/* اللينك المباشر لملف فيديو (MP4/WebM/M3U8/…) بيتشغل في المشغل العادي
+   (من غير أي يوتيوب + إعدادات جودة ظاهرة) — فبيتصنف file مش link خارجي */
+function isDirectMedia(u: string): boolean {
+  if (!u) return false
+  const s = String(u).trim()
+  if (!/^https?:\/\//i.test(s) && !s.startsWith('/')) return false
+  return /\.(mp4|webm|m3u8|mov|ogg|ogv)(\?.*)?$/i.test(s)
+}
+
 function stripVideo(v: { id: string; thumbnail: string; url: string; filePath: string; [k: string]: unknown }) {
-  const kind = getYouTubeId(v.url || '') ? 'youtube' : mediaIdFromPath(v.filePath || '') ? 'file' : v.url ? 'link' : 'none'
+  const kind = getYouTubeId(v.url || '') ? 'youtube' : mediaIdFromPath(v.filePath || '') ? 'file' : isDirectMedia(v.url) ? 'file' : v.url ? 'link' : 'none'
   return { ...v, url: '', filePath: '', kind, thumb: safeThumb(v) }
 }
 
@@ -80,14 +89,19 @@ export async function POST(request: NextRequest) {
     if (!title || !grade) {
       return NextResponse.json({ error: 'Title and grade are required' }, { status: 400 })
     }
-    if (!url && !filePath) {
+
+    // (ملغاة 2026-و4) ميزة «إضافة فيديو من كود HTML» اتلغت بطلب المستر
+    // نفسه — الكود كان بيجيب واجهة يوتيوب ومفيش تحكم فعلي في الجودة.
+    const finalUrl = String(url || '').trim()
+
+    if (!finalUrl && !filePath) {
       return NextResponse.json({ error: 'URL or file is required' }, { status: 400 })
     }
 
     const video = await db.video.create({
       data: {
         title,
-        url: url || '',
+        url: finalUrl,
         grade,
         filePath: filePath || '',
         fileType: fileType || '',

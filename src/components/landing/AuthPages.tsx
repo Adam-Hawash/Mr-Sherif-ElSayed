@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -19,6 +20,20 @@ var fadeInUp = {
 var TEXT_ONLY_REGEX = /^[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFFa-zA-Z\s]+$/
 var PHONE_REGEX = /^\d{11}$/
 
+/* (2026-و26) لينك قسم الشكاوى — بطلب المستر: الكلمة تبقى لينك تحتيه خط،
+   اللي يدوس عليه يروح صفحة الشكاوى العامة (/complaints) ويكتب اسمه
+   ورقم تليفونه وشكواه من غير تسجيل دخول — والشكوى توصل للأدمن */
+function ComplaintsLink() {
+  return (
+    <Link
+      href="/complaints"
+      className="font-bold underline decoration-2 underline-offset-2 text-amber-700 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-300 transition-colors"
+    >
+      قسم الشكاوي
+    </Link>
+  )
+}
+
 // Hidden admin entry: phone 22222222222 + this password redirects to admin login (تسجيل دخول المشرفين)
 var ADMIN_PHONE = '22222222222'
 var ADMIN_PASSWORD = 'mr sherif2026#'
@@ -31,11 +46,11 @@ function DeviceWarningBanner({ mode }: { mode: 'login' | 'register' }) {
       <p className="text-[13px] leading-relaxed text-foreground">
         {mode === 'register' ? (
           <>
-            <span className="font-bold">مهم جدًا:</span> الحساب بيتقفل على <span className="font-bold">جهاز واحد بس</span> — الجهاز اللي هتعمل بيه الحساب دلوقتي. اعمل الحساب من الجهاز اللي هتفتح بيه المنصة دايمًا، ولو حصلت أي مشكلة اكتبها في <span className="font-bold">قسم الشكاوي</span>.
+            <span className="font-bold">مهم جدًا:</span> الحساب بيتقفل على <span className="font-bold">جهاز واحد بس</span> — الجهاز اللي هتعمل بيه الحساب دلوقتي. اعمل الحساب من الجهاز اللي هتفتح بيه المنصة دايمًا، ولو حصلت أي مشكلة اكتبها في <ComplaintsLink />.
           </>
         ) : (
           <>
-            <span className="font-bold">تنبيه مهم:</span> الجهاز اللي أنت هتعمل منه <span className="font-bold">تسجيل الدخول</span> دلوقتي هو ده الجهاز اللي هتخش منه على حسابك <span className="font-bold">على طول</span> — ما ينفعش تغيّره ولا تدخل بجهاز تاني. الحساب بيدخل بـ <span className="font-bold">جهاز واحد بس</span>، والجهاز اللي هتدخل منه ده هيفضل بتاعك. لو واجهتك أي مشكلة اكتبها في <span className="font-bold">قسم الشكاوي</span>.
+            <span className="font-bold">تنبيه مهم:</span> الجهاز اللي أنت هتعمل منه <span className="font-bold">تسجيل الدخول</span> دلوقتي هو ده الجهاز اللي هتخش منه على حسابك <span className="font-bold">على طول</span> — ما ينفعش تغيّره ولا تدخل بجهاز تاني. الحساب بيدخل بـ <span className="font-bold">جهاز واحد بس</span>، والجهاز اللي هتدخل منه ده هيفضل بتاعك. لو واجهتك أي مشكلة اكتبها في <ComplaintsLink />.
           </>
         )}
       </p>

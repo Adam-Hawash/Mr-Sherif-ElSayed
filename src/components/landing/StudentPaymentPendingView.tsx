@@ -44,7 +44,7 @@ export function StudentPaymentPendingView() {
           </div>
           <h1 className="text-2xl font-bold">انتظر موافقة الأدمن</h1>
           <p className="text-sm text-muted-foreground">
-            تم إرسال إيصال الدفع بنجاح. سيتم مراجعته من قبل الأدمن وسيتم فتح المحتوى فور القبول.
+            تم إرسال طلب التفعيل بنجاح. سيتم مراجعته من قبل الأدمن وسيتم فتح المحتوى فور القبول.
           </p>
           {pendingCount > 0 && (
             <Badge className="bg-amber-500 text-white">{pendingCount} دفعة في الانتظار</Badge>

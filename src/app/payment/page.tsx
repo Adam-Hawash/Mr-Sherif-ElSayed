@@ -6,7 +6,6 @@ import { useAuth } from "@/lib/useAuth";
 import {
   CreditCard,
   Phone,
-  Upload,
   CheckCircle2,
   AlertCircle,
   Clock,
@@ -33,7 +32,6 @@ function PaymentContent() {
   const [studentName, setStudentName] = useState(student?.name || "");
   const [studentPhone, setStudentPhone] = useState(student?.phone || "");
   const [studentGrade, setStudentGrade] = useState(student?.grade || "الصف الثالث الثانوي");
-  const [receiptImage, setReceiptImage] = useState<string>("");
   const [transactionRef, setTransactionRef] = useState("");
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(false);
@@ -75,17 +73,6 @@ function PaymentContent() {
     setTimeout(() => setCopiedText(""), 2000);
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      setReceiptImage(reader.result as string);
-    };
-    reader.readAsDataURL(file);
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg("");
@@ -110,7 +97,6 @@ function PaymentContent() {
           amount: Number(amount),
           videoId,
           videoTitle: videoTitle || "تفعيل درس تعليمي",
-          receiptPath: receiptImage,
           note: `${note} ${transactionRef ? `(مرجع العملية: ${transactionRef})` : ""}`.trim(),
         }),
       });
@@ -118,8 +104,7 @@ function PaymentContent() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "فشل إرسال الطلب");
 
-      setSuccessMsg("تم إرسال إيصال الدفع بنجاح! سيتم مراجعة التحويل وتفعيل الفيديو لك فوراً.");
-      setReceiptImage("");
+      setSuccessMsg("تم إرسال طلب التفعيل بنجاح! سيتم مراجعة التحويل وتفعيل الفيديو لك فوراً.");
       setTransactionRef("");
       setNote("");
       if (student?.id) fetchMyPayments(student.id);
@@ -311,26 +296,20 @@ function PaymentContent() {
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">صورة إيصال التحويل (Screenshot)</label>
-            <div className="border-2 border-dashed rounded-2xl p-6 text-center bg-slate-50 relative">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">مرجع عملية التحويل (اختياري)</label>
               <input
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                type="text"
+                value={transactionRef}
+                onChange={(e) => setTransactionRef(e.target.value)}
+                placeholder="رقم العملية من رسالة المحفظة"
+                className="w-full px-4 py-2.5 rounded-xl border text-sm font-mono bg-slate-50"
               />
-              {receiptImage ? (
-                <div className="space-y-2">
-                  <img src={receiptImage} alt="Receipt" className="max-h-40 mx-auto rounded-xl shadow-md" />
-                  <span className="text-xs text-emerald-600 font-bold">✓ تم اختيار الصورة (انقر للتغيير)</span>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <Upload className="w-8 h-8 mx-auto text-emerald-600" />
-                  <div className="text-sm font-bold text-slate-700">اضغط هنا لرفع صورة إيصال التحويل</div>
-                </div>
-              )}
+            </div>
+            <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 shrink-0" />
+              مفيش حاجة لرفع صورة — اكتب مرجع العملية لو تحبه وسيتم تأكيد التحويل وتفعيل الفيديو
             </div>
           </div>
 

@@ -13,6 +13,7 @@
 import { db } from '@/lib/db'
 import { gradeWritingSmart, gradeFallbackDecisive } from '@/lib/smart-grader'
 import { gradeImageAnswer, extractImageMediaIds } from '@/lib/ai-image-grader'
+import { resolveQuestionsForStudent } from '@/lib/exam-models'
 
 export type QItem = { q: any; origIdx: number }
 
@@ -182,18 +183,27 @@ async function gradeWritingDecisive(writing: QItem[], answers: any): Promise<{ v
       console.error('[regrade-core] image grade error:', imErr)
     }
     if (gradeData) {
-      var imAwarded = Math.min(Math.max(Math.round(Number(gradeData.awardedPoints) || (gradeData.isCorrect ? iw.points : 0)), 0), iw.points)
+      /* 2026-و13 — نفس قرار التسليم: الـ AI مش متأكد من قراية الصورة ←
+         درجة مؤقتة عادلة (نص درجة المحاولة) بدل صفر — زي الواجب بالظبط،
+         والمستر يعدلها بضغطة من لوحته */
+      var imRealWork = iw.studentText.replace(/\[📷[^\]]*\]/g, '').trim().length > 0
+      var imUnsure = gradeData.needsGrading === true && gradeData.isCorrect !== true
+      var imAwarded = imUnsure
+        ? (imRealWork ? Math.ceil(iw.points / 2) : 0)
+        : Math.min(Math.max(Math.round(Number(gradeData.awardedPoints) || (gradeData.isCorrect ? iw.points : 0)), 0), iw.points)
       imageGraded.push({
         question: iw.question,
         answer: iw.studentText,
         modelAnswer: iw.modelAnswer,
         awardedPoints: imAwarded,
         maxPoints: iw.points,
-        isCorrect: imAwarded >= Math.ceil(iw.points * 0.5) && imAwarded > 0,
-        feedback: gradeData.feedback || (imAwarded > 0 ? 'تم تصحيح صورة الحل' : 'الحل مش مطابق'),
+        isCorrect: imUnsure ? false : (imAwarded >= Math.ceil(iw.points * 0.5) && imAwarded > 0),
+        feedback: imUnsure
+          ? (imRealWork ? 'صورة الحل اترفعت — درجة مؤقتة لحد ما تراجعها وعدّلها من لوحتك' : 'لم يتم الإجابة')
+          : (gradeData.feedback || (imAwarded > 0 ? 'تم تصحيح صورة الحل' : 'الحل مش مطابق')),
         gradingStatus: 'graded',
         needsGrading: false,
-        aiExtractedAnswer: gradeData.extractedAnswer || '',
+        aiExtractedAnswer: gradeData.extractedAnswer || (imUnsure && imRealWork ? '(صورة الحل مقدرناش نقراها بدقة)' : ''),
       })
     } else {
       // الـ VLM فشل → درجة محاولة عادلة بدل ما نسيبها فاضية
@@ -298,8 +308,12 @@ function mcqContrib(mcq: QItem[], answers: any): { contrib: Record<string, numbe
     var pts = pointsOf(q, 1)
     maxFromMcq += pts
     var opts = Array.isArray(q.options) ? q.options : []
-    var correctIdx = typeof q.correct === 'number' ? q.correct : 0
-    if (correctIdx < 0 || correctIdx >= opts.length) correctIdx = 0
+    /* 2026-و11 — مفتاح ناقص = صفر صادق مش (A) بالحر — لحد ما المستر يثبت المفتاح */
+    var correctIdx = typeof q.correct === 'number' ? q.correct : -1
+    if (correctIdx < 0 || correctIdx >= opts.length) {
+      contrib[String(item.origIdx)] = 0
+      return
+    }
     var studentAnswer = lookupAnswer(answers, item.origIdx)
     var ok = studentAnswer !== undefined && studentAnswer !== null && Number(studentAnswer) === correctIdx
     contrib[String(item.origIdx)] = ok ? pts : 0
@@ -335,17 +349,17 @@ export async function regradeExamResult(resultId: string): Promise<{ score: numb
   if (!rows || rows.length === 0) return null
   var res = rows[0]
 
+  /* 2026-و22 — علة «الورق بيتصحح على أسئلة تانية»: لو الامتحان فيه نماذج
+     لازم نعيد التصحيح على **أسئلة نموذج الطالب** (نفس الأسئلة اللي شافها
+     وسلّم عليها) مش أسئلة الأساس — وإلا كل الفهارس بتتزحزح والورق يتعرض
+     ويتصحح في سؤال مش سؤاله */
   var examRows: any[] = await db.$queryRawUnsafe(
-    'SELECT id, title, questions, passScore FROM Exam WHERE id = ? LIMIT 1',
+    'SELECT id, title, questions, passScore, models, modelMode, fixedModel FROM Exam WHERE id = ? LIMIT 1',
     res.examId
   )
   if (!examRows || examRows.length === 0) return null
 
-  var rawQ: any[] = []
-  try {
-    var parsed = typeof examRows[0].questions === 'string' ? JSON.parse(examRows[0].questions) : examRows[0].questions
-    if (Array.isArray(parsed)) rawQ = parsed
-  } catch (e) {}
+  var rawQ: any[] = resolveQuestionsForStudent(examRows[0], res.studentId, res.examId)
   var parts = splitQuestions(rawQ)
   if (parts.writing.length === 0 && parts.mcq.length === 0) return null // مفيش أسئلة نقدر نحسب عليها
 

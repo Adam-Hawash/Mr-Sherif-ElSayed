@@ -12,8 +12,9 @@
 
 import { NextResponse, after } from 'next/server'
 import { db } from '@/lib/db'
-import { gradeImageAnswer, gradeTextAnswer, extractImageMediaIds } from '@/lib/ai-image-grader'
+import { gradeImageAnswer, gradeTextAnswer, extractImageMediaIds, finalAnswerCandidates } from '@/lib/ai-image-grader'
 import { gradeFallbackDecisive, quickSmartMatch } from '@/lib/smart-grader'
+import { checkHwSequential } from '@/lib/sequential-guard'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120
@@ -126,11 +127,20 @@ export async function POST(request) {
       console.error('Check existing hw error:', e)
     }
 
+    // الترتيب التسلسلي (نفس نظام الفيديوهات — طلب المستر):
+    // الواجب مينفعش يتسلّم غير لما الواجب اللي قبله يكون متسلّم
+    try {
+      var seqCheck = await checkHwSequential(homeworkId, studentId)
+      if (!seqCheck.ok) {
+        return NextResponse.json({ error: seqCheck.reason, sequentialLocked: true }, { status: seqCheck.code || 423 })
+      }
+    } catch (e) {}
+
     // Fetch homework questions
     var homework = null
     try {
       var hwRows = await db.$queryRawUnsafe(
-        'SELECT id, title, questions FROM Homework WHERE id = ? LIMIT 1',
+        'SELECT id, title, questions, targetStudentIds FROM Homework WHERE id = ? LIMIT 1',
         homeworkId
       )
       homework = hwRows && hwRows.length > 0 ? hwRows[0] : null
@@ -142,14 +152,40 @@ export async function POST(request) {
       return NextResponse.json({ error: 'الواجب غير موجود' }, { status: 404 })
     }
 
-    // Parse questions
-    var mcq = []
-    var writingQuestions = []
+    /* (2026-و26) حارس الاستهداف: الواجب الموجه لطلاب محددين — التسليم
+       مسموح للي اسمه في القايمة بس */
+    try {
+      var tParsed = JSON.parse(String((homework as any).targetStudentIds || '[]'))
+      if (Array.isArray(tParsed) && tParsed.length > 0 && tParsed.indexOf(String(studentId)) === -1) {
+        return NextResponse.json({ error: 'الواجب ده مش موجه ليك — كلمني لو فيه غلط' }, { status: 403 })
+      }
+    } catch (e) {}
+
+    /* قراءة إجابة الطالب **بالفهرس الأصلي** للسؤال — نفس طريقة الامتحان
+     * (2026-و20 — العلة اللي كانت بتخلي «أي إجابة مقالي بتتحسب غلط في الواجب»):
+     * العميل بيبعت الإجابات مفتاحها الفهرس الأصلي للسؤال في قايمة الأسئلة الكاملة
+     * (origIdx — زي الامتحان بالظبط)، والكود القديم كان بيقرأ بترقيم مضغوط
+     * (answers[i] للاختياري وanswers[mcqLen + i] للمقالي) — أول ما ييجي سؤال
+     * مقالي قبل اختياري كل الفهارس بتتزحزح: السيرفر يقرأ رقم اختيار أو نص سؤال
+     * تاني ويصحح **كلام مش إجابة الطالب** → كل المقالي غلط! */
+    function lookupAnswer(ans: any, idx: number): any {
+      try {
+        if (Array.isArray(ans)) return ans[idx]
+        if (ans !== null && typeof ans === 'object') {
+          return ans[idx] !== undefined ? ans[idx] : ans[String(idx)]
+        }
+      } catch (e) {}
+      return undefined
+    }
+
+    // Parse questions (مع تتبع الفهرس الأصلي لكل سؤال)
+    var mcq: any[] = []
+    var writingQuestions: any[] = []
     if (homework.questions) {
       try {
         var raw = typeof homework.questions === 'string' ? JSON.parse(homework.questions) : homework.questions
         if (Array.isArray(raw)) {
-          raw.forEach(function(q) {
+          raw.forEach(function(q, idx) {
             var isWriting = q.type === 'writing' || q.type === 'essay'
             if (!isWriting && Array.isArray(q.options)) {
               var allNA = q.options.length > 0 && q.options.every(function(o) { return !o || o === 'N/A' || o === 'لا يوجد' || String(o).trim() === '' })
@@ -159,9 +195,9 @@ export async function POST(request) {
               isWriting = true
             }
             if (isWriting) {
-              writingQuestions.push(q)
+              writingQuestions.push({ q: q, origIdx: idx })
             } else {
-              mcq.push(q)
+              mcq.push({ q: q, origIdx: idx })
             }
           })
         }
@@ -173,12 +209,14 @@ export async function POST(request) {
       return NextResponse.json({ error: 'لا توجد أسئلة في الواجب' }, { status: 400 })
     }
 
-    // ============ MCQ: graded locally, INSTANT ============
+    // ============ MCQ: graded locally, INSTANT (بالفهرس الأصلي) ============
     var score = 0
     var maxScore = 0
     var wrongQuestions = []
 
-    mcq.forEach(function(q, i) {
+    mcq.forEach(function(item) {
+      var q = item.q
+      var origIdx = item.origIdx
       var qText = q.question || q.q || ''
       var pts = (typeof q.points === 'number' && q.points > 0) ? q.points : 1
       maxScore += pts
@@ -186,12 +224,7 @@ export async function POST(request) {
       var correctIdx = typeof q.correct === 'number' ? q.correct : 0
       if (correctIdx < 0 || correctIdx >= opts.length) { correctIdx = 0 }
 
-      var studentAnswer = undefined
-      if (Array.isArray(answers)) {
-        studentAnswer = answers[i]
-      } else if (answers !== null && typeof answers === 'object') {
-        studentAnswer = answers[i] !== undefined ? answers[i] : answers[String(i)]
-      }
+      var studentAnswer = lookupAnswer(answers, origIdx)
 
       if (studentAnswer !== undefined && studentAnswer !== null && Number(studentAnswer) === correctIdx) {
         score += pts
@@ -211,24 +244,21 @@ export async function POST(request) {
     if (maxScore === 0) { maxScore = mcq.length }
     var mcqScore = score
 
-    // ============ Writing questions: saved as PENDING, graded in background ============
+    // ============ Writing questions: saved as PENDING, graded in background (بالفهرس الأصلي) ============
     var writingAnswers: any[] = []
-    writingQuestions.forEach(function(q, i) {
+    writingQuestions.forEach(function(item) {
+      var q = item.q
       var pts = (typeof q.points === 'number' && q.points > 0) ? q.points : 1
       maxScore += pts
 
       var qText = q.question || q.q || ''
-      var studentText = ''
-      var mcqLen = mcq.length
-      try {
-        if (Array.isArray(answers)) {
-          studentText = answers[mcqLen + i] || ''
-        } else if (answers && typeof answers === 'object') {
-          studentText = answers[mcqLen + i] || answers[String(mcqLen + i)] || ''
-        }
-      } catch (e) {}
+      var sa = lookupAnswer(answers, item.origIdx)
+      var studentText = sa !== undefined && sa !== null ? String(sa) : ''
 
       writingAnswers.push({
+        /* (2026-و22) الفهرس الأصلي بيتخزن مع الحكم — شاشات العرض بتطابق بيه
+           بدل ما تخمّن بالترتيب (المطابقة الموضعية كانت ببعثر الورق) */
+        origIdx: item.origIdx,
         question: qText,
         answer: typeof studentText === 'string' ? studentText : String(studentText || ''),
         points: pts,
@@ -355,7 +385,7 @@ export async function POST(request) {
           needsGrading: false,
           isCorrect: false,
           awardedPoints: 0,
-          feedback: 'Not answered',
+          feedback: 'لم يتم الإجابة',
         })
       }
       if (!wa.modelAnswer && (!wa.acceptedAnswers || wa.acceptedAnswers.length === 0)) {
@@ -397,6 +427,9 @@ export async function POST(request) {
       }
       // fast local match
       if (quickTextMatch(answerText, wa.modelAnswer, wa.acceptedAnswers)) {
+        /* (و24) ملاحظة شخصية زي معلم بيتكلم مع الطالب — حتى في المسار السريع */
+        var fcNote = (finalAnswerCandidates(answerText)[0] || answerText.trim() || '').slice(0, 40)
+        var noteTxt = 'برافو عليك ✓ إجابتك صح — الإجابة النهائية (' + fcNote + ') مطابقة للإجابة الصحيحة'
         return Object.assign({}, wa, {
           gradingStatus: 'graded',
           needsGrading: false,
@@ -404,9 +437,9 @@ export async function POST(request) {
           awardedPoints: wa.points,
           aiExtractedAnswer: answerText,
           aiIsCorrect: true,
-          aiFeedback: 'إجابة صحيحة (الإجابة النهائية مطابقة للصحيحة)',
+          aiFeedback: noteTxt,
           aiAwardedPoints: wa.points,
-          feedback: 'إجابة صحيحة',
+          feedback: noteTxt,
         })
       }
       // AI text grading
@@ -466,32 +499,45 @@ export async function POST(request) {
     }
 
     var backgroundGrading = async function() {
-      try {
-        var gradedList = await Promise.all(writingAnswers.map(function(wa) { return gradeOneWriting(wa) }))
-        var writingScore = 0
-        gradedList.forEach(function(g) {
-          // كل الأسئلة بقت 'graded' — مفيش manual خالص (طلب المستر)
-          writingScore += (g.awardedPoints || 0)
-        })
-        var finalScore = mcqScore + writingScore
+      /* (2026-و25) — إصلاح جذري لشكوى «بيديه كله غلط»: النداءات المتوازية
+         (Promise.all) كانت بتبعت N طلبات Gemini في نفس اللحظة على مفتاح واحد
+         مجاني → 429 rate limit لكل النداءات → فولباك حاسم → similarity أقل من
+         0.55 → صفر «كله غلط». الحل: تسلسل النداءات (نداء واحد في المرة) —
+         callGemini نفسها بتتداول المفاتيح/الموديلز على 429، وcallGrader عملت
+         له backoff صريح (1.5s ثم 4s) — فالتسلسل بيخلي النداءات متباعدة
+         ومتشبعلش حد الـ RPM.
+         + partial persist: كل سؤال يتصحح يتحفظ فورًا في writingResults
+         (والدرجة تتحديث) — لو التسليم الخلفي اتقطع (serverless timeout) اللي
+         اتصحح مش بيضيع، والباقي بيفضل pending لحد الإصلاح الذاتي يكمّله. */
+      var gradedList = writingAnswers.slice()
+      var writingScore = 0
+      var persistPartial = async function() {
         try {
           await db.$executeRawUnsafe(
             'UPDATE HomeworkResult SET score = ?, writingResults = ? WHERE id = ?',
-            finalScore, JSON.stringify(gradedList), resultId
+            mcqScore + writingScore, JSON.stringify(gradedList), resultId
           )
-          console.log('[HW BG] Grading done for', resultId, '— final score', finalScore + '/' + maxScore)
-        } catch (updErr) {
-          console.error('[HW BG] Update result error:', updErr)
+        } catch (pErr) {
+          console.error('[HW BG] Partial persist error:', pErr)
           try {
             await db.$executeRawUnsafe(
               'UPDATE HomeworkResult SET score = ? WHERE id = ?',
-              finalScore, resultId
+              mcqScore + writingScore, resultId
             )
-          } catch (e2) {}
+          } catch (pErr2) {}
         }
-      } catch (bgErr) {
-        console.error('[HW BG] Background grading fatal error:', bgErr)
       }
+      for (var gi = 0; gi < writingAnswers.length; gi++) {
+        try {
+          var gOne = await gradeOneWriting(writingAnswers[gi])
+          gradedList[gi] = gOne
+          writingScore += (gOne.awardedPoints || 0)
+        } catch (oneErr) {
+          console.error('[HW BG] grade one writing error:', oneErr)
+        }
+        await persistPartial()
+      }
+      console.log('[HW BG] Grading done for', resultId, '— final score', (mcqScore + writingScore) + '/' + maxScore)
     }
 
     if (hasWriting && inserted) {

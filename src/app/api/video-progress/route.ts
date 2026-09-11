@@ -15,6 +15,21 @@ export async function GET(request: NextRequest) {
       orderBy: { lastWatchedAt: 'desc' },
     })
 
+    // ** تصليح السجلات القديمة الحبسة على 98/99% ** — أي سجل الطالب شاف فيه
+    // 97% أو أكتر بيتسنى 100% مظبوطة (نفس منطق التسنية في POST) — بتتصلح
+    // في الداتابيز نفسها مرة واحدة وبترجع للمُشغّل/القائمة مصلحة.
+    for (var i = 0; i < progress.length; i++) {
+      var row: any = progress[i]
+      if (row && row.totalSeconds > 0 && row.watchedSeconds < row.totalSeconds && row.watchedSeconds / row.totalSeconds >= 0.97) {
+        row.watchedSeconds = row.totalSeconds
+        row.completed = true
+        db.videoProgress.update({
+          where: { id: row.id },
+          data: { watchedSeconds: row.totalSeconds, completed: true },
+        }).catch(function () {})
+      }
+    }
+
     return NextResponse.json({ progress })
   } catch (error) {
     console.error('Video progress fetch error:', error)
@@ -38,14 +53,13 @@ export async function POST(request: NextRequest) {
     // Cap watchedSeconds to never exceed totalSeconds
     var safeTotal = Math.max(Number(totalSeconds) || 0, 0)
     var safeWatched = Math.max(Number(watchedSeconds) || 0, 0)
-    if (safeTotal > 0 && safeWatched > safeTotal) {
-      safeWatched = safeTotal
-    }
+    // ** علامة "خلص الفيديو" (999999) — بتبعت لما الفيديو يخلص للآخر **
+    // لازم تتاخد مكان أي تقدم قديم فورًا — دي أهم حاجة في النظام:
+    // من غيرها النسبة بتفضل حبسة على 98/99% والأقفال مبتفتحش أبدًا.
+    var endedMarker = safeWatched >= 999000
     // Also cap totalSeconds to a reasonable max (24 hours = 86400 seconds)
-    if (safeTotal > 86400) {
-      safeTotal = 86400
-      if (safeWatched > safeTotal) safeWatched = safeTotal
-    }
+    if (safeTotal > 86400) safeTotal = 86400
+    if (safeTotal > 0 && safeWatched > safeTotal) safeWatched = safeTotal
 
     // ---- CUMULATIVE MERGE: never regress ----
     var existing: any = null
@@ -60,6 +74,16 @@ export async function POST(request: NextRequest) {
     var finalTotal = Math.max(existing?.totalSeconds || 0, safeTotal)
     var finalWatched = Math.max(existing?.watchedSeconds || 0, safeWatched)
     if (finalTotal > 0 && finalWatched > finalTotal) finalWatched = finalTotal
+    // ** علامة الخلص بتكسب دايمًا ** — الفيديو خلص للآخر ⇒ 100% مظبوطة
+    if (endedMarker && finalTotal > 0) finalWatched = finalTotal
+    if (endedMarker && finalTotal === 0) { finalTotal = 1; finalWatched = 1 }
+    // ** تسنية 100% (إصلاح 'حبسة على 99%'): يوتيوب عمره ما بيرجّع آخر ~نص
+    // ثانية (getCurrentTime بيقف عند duration-0.4 تقريبًا) فالنسبة بتفضل
+    // 98/99% للأبد. لو الطالب شاف 97% أو أكتر يبقى شاف الفيديو كامل عمليًا
+    // ⇒ نسجل 100% مظبوطة عشان العرض والقفل التسلسلي يشتغلوا صح. **
+    if (!endedMarker && finalTotal > 0 && finalWatched / finalTotal >= 0.97) {
+      finalWatched = finalTotal
+    }
     const completed = finalTotal > 0 && (finalWatched / finalTotal) >= 0.9
 
     const progress = await db.videoProgress.upsert({

@@ -1,6 +1,15 @@
 
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { db, safeWrite } from '@/lib/db'
+import { isAdmin } from '@/lib/video-guard'
+
+/* (25-ب1) defensive ALTERs — نفس نمط المشروع: ممنوع db:push */
+async function ensureExamFeatureColumns() {
+  try { await db.$executeRawUnsafe('ALTER TABLE Exam ADD COLUMN showResult INTEGER DEFAULT 0') } catch (e) {}
+  try { await db.$executeRawUnsafe('ALTER TABLE Exam ADD COLUMN timeLimitMin INTEGER DEFAULT 0') } catch (e) {}
+  try { await db.$executeRawUnsafe('ALTER TABLE Exam ADD COLUMN scheduledAt DATETIME') } catch (e) {}
+  try { await db.$executeRawUnsafe("ALTER TABLE Exam ADD COLUMN targetStudentIds TEXT DEFAULT ''") } catch (e) {}
+}
 
 // GET /api/exams/[id] - 获取单个考试
 export async function GET(
@@ -18,6 +27,85 @@ export async function GET(
     return NextResponse.json({ exam })
   } catch (error) {
     console.error('获取考试详情失败:', error)
+    return NextResponse.json({ error: '服务器内部错误' }, { status: 500 })
+  }
+}
+
+/* (25-ب1) PATCH /api/exams/[id] — تعديل إعدادات الامتحان لاحقًا:
+   يقبل أي مجموعة من { showResult, timeLimitMin, scheduledAt } —
+   scheduledAt = null يعني إلغاء الجدولة (يظهر فورًا).
+   التحقق بنفس نمط auth الأدمن الموجود في المشروع (adminId + isAdmin
+   زي /api/videos و /api/files بالظبط). */
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+    const body = await request.json()
+
+    // الكتابة للأدمن بس (نفس نمط /api/videos)
+    if (!(await isAdmin(body && body.adminId))) {
+      return NextResponse.json({ error: 'غير مسموح' }, { status: 401 })
+    }
+
+    await ensureExamFeatureColumns()
+
+    const existing = await db.exam.findUnique({ where: { id } })
+    if (!existing) {
+      return NextResponse.json({ error: 'الامتحان غير موجود' }, { status: 404 })
+    }
+
+    const data: Record<string, unknown> = {}
+
+    // إظهار/إخفاء الإجابات بعد التسليم
+    if (body.showResult !== undefined) {
+      data.showResult = body.showResult === true || body.showResult === 'true' || body.showResult === 1
+    }
+
+    // المؤقت بالدقائق (0 أو فاضي = بلا وقت)
+    if (body.timeLimitMin !== undefined) {
+      var tl = parseInt(String(body.timeLimitMin === null || body.timeLimitMin === '' ? '0' : body.timeLimitMin), 10)
+      if (isNaN(tl) || tl < 0) tl = 0
+      data.timeLimitMin = tl
+    }
+
+    // موعد الظهور: null = إلغاء الجدولة، نص ISO = جدولة
+    if (body.scheduledAt !== undefined) {
+      if (body.scheduledAt === null || body.scheduledAt === '') {
+        data.scheduledAt = null
+      } else {
+        try {
+          var sd = new Date(String(body.scheduledAt))
+          if (isNaN(sd.getTime())) throw new Error('bad date')
+          data.scheduledAt = sd
+        } catch (e) {
+          return NextResponse.json({ error: 'صيغة الموعد غير صحيحة' }, { status: 400 })
+        }
+      }
+    }
+
+    /* (2026-و26) استهداف الطلاب: array ids → JSON string (فاضي = الكل يشوفه) */
+    if (body.targetStudentIds !== undefined) {
+      var arr: unknown[] = []
+      if (Array.isArray(body.targetStudentIds)) arr = body.targetStudentIds
+      else { try { var pp = JSON.parse(String(body.targetStudentIds)); if (Array.isArray(pp)) arr = pp } catch (e) {} }
+      var cleanIds = arr.map(function (x) { return String(x == null ? '' : x).trim() }).filter(Boolean)
+      cleanIds = cleanIds.filter(function (x: string, i: number) { return cleanIds.indexOf(x) === i })
+      data.targetStudentIds = JSON.stringify(cleanIds)
+    }
+
+    if (Object.keys(data).length === 0) {
+      return NextResponse.json({ error: 'لا توجد حقول للتعديل' }, { status: 400 })
+    }
+
+    const exam = await safeWrite(function () {
+      return db.exam.update({ where: { id }, data })
+    })
+
+    return NextResponse.json({ message: 'تم تحديث إعدادات الامتحان', exam })
+  } catch (error) {
+    console.error('PATCH exam error:', error)
     return NextResponse.json({ error: '服务器内部错误' }, { status: 500 })
   }
 }
@@ -72,16 +160,29 @@ export async function DELETE(
       return NextResponse.json({ error: '考试不存在' }, { status: 404 })
     }
 
-    // حذف الامتحان من المنصة = حذف كل حاجة تخصه (نتايج الطلاب + تصحيحات الـ AI)
-    // عشان مفيش نتيجة تفضل ظاهرة لامتحان اتحذف — نفس منطق حذف الواجب
+    // (2026-و16) طلب المستر حرفيًا: «أي امتحان أمسحه — النقاط بتاعته تختفي
+    // والإجابات بتاعته تختفي من صفحة الأدمن». الحذف بقى عملية واحدة ذرّية
+    // (transaction): نتايج الامتحان (الإجابات + تصحيحات الـ AI جواهم) + الامتحان
+    // نفسه في نفس اللحظة — مفيش نتيجة يتيمة تفضل ظاهرة ولا نقاط بتتحسب من
+    // امتحان اتمسح، ولو فشل حاجة بيرجع كل زي ما كان.
     try {
-      await db.$executeRawUnsafe('DELETE FROM ExamResult WHERE examId = ?', id)
-    } catch (e) {
-      console.error('حذف نتايج الامتحان فشل:', e)
-      try { await db.examResult.deleteMany({ where: { examId: id } }) } catch (e2) {}
+      await safeWrite(async function () {
+        await db.$transaction([
+          db.$executeRawUnsafe('DELETE FROM ExamResult WHERE examId = ?', id),
+          db.$executeRawUnsafe('DELETE FROM Exam WHERE id = ?', id),
+        ])
+      })
+    } catch (txErr) {
+      // احتياط: نفس الحذف المتتابع القديم لو الـ transaction مش متاح على الداتابيز
+      console.error('حذف الامتحان المتسلسل فشل — رجوع للحذف المتتابع:', txErr)
+      try {
+        await db.$executeRawUnsafe('DELETE FROM ExamResult WHERE examId = ?', id)
+      } catch (e) {
+        console.error('حذف نتايج الامتحان فشل:', e)
+        try { await db.examResult.deleteMany({ where: { examId: id } }) } catch (e2) {}
+      }
+      await db.exam.delete({ where: { id } })
     }
-
-    await db.exam.delete({ where: { id } })
 
     return NextResponse.json({ message: '考试删除成功' })
   } catch (error) {

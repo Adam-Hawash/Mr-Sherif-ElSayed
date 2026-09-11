@@ -55,6 +55,10 @@ model StudentActivity {
   details   String   @default("")
   createdAt DateTime @default(now())
   student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([studentId])
+  @@index([studentId, action, createdAt])
+  @@index([createdAt])
 }
 
 model Video {
@@ -81,6 +85,12 @@ model Homework {
   answerKeyType String   @default("")
   grade         String
   questions     String           @default("")
+  // (25-ب1) جدولة الظهور: قبل الموعد الطالب مش شايف الواجب خالص —
+  // والأدمن شايفه ببادج «مجدول». null = يظهر فورًا.
+  scheduledAt   DateTime?
+  // (2026-و26) استهداف الطلاب — نفس نمط الفيديوهات (VideoSchedule):
+  // JSON array بids طلاب محددين — فاضي "[]" = الكل يشوفه
+  targetStudentIds String      @default("")
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
   results       HomeworkResult[]
@@ -119,6 +129,18 @@ model Exam {
   modelMode     String       @default("random")
   fixedModel    String       @default("")
   passScore     Float        @default(50)
+  // (25-ب1) طلبات المستر: (1) حرية إظهار/إخفاء الإجابات بعد التسليم —
+  // false (افتراضي) = «انتظر النتيجة من المستر» بدون أي تفاصيل،
+  // true = الطالب يشوف نتيجة الاختياري والأخطاء فور التسليم.
+  showResult    Boolean      @default(false)
+  // (2) مؤقت اختياري بالدقائق — 0 = بلا وقت (الواجهة/العدّاد عند الطالب)
+  timeLimitMin  Int          @default(0)
+  // (3) جدولة الظهور: قبل الموعد الطالب مش شايف الامتحان خالص —
+  // والأدمن شايفه ببادج «مجدول». null = يظهر فورًا.
+  scheduledAt   DateTime?
+  // (2026-و26) استهداف الطلاب — نفس نمط الفيديوهات (VideoSchedule):
+  // JSON array بids طلاب محددين — فاضي "[]" = الكل يشوفه
+  targetStudentIds String      @default("")
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
   results       ExamResult[]
@@ -133,6 +155,9 @@ model ExamResult {
   submittedAt DateTime @default(now())
   student     Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
   exam        Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+
+  @@index([studentId])
+  @@index([examId])
 }
 
 model Announcement {

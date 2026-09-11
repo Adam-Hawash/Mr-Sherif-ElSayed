@@ -140,6 +140,13 @@ export async function GET(request: NextRequest) {
         return r.score >= (exam?.passScore || 50)
       }).length
 
+      /* (جدول الترتيب 2026-و10 — طلب المستر: «مين الطلاب اللي خلصوا
+         الامتحانات الأول ودرجاتهم بالترتيب») */
+      const submittedTs = er.map(r => r.submittedAt ? new Date(r.submittedAt).getTime() : 0).filter(t => t > 0)
+      const firstExamAt = submittedTs.length > 0 ? Math.min.apply(null, submittedTs) : null
+      const lastExamAt = submittedTs.length > 0 ? Math.max.apply(null, submittedTs) : null
+      const bestExamScore = er.length > 0 ? Math.max.apply(null, er.map(r => r.score)) : 0
+
       // Homework stats (from raw SQL results)
       const hw = allHwResults.filter(function(r) { return r.studentId === student.id && gradeHwIds.has(r.homeworkId) })
       const hwDone = hw.length
@@ -164,6 +171,9 @@ export async function GET(request: NextRequest) {
         examsPassed,
         totalExams: totalGradeExams,
         avgExamScore: avgScore,
+        firstExamAt,
+        lastExamAt,
+        bestExamScore,
         homeworkDone: hwDone,
         totalHomework: totalGradeHomework,
         avgHwScore,

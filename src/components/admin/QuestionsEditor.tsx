@@ -429,3 +429,66 @@ export function RegradeButton({ kind, resultId, onDone }: { kind: 'homework' | '
     </Button>
   )
 }
+
+/*
+ * RegradeAllButton (و24) — «إعادة تصحيح الكل بالذكاء الاصطناعي» لكل تسليمات
+ * واجب/امتحان واحد. المستر لما يلاقي واجب طلعت نتايجه كلها غلط (تسليمات قديمة
+ * متخزنة بالكود القديم) يعملها كلها بزرار واحد — بيصحح دفعة دفعة لحد ما تخلص.
+ * kind: 'homework' → /api/homework/regrade-all { homeworkId }
+ *       'exam'     → /api/exams/regrade-all   { examId }
+ */
+export function RegradeAllButton({ kind, targetId, onDone }: { kind: 'homework' | 'exam'; targetId: string; onDone?: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const [progress, setProgress] = useState('')
+
+  const regradeAll = async function () {
+    if (busy) return
+    var label = kind === 'homework' ? 'الواجب' : 'الامتحان'
+    if (!window.confirm('هيعيد تصحيح كل تسليمات ' + label + ' ده بالذكاء الاصطناعي (كل الطلاب) — الدرجات تتحدث بالكامل. تكمل؟')) return
+    setBusy(true)
+    try {
+      var done = 0
+      var remaining = 1
+      var guard = 0
+      while (remaining > 0 && guard < 60) {
+        guard++
+        var res = await fetch('/api/' + (kind === 'homework' ? 'homework' : 'exams') + '/regrade-all', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(kind === 'homework' ? { homeworkId: targetId } : { examId: targetId }),
+        })
+        var d: any = {}
+        try { d = await res.json() } catch (e) {}
+        if (!res.ok || !d.success) {
+          toast.error(d.error || 'فشل إعادة التصحيح الجماعي — جرب تاني', { duration: 8000 })
+          break
+        }
+        done = (d.total || 0) - (d.remaining || 0)
+        remaining = d.remaining || 0
+        setProgress(done + ' / ' + (d.total || 0))
+        if (remaining > 0) await new Promise(function (r) { setTimeout(r, 800) })
+      }
+      toast.success('اتصحح ' + done + ' تسليم بالذكاء الاصطناعي ✓', { duration: 5000 })
+      if (onDone) onDone()
+    } catch (err: any) {
+      toast.error('خطأ في الاتصال: ' + (err.message || ''), { duration: 8000 })
+    }
+    setBusy(false)
+    setProgress('')
+  }
+
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="outline"
+      className="h-7 px-2 text-[10px] border-violet-500/40 text-violet-600 hover:bg-violet-500/10 shrink-0"
+      onClick={regradeAll}
+      disabled={busy}
+      title="إعادة تصحيح كل تسليمات الطلاب لهذا الواجب/الامتحان بالذكاء الاصطناعي — لنتايج قديمة طلعت غلط"
+    >
+      {busy ? <Loader2 className="h-3 w-3 ml-1 animate-spin" /> : '🔁'}
+      {busy ? ('بيصحح الكل… ' + (progress || '')) : 'إعادة تصحيح الكل بالذكاء'}
+    </Button>
+  )
+}
