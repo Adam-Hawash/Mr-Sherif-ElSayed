@@ -3,7 +3,8 @@ import { NextRequest, NextResponse, after } from 'next/server'
 import { db } from '@/lib/db'
 import { gradeImageAnswer, gradeTextAnswer, extractImageMediaIds } from '@/lib/ai-image-grader'
 import { regradeExamResult, gradesLookPending, questionsHaveWriting } from '@/lib/regrade-core'
-import { gradeFallbackDecisive } from '@/lib/smart-grader'
+import { resolveQuestionsForStudent, splitForDisplay } from '@/lib/exam-models'
+import { gradeFallbackDecisive, quickSmartMatch } from '@/lib/smart-grader'
 
 // GET /api/exam-results?studentId=xxx&examId=yyy - Student pre-submit check (raw SQL)
 // GET /api/exam-results?studentId=xxx - Student: all exam results
@@ -22,10 +23,11 @@ export async function GET(request: NextRequest) {
         'SELECT id, examId, studentId, score, maxScore, submittedAt, writingGrades FROM ExamResult WHERE studentId = ?',
         studentId
       )
-      var withGrades = (rows || []).map(function(r: any) {
-        var wg: any[] = []
-        try { wg = r.writingGrades ? JSON.parse(r.writingGrades) : [] } catch (e) { wg = [] }
-        return { id: r.id, examId: r.examId, studentId: r.studentId, score: r.score, maxScore: r.maxScore, submittedAt: r.submittedAt, writingGrades: wg }
+      /* 2026-و12 — طلب المستر الصريح: النتيجة ممنوعة على الطالب — الرد
+         بيرجع بس (سلّم إمتى) عشان حالة «تم التقديم» والقفل التسلسلي،
+       من غير أي درجة أو تصحيح أو إجابة نموذجية (دي لمستر شريف بس) */
+      var minimal = (rows || []).map(function(r: any) {
+        return { id: r.id, examId: r.examId, submittedAt: r.submittedAt }
       })
 
       // self-heal: نتايج قديمة ناقصة التصحيح → إعادة تصحيح تلقائي بالذكاء الاصطناعي
@@ -51,15 +53,15 @@ export async function GET(request: NextRequest) {
         }
       } catch (e) {}
 
-      return NextResponse.json({ results: withGrades })
+      return NextResponse.json({ results: minimal })
     } catch (error) {
       console.error('Student exam results error:', error)
       try {
         var rows2 = await db.$queryRawUnsafe(
-          'SELECT id, examId, studentId, score, maxScore, submittedAt FROM ExamResult WHERE studentId = ?',
+          'SELECT id, examId, submittedAt FROM ExamResult WHERE studentId = ?',
           studentId
         )
-        return NextResponse.json({ results: (rows2 || []).map(function(r: any) { return { ...r, writingGrades: [] } }) })
+        return NextResponse.json({ results: (rows2 || []).map(function(r: any) { return { id: r.id, examId: r.examId, submittedAt: r.submittedAt } }) })
       } catch (e2) {
         return NextResponse.json({ results: [] })
       }
@@ -69,8 +71,38 @@ export async function GET(request: NextRequest) {
   // Student pre-submit check: specific exam + student (raw SQL)
   if (studentId && examId) {
     try {
+      /* (و25) كان بيرجع {id, examId} بس — فزرار «تحديث الملاحظات» في كارت
+         النتيجة (امتحانات showResult) عمره ما كان هيجيب تصحيح المقالي.
+         دلوقتي: لو المستر مفعّل «إظهار الإجابات» للامتحان ده → نتيجة الطالب
+         كاملة (score + writingGrades). الامتحان المخفي (showResult=0) بيفضل
+         مقفول بالحرف — قرار و12 حاكم عليه زي ما هو. */
+      var showResRows: any[] = []
+      try { await db.$executeRawUnsafe('ALTER TABLE Exam ADD COLUMN showResult INTEGER DEFAULT 0') } catch (e) {}
+      try {
+        showResRows = await db.$queryRawUnsafe('SELECT showResult FROM Exam WHERE id = ? LIMIT 1', examId)
+      } catch (e) {}
+      var showOn = !!(showResRows && showResRows.length > 0 && (showResRows[0].showResult === 1 || showResRows[0].showResult === true))
+      if (showOn) {
+        try { await db.$executeRawUnsafe('ALTER TABLE ExamResult ADD COLUMN writingResults TEXT DEFAULT ""') } catch (e) {}
+        var fullRows = await db.$queryRawUnsafe(
+          'SELECT id, examId, studentId, score, maxScore, submittedAt, writingGrades FROM ExamResult WHERE studentId = ? AND examId = ? LIMIT 1',
+          studentId, examId
+        )
+        var withGrades: any[] = []
+        for (var wi2 = 0; wi2 < (fullRows || []).length; wi2++) {
+          var rRow = fullRows[wi2]
+          var wgArr: any[] = []
+          try { wgArr = rRow.writingGrades ? JSON.parse(rRow.writingGrades) : [] } catch (e) { wgArr = [] }
+          withGrades.push({
+            id: rRow.id, examId: rRow.examId, studentId: rRow.studentId,
+            score: rRow.score, maxScore: rRow.maxScore, submittedAt: rRow.submittedAt,
+            writingGrades: wgArr,
+          })
+        }
+        return NextResponse.json({ results: withGrades })
+      }
       var rows = await db.$queryRawUnsafe(
-        'SELECT id FROM ExamResult WHERE studentId = ? AND examId = ? LIMIT 1',
+        'SELECT id, examId FROM ExamResult WHERE studentId = ? AND examId = ? LIMIT 1',
         studentId, examId
       )
       return NextResponse.json({ results: rows || [] })
@@ -97,14 +129,15 @@ export async function GET(request: NextRequest) {
     var examInfo: any = null
     try {
       var examRows = await db.$queryRawUnsafe(
-        'SELECT id, title, grade, questions, passScore FROM Exam WHERE id = ? LIMIT 1',
+        // (2026-و22) النماذج معانا — كل طالب بيتعرض أسئلة نموذجه هو
+        'SELECT id, title, grade, questions, models, modelMode, fixedModel, passScore FROM Exam WHERE id = ? LIMIT 1',
         examId
       )
       examInfo = examRows && examRows.length > 0 ? examRows[0] : null
     } catch (e) {
       console.error('Exam lookup error:', e)
       try {
-        examInfo = await db.exam.findUnique({ where: { id: examId }, select: { id: true, title: true, grade: true, questions: true, passScore: true } })
+        examInfo = await db.exam.findUnique({ where: { id: examId }, select: { id: true, title: true, grade: true, questions: true, models: true, modelMode: true, fixedModel: true, passScore: true } })
       } catch (e2) {}
     }
 
@@ -147,7 +180,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Parse exam questions
+    // Parse exam questions — (2026-و22) الأساس للعرض العام بس؛ جوه اللوب
+    // كل طالب بيتعرض أسئلة نموذجه هو (resolveQuestionsForStudent)
     var examQuestions: any[] = []
     try {
       if (examInfo.questions) {
@@ -156,20 +190,12 @@ export async function GET(request: NextRequest) {
       }
     } catch (e) {}
 
-    // Separate MCQ from writing for re-grading + display
+    // Separate MCQ from writing — أساس (للعرض العام + totals) — جوه اللوب
+    // بنعمل نفس الفصل لأسئلة كل طالب على حدة
     // Track ORIGINAL index for each question (key for student answers lookup)
     var mcqQs: any[] = []        // [{q: ..., origIdx: 0}, ...]
     var writingQs: any[] = []    // [{q: ..., origIdx: 1}, ...]
-    examQuestions.forEach(function(q: any, idx: number) {
-      var isWriting = q.type === 'writing' || q.type === 'essay'
-      if (!isWriting && Array.isArray(q.options)) {
-        var allNA = q.options.length > 0 && q.options.every(function(o: any) { return !o || o === 'N/A' || o === 'لا يوجد' || String(o).trim() === '' })
-        if (allNA) isWriting = true
-      }
-      if (!isWriting && (!q.options || q.options.length === 0)) isWriting = true
-      if (isWriting) writingQs.push({ q: q, origIdx: idx })
-      else mcqQs.push({ q: q, origIdx: idx })
-    })
+    splitForDisplay(examQuestions, mcqQs, writingQs)
 
     // Helper: look up student answer at original index
     function lookupAnswer(studentAns: any, origIdx: number): any {
@@ -196,6 +222,13 @@ export async function GET(request: NextRequest) {
         }
       } catch (e) {}
 
+      /* (2026-و22) أسئلة الطالب الفعلية — نموذجه لو الامتحان فيه نماذج.
+         ده كان سبب «الورق بيتعرض في سؤال مش سؤاله» في امتحانات النماذج */
+      var studentQuestions = resolveQuestionsForStudent(examInfo, r.studentId, examId)
+      var mcqQsS: any[] = []
+      var writingQsS: any[] = []
+      splitForDisplay(studentQuestions, mcqQsS, writingQsS)
+
       var allQuestions: any[] = []
       var wrongQuestions: any[] = []
       var writingAnswers: any[] = []
@@ -210,14 +243,15 @@ export async function GET(request: NextRequest) {
         }
       } catch (e) {}
 
-      // MCQ all questions - iterate by ORIGINAL index
-      mcqQs.forEach(function(item, qi) {
+      // MCQ all questions - iterate by ORIGINAL index (أسئلة الطالب نفسه)
+      mcqQsS.forEach(function(item, qi) {
         var q = item.q
         var origIdx = item.origIdx
         var qText = q.question || q.q || ''
         var opts = Array.isArray(q.options) ? q.options : []
-        var correctIdx = typeof q.correct === 'number' ? q.correct : 0
-        if (correctIdx < 0 || correctIdx >= opts.length) correctIdx = 0
+        /* 2026-و11 — سؤال من غير مفتاح مؤكد: عرض صادق — مش إجابة (A) وهمية */
+        var correctIdx = typeof q.correct === 'number' ? q.correct : -1
+        var keyless = correctIdx < 0 || correctIdx >= opts.length
 
         var ans = lookupAnswer(studentAns, origIdx)
 
@@ -225,9 +259,11 @@ export async function GET(request: NextRequest) {
         var studentAnswerText = (typeof ans === 'number' && opts[ans] && opts[ans] !== 'N/A')
           ? String.fromCharCode(65 + ans) + ') ' + opts[ans]
           : 'Not answered'
-        var correctAnswerText = (opts[correctIdx] && opts[correctIdx] !== 'N/A')
-          ? String.fromCharCode(65 + correctIdx) + ') ' + opts[correctIdx]
-          : (q.modelAnswer || 'No correct answer stored')
+        var correctAnswerText = keyless
+          ? '⚠ إجابة السؤال مش مؤكدة في المفتاح — محتاجة مراجعة المستر'
+          : ((opts[correctIdx] && opts[correctIdx] !== 'N/A')
+            ? String.fromCharCode(65 + correctIdx) + ') ' + opts[correctIdx]
+            : (q.modelAnswer || 'No correct answer stored'))
 
         allQuestions.push({
           type: 'mcq',
@@ -246,9 +282,9 @@ export async function GET(request: NextRequest) {
         }
       })
 
-      // Writing all questions - iterate by ORIGINAL index
-      for (var wi = 0; wi < writingQs.length; wi++) {
-        var wItem = writingQs[wi]
+      // Writing all questions - iterate by ORIGINAL index (أسئلة الطالب نفسه)
+      for (var wi = 0; wi < writingQsS.length; wi++) {
+        var wItem = writingQsS[wi]
         var wq = wItem.q
         var wOrigIdx = wItem.origIdx
         var qText = wq.question || wq.q || ''
@@ -265,10 +301,24 @@ export async function GET(request: NextRequest) {
         // FAST PATH: grades stored at submit time → use them directly (no live AI)
         var stored = storedByOrig[wOrigIdx]
         if (stored) {
-          var storedAwarded = Math.min(Math.max(Math.round(Number(stored.awardedPoints) || 0), 0), pts)
-          var storedIsCorrect = stored.isCorrect === true || (storedAwarded >= Math.ceil(pts * 0.5) && storedAwarded > 0)
+          /* 2026-و13 — التسليم بقى حاسم (زي الواجب): مفيش صفوف needsGrading
+             جديدة — والحكم المخزن الصريح بيتحترم زي ما هو (الدرجة المؤقتة
+             النصفية تفضل غلط بالبادج مع تعليق واضح إنها مؤقتة) */
+          var storedNeedsReview = stored.needsGrading === true || stored.gradingStatus === 'needsGrading' || stored.gradingStatus === 'pending'
+          var storedAwarded = storedNeedsReview
+            ? 0
+            : Math.min(Math.max(Math.round(Number(stored.awardedPoints) || 0), 0), pts)
+          var storedIsCorrect = storedNeedsReview
+            ? false
+            : (stored.isCorrect === true
+                ? true
+                : (stored.isCorrect === false
+                    ? false
+                    : (storedAwarded >= Math.ceil(pts * 0.5) && storedAwarded > 0)))
           var storedExtracted = stored.aiExtractedAnswer || (String(stored.answer || '') !== '' ? String(stored.answer) : '')
-          var storedFeedback = stored.feedback || (storedIsCorrect ? 'صح' : 'غلط')
+          var storedFeedback = storedNeedsReview
+            ? (stored.feedback || 'التصحيح الذكي محتاج يتأكد — محتاجة مراجعة مستر شريف')
+            : (stored.feedback || (storedIsCorrect ? 'صح' : 'غلط'))
           var storedAnsText = String(stored.answer || studentText || '')
 
           allQuestions.push({
@@ -282,8 +332,8 @@ export async function GET(request: NextRequest) {
             aiFeedback: storedFeedback,
             imageGraded: /\[📷/.test(storedAnsText),
             textGraded: !/\[📷/.test(storedAnsText),
-            needsGrading: false,
-            isGraded: true,
+            needsGrading: storedNeedsReview,
+            isGraded: !storedNeedsReview,
             awardedPoints: storedAwarded,
             maxPoints: stored.maxPoints || pts,
           })
@@ -293,13 +343,13 @@ export async function GET(request: NextRequest) {
             points: pts,
             modelAnswer: stored.modelAnswer || modelAnswer,
             acceptedAnswers: acceptedAnswers,
-            needsGrading: false,
+            needsGrading: storedNeedsReview,
             aiExtractedAnswer: storedExtracted,
             aiIsCorrect: storedIsCorrect,
             aiFeedback: storedFeedback,
             imageGraded: /\[📷/.test(storedAnsText),
             textGraded: !/\[📷/.test(storedAnsText),
-            isGraded: true,
+            isGraded: !storedNeedsReview,
             isCorrect: storedIsCorrect,
             awardedPoints: storedAwarded,
             maxPoints: stored.maxPoints || pts,
@@ -358,57 +408,36 @@ export async function GET(request: NextRequest) {
               aiExtracted = '(فشل الـ AI)'
             }
           } else {
-            // TEXT GRADING - quick match first
-            var cleanStud = (studentText || '').toLowerCase().replace(/\s+/g, ' ').trim()
-            var cleanMod = (modelAnswer || '').toLowerCase().replace(/\s+/g, ' ').trim()
-            var quickMatch = false
-
-            if (acceptedAnswers && acceptedAnswers.length > 0) {
-              for (var eai = 0; eai < acceptedAnswers.length; eai++) {
-                var eAcc = (acceptedAnswers[eai] || '').trim().toLowerCase().replace(/\s+/g, ' ')
-                if (eAcc && (cleanStud === eAcc || cleanStud.includes(eAcc) || eAcc.includes(cleanStud))) {
-                  quickMatch = true
-                  break
-                }
-              }
-            }
-
-            if (quickMatch) {
+            // TEXT GRADING — **القاعدة الذهبية (طلب المستر): الحكم على الإجابة
+            // النهائية بفهم قيمتها الرياضية — ممنوع أي مطابقة حرفية/contains**
+            // (الـ contains كان بديّ "15" صح لما الصح "5"). نفس منطق
+            // quickSmartMatch المستخدم وقت التسليم: تكافؤ القيمة النهائية
+            // ← صح فورًا، غير كده الـ AI يفهم الإجابة ويحكم.
+            var qm = quickSmartMatch(studentText, modelAnswer, acceptedAnswers || [])
+            if (qm === true) {
               aiExtracted = studentText
               aiIsCorrect = true
-              aiFeedback = 'صح (تطابق نصي)'
+              aiFeedback = 'صح — الإجابة النهائية مطابقة بالقيمة'
               textGraded = true
-            } else if (cleanMod) {
-              // Match final answer
-              var eMParts = cleanMod.split('=')
-              var eSParts = cleanStud.split('=')
-              var eMFinal = (eMParts[eMParts.length - 1] || '').trim()
-              var eSFinal = (eSParts[eSParts.length - 1] || '').trim()
-              if (eMFinal && eSFinal && (eMFinal === eSFinal || eMFinal.includes(eSFinal) || eSFinal.includes(eMFinal))) {
-                aiExtracted = studentText
-                aiIsCorrect = true
-                aiFeedback = 'صح (الإجابة النهائية مطابقة)'
-                textGraded = true
-              } else {
-                // AI text grading
-                try {
-                  var eTextGrade = await gradeTextAnswer({
-                    question: qText,
-                    studentAnswer: studentText,
-                    modelAnswer: modelAnswer,
-                    acceptedAnswers: acceptedAnswers,
-                    maxPoints: pts,
-                  })
-                  if (eTextGrade) {
-                    aiExtracted = studentText
-                    aiIsCorrect = eTextGrade.isCorrect === true
-                    aiFeedback = eTextGrade.feedback || (eTextGrade.isCorrect ? 'صح' : 'غلط')
-                    textGraded = true
-                  }
-                } catch (e) {
-                  console.error('[Exam Results] AI text grading error:', e)
-                  aiFeedback = 'فشل التصحيح'
+            } else {
+              // AI text grading (يفهم الإجابة النهائية مش بالحرف)
+              try {
+                var eTextGrade = await gradeTextAnswer({
+                  question: qText,
+                  studentAnswer: studentText,
+                  modelAnswer: modelAnswer,
+                  acceptedAnswers: acceptedAnswers,
+                  maxPoints: pts,
+                })
+                if (eTextGrade) {
+                  aiExtracted = studentText
+                  aiIsCorrect = eTextGrade.isCorrect === true
+                  aiFeedback = eTextGrade.feedback || (eTextGrade.isCorrect ? 'صح' : 'غلط')
+                  textGraded = true
                 }
+              } catch (e) {
+                console.error('[Exam Results] AI text grading error:', e)
+                aiFeedback = 'فشل التصحيح'
               }
             }
           }
@@ -499,15 +528,18 @@ export async function GET(request: NextRequest) {
     }
 
     // Calculate most missed questions (across all submissions)
-    var questionMisses: Record<number, { question: string; total: number; wrong: number }> = {}
+    // (2026-و22) بالمفتاح نص السؤال — في النماذج كل طالب لسته مختلفة
+    // فالترقيم الموضعي كان بيجمع أسئلة مختلفة تحت بعض
+    var questionMisses: Record<string, { question: string; total: number; wrong: number }> = {}
     results.forEach(function(r: any) {
-      r.allQuestions.forEach(function(aq: any, idx: number) {
-        if (!questionMisses[idx]) {
-          questionMisses[idx] = { question: aq.question, total: 0, wrong: 0 }
+      r.allQuestions.forEach(function(aq: any) {
+        var qKey = String(aq.question || '')
+        if (!questionMisses[qKey]) {
+          questionMisses[qKey] = { question: aq.question, total: 0, wrong: 0 }
         }
         if (aq.type === 'mcq') {
-          questionMisses[idx].total++
-          if (!aq.isCorrect) questionMisses[idx].wrong++
+          questionMisses[qKey].total++
+          if (!aq.isCorrect) questionMisses[qKey].wrong++
         }
       })
     })

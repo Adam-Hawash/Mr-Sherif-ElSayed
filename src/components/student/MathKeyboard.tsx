@@ -11,6 +11,10 @@ interface MathKeyboardProps {
   placeholder?: string
   rows?: number
   onImageUpload?: (filePath: string) => void
+  /* 2026-و20 — بيبعت للشاشة اللي فوقه إن فيه ورقة بتترفع دلوقتي
+   * عشان زرار التسليم يتقفل لحد ما الصورة توصل **كاملة** — مفيش
+   * تسليم قبل اكتمال الرفع أبدًا */
+  onUploadStateChange?: (busy: boolean, pct: number) => void
 }
 
 interface SymbolButton {
@@ -129,12 +133,13 @@ const SYMBOL_GROUPS: SymbolGroup[] = [
   },
 ]
 
-export function MathKeyboard({ value, onChange, placeholder = 'Type your answer here...', rows = 4, onImageUpload }: MathKeyboardProps) {
+export function MathKeyboard({ value, onChange, placeholder = 'Type your answer here...', rows = 4, onImageUpload, onUploadStateChange }: MathKeyboardProps) {
   const [showKeyboard, setShowKeyboard] = useState(false)
   const [activeGroup, setActiveGroup] = useState(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
+  const [uploadPct, setUploadPct] = useState(0)
   const [uploadedImage, setUploadedImage] = useState<string>('')
   const [cursorPos, setCursorPos] = useState(0)
   const [showFraction, setShowFraction] = useState(false)
@@ -335,6 +340,8 @@ export function MathKeyboard({ value, onChange, placeholder = 'Type your answer 
     if (!files || files.length === 0) return
 
     setUploading(true)
+    setUploadPct(0)
+    if (onUploadStateChange) onUploadStateChange(true, 0)
     try {
       // Upload each file and append markers
       var newMarkers = ''
@@ -352,7 +359,13 @@ export function MathKeyboard({ value, onChange, placeholder = 'Type your answer 
           continue
         }
         try {
-          const data = await chunkedUpload(file, 'homework-answers', undefined, undefined)
+          /* الورقة بترفع فورًا هنا (مش عند التسليم) وبنعرض النسبة —
+           * والـ chunkedUpload نفسه بيتأكد إن الحجم المخزن = الملف كامل */
+          const data = await chunkedUpload(file, 'homework-answers', function (pct: number) {
+            const overall = Math.max(1, Math.min(99, Math.round(((i + pct / 100) / files.length) * 100)))
+            setUploadPct(overall)
+            if (onUploadStateChange) onUploadStateChange(true, overall)
+          }, undefined)
           uploadedPaths.push(data.filePath)
           newMarkers += '\n[📷 صورة مرفقة: ' + data.filePath + ']\n'
         } catch (err: any) {
@@ -369,6 +382,8 @@ export function MathKeyboard({ value, onChange, placeholder = 'Type your answer 
       }
     } finally {
       setUploading(false)
+      setUploadPct(100)
+      if (onUploadStateChange) onUploadStateChange(false, 100)
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
@@ -389,7 +404,7 @@ export function MathKeyboard({ value, onChange, placeholder = 'Type your answer 
           ) : (
             <ImageIcon className="h-3.5 w-3.5" />
           )}
-          <span>{uploading ? 'Uploading...' : 'Image'}</span>
+          <span>{uploading ? 'جاري رفع الورقة كاملة... ' + uploadPct + '%' : 'رفع صورة ورقة الحل'}</span>
         </button>
         <button
           type="button"

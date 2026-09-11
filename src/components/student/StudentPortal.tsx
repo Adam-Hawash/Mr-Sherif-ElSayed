@@ -10,8 +10,8 @@ import {
   Video, ClipboardList, FileText, Megaphone, MessageSquare, Send,
   LogOut, Loader2, FileDown, Bell, PlayCircle, CheckCircle2,
   BookOpen, Target, TrendingUp, GraduationCap, ChevronLeft, ExternalLink,
-  User, Phone, Award, Lock, X, ListTodo,
-  HelpCircle, ArrowLeft, Rocket, Flag,
+  User, Phone, Award, Lock, X, ListTodo, Search,
+  HelpCircle, ArrowLeft, Rocket, Flag, XCircle, Timer,
 } from 'lucide-react'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import Image from 'next/image'
@@ -51,7 +51,7 @@ export function StudentPortal() {
       try {
         const [videosRes, hwRes, examsRes, annRes, resultsRes, actRes, payRes, accessRes, progressRes, hwResultsRes] = await Promise.all([
           fetch(`/api/videos?grade=${encodeURIComponent(grade)}&pageSize=100`).then(r => r.json()),
-          fetch(`/api/homework?grade=${encodeURIComponent(grade)}&pageSize=50`).then(r => r.json()),
+          fetch(`/api/homework?grade=${encodeURIComponent(grade)}&pageSize=50&studentId=${encodeURIComponent(studentId)}`).then(r => r.json()),
           fetch(`/api/exams?grade=${encodeURIComponent(grade)}&pageSize=50&studentId=${encodeURIComponent(studentId)}`).then(r => r.json()),
           fetch(`/api/announcements?grade=${encodeURIComponent(grade)}&pageSize=10`).then(r => r.json()),
           fetch(`/api/exam-results?studentId=${studentId}`).then(r => r.json()),
@@ -87,7 +87,8 @@ export function StudentPortal() {
           approvedVideoIds,
           videoProgress: progressMap,
         })
-        /* الواجبات اللي الطالب سلّمها — عشان "اللي لازم تعمله دلوقتي" ميعرضهالوش تاني */
+        /* الواجبات اللي الطالب سلّمها بالفعل — عشان "اللي لازم تعمله دلوقتي"
+           ميعرضهالوش تاني (طلب المستر): اللي خلص واجب أو امتحان مش هيتكرر */
         var doneHw: string[] = []
         ;(hwResultsRes.results || []).forEach(function (r: any) {
           if (r && r.homeworkId) doneHw.push(r.homeworkId)
@@ -133,6 +134,9 @@ export function StudentPortal() {
     // (اللي خلصهم مش بيترجعلهم تاني — طلب المستر)
     var pendingHwList = initialData.homework.filter(function (h) { return !completedHwIds.has(h.id) })
     var pendingExamList = initialData.exams.filter(function (e) {
+      /* (25-b2) المجدول مستقبليًا مينزلش للطالب من الـ API — لو شوفت scheduledAt
+         مستقبلي في بيانات قديمة (كاش) نتجاهله بصمت من أي قايمة للطالب */
+      if (isExamScheduledAhead(e)) return false
       return !initialData.examResults.find(function (r) { return r.examId === e.id })
     })
     var pendingHomework = pendingHwList.length
@@ -155,11 +159,11 @@ export function StudentPortal() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <Button variant="outline" size="sm" onClick={() => setShowGuide(true)} className="gap-1.5">
+                  <Button variant="outline" size="sm" onClick={() => setShowGuide(true)} className="gap-1.5 h-11 sm:h-8">
                     <HelpCircle className="h-4 w-4" />
                     <span className="hidden sm:inline">دليل التعامل</span>
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={logout} className="text-destructive hover:text-destructive hover:bg-destructive/10">
+                  <Button variant="ghost" size="sm" onClick={logout} className="text-destructive hover:text-destructive hover:bg-destructive/10 h-11 sm:h-8 shrink-0">
                     <LogOut className="h-4 w-4 ml-1" />
                     <span className="hidden sm:inline">خروج</span>
                   </Button>
@@ -294,7 +298,7 @@ export function StudentPortal() {
       {/* Top Bar */}
       <div className="border-b px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={() => setShowFullPortal(false)} className="gap-1">
+          <Button variant="ghost" size="sm" onClick={() => setShowFullPortal(false)} className="gap-1 h-11 sm:h-8 shrink-0">
             <ArrowLeft className="h-4 w-4" />
             <span className="hidden sm:inline text-xs">رجوع</span>
           </Button>
@@ -327,7 +331,7 @@ export function StudentPortal() {
       <div className="flex-1 overflow-y-auto p-4">
         {activeTab === 'videos' && <VideosTab videos={dashboardData.videos} watchedIds={dashboardData.watchedIds} approvedVideoIds={dashboardData.approvedVideoIds} studentId={studentId} grade={grade} videoProgress={dashboardData.videoProgress} studentStatus={currentStudent?.status} isPaidAccess={currentStudent?.isPaidAccess} studentName={currentStudent?.name || ''} studentPhone={currentStudent?.phone || ''} />}
         {activeTab === 'homework' && <HomeworkTab homework={dashboardData.homework} studentId={studentId} completedHwIds={completedHwIds} onHwSubmitted={(id) => setCompletedHwIds(prev => new Set([...prev, id]))} />}
-        {activeTab === 'exams' && <ExamsTab exams={dashboardData.exams} results={dashboardData.examResults} completedExamIds={completedExamIds} onExamSubmitted={(id) => setCompletedExamIds(prev => new Set([...prev, id]))} studentId={studentId} />}
+        {activeTab === 'exams' && <ExamsTab exams={dashboardData.exams} results={dashboardData.examResults} completedExamIds={completedExamIds} onExamSubmitted={(id) => setCompletedExamIds(prev => new Set([...prev, id]))} studentId={studentId} onGoHome={() => setActiveTab('videos')} />}
         {activeTab === 'announcements' && <AnnouncementsTab announcements={dashboardData.announcements} />}
         {activeTab === 'discussions' && <DiscussionsTab grade={grade} studentId={studentId} studentName={currentStudent?.name || ''} />}
         {activeTab === 'complaints' && <StudentComplaints studentId={studentId} studentName={currentStudent?.name || ''} studentPhone={currentStudent?.phone || ''} grade={grade} />}
@@ -342,10 +346,25 @@ function ytIdOf(url: string) {
   return match ? match[1] : null
 }
 
+// اللينك المباشر لملف فيديو (MP4/WebM/M3U8/…) بيتشغل في المشغل العادي
+// (من غير أي يوتيوب + إعدادات جودة ظاهرة) — فبيتصنف file مش link خارجي
+function isDirectMediaUrl(url: string): boolean {
+  if (!url) return false
+  const s = String(url).trim()
+  if (!/^https?:\/\//i.test(s) && !s.startsWith('/')) return false
+  return /\.(mp4|webm|m3u8|mov|ogg|ogv)(\?.*)?$/i.test(s)
+}
+
 function videoKindOf(v: any): 'youtube' | 'file' | 'link' | 'none' {
-  if (v.kind) return v.kind
+  if (v.kind) {
+    // (2026-و3) فيديو مضاف من كود HTML embed — بيتشغل في المشغل الآمن
+    // بتقدمة زي يوتيوب بالظبط (كنترولز الموقع الأصلي بجودة حقيقية جواه)
+    if (v.kind === 'embed') return 'youtube'
+    return v.kind === 'link' && isDirectMediaUrl(v.url || '') ? 'file' : v.kind
+  }
   if (ytIdOf(v.url || '')) return 'youtube'
   if (v.filePath && /\.(mp4|webm|mov|avi)$/i.test(v.filePath)) return 'file'
+  if (v.url && isDirectMediaUrl(v.url)) return 'file'
   if (v.url) return 'link'
   return 'none'
 }
@@ -354,6 +373,9 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
   const { setView, setPendingPaymentVideo } = useAppStore()
   const [localWatched, setLocalWatched] = useState(watchedIds)
   const [activeLessonVideo, setActiveLessonVideo] = useState<VideoType | null>(null)
+
+  // ملاحظة: الجدولة (العداد اللي كان بيمنع مشاهدة الفيديو) اتشالت خالص
+  // بطلب المستر — "عايز أغفل الجدولة دي" — فالفيديوهات كلها ظاهرة وقابلة للتشغيل.
 
   // Only an explicitly approved, non-paid student gets free access. A paid account always pays for priced videos.
   const isFreeStudent = studentStatus === 'approved' && isPaidAccess !== true
@@ -417,6 +439,7 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
 
   // فتح أي درس (يوتيوب أو ملف مرفوع): بنطلب تذكرة تشغيل واحدة الاستخدام
   // من /api/video-ticket — مفيش أي YouTube ID أو رابط ملف بيرجع للصفحة.
+  // المشغل نفسه بيتفتح من /api/player/[ticket] على السيرفر.
   const openPlayModal = (video: VideoType) => {
     // قفل التسلسل: اللي قبله لسه متشافش كامل → منع + رسالة (طلب المستر)
     if (lockedMap[video.id]) {
@@ -518,8 +541,8 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
                   </div>
                 </div>
               ) : kind === 'youtube' || isVideoFile ? (
-                // Protected lesson card — gallery style thumbnail (no YouTube branding)
-                // The actual video opens in a protected modal player on click
+                // كارت الدرس المحمي — صورة مصغرة بس (من غير أي براندينج ولا لينكات)
+                // الفيديو نفسه بيتفتح في المشغل الآمن عن طريق تذكرة واحدة الاستخدام
                 <div
                   className="w-full h-full relative cursor-pointer group/vid"
                   onClick={function () { openPlayModal(video) }}
@@ -627,15 +650,20 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
     </>
   )
 }
+
 /* ========== HOMEWORK TAB ========== */
 function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { homework: Homework[]; studentId: string; completedHwIds: Set<string>; onHwSubmitted: (hwId: string) => void }) {
   const [expandedHw, setExpandedHw] = useState<string | null>(null)
   const [hwAnswers, setHwAnswers] = useState<Record<string, Record<number, number | string>>>({})
   const [hwSubmitting, setHwSubmitting] = useState<string | null>(null)
+  /* 2026-و20 — ممنوع تسليم الواجب لحد ما صور ورقة الحل توصل كاملة */
+  const [hwPhotoBusy, setHwPhotoBusy] = useState<Record<string, boolean>>({})
   const [hwSubmitted, setHwSubmitted] = useState(false)
   const [submittedHwId, setSubmittedHwId] = useState<string | null>(null)
   const [blockedHwId, setBlockedHwId] = useState<string | null>(null)
-  const [hwResults, setHwResults] = useState<Record<string, { score: number; maxScore: number }>>({})
+  /* (2026-و25) resultId مع النتيجة عشان شاشة المراجعة تعرف تجيب
+     writingResults المخزنة من /api/homework/result/[id] عند إعادة الفتح */
+  const [hwResults, setHwResults] = useState<Record<string, { score: number; maxScore: number; resultId?: string }>>({})
   const [hwWrongQuestions, setHwWrongQuestions] = useState<Record<string, { question: string; studentAnswer: string; correctAnswer: string }[]>>({})
   const [hwAllQuestions, setHwAllQuestions] = useState<Record<string, any[]>>({})
   const [hwWritingAnswers, setHwWritingAnswers] = useState<Record<string, any[]>>({})
@@ -643,6 +671,52 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
   const [hwDisplayMap, setHwDisplayMap] = useState<Record<string, number[]>>({})
   const hwShuffleMaps = useRef<Record<string, number[]>>({})
   const hwPollTimers = useRef<Record<string, any>>({})
+
+  // ===== الترتيب التسلسلي للواجبات (زي الفيديوهات بالظبط — طلب المستر) =====
+  // الواجب ميفتحش غير لما الواجب اللي قبله يتسلّم. الترتيب: من الأقدم للأحدث
+  // (ترتيب نزول الواجبات نفسه). الواجبات اللي ملهاش أسئلة (ملف بس) بتتخطى
+  // عشان التسلسل ميقلعش على حاجة مش قابلة للتسليم.
+  var orderedHw = useMemo(function() {
+    return homework.slice().sort(function(a, b) {
+      var ta = new Date((a as any).createdAt || 0).getTime()
+      var tb = new Date((b as any).createdAt || 0).getTime()
+      return ta - tb
+    })
+  }, [homework])
+
+  var hwTrackable = function(h: any) {
+    try {
+      var qs = JSON.parse((h as any).questions || '[]')
+      return Array.isArray(qs) && qs.length > 0
+    } catch (e) { return false }
+  }
+
+  var hwLockMap = useMemo(function() {
+    var map: Record<string, boolean> = {}
+    var prevTrackable: string | null = null
+    orderedHw.forEach(function(h) {
+      var track = hwTrackable(h)
+      if (track && prevTrackable) {
+        map[h.id] = !completedHwIds.has(prevTrackable)
+      } else {
+        map[h.id] = false
+      }
+      if (track) prevTrackable = h.id
+    })
+    return map
+  }, [orderedHw, completedHwIds])
+
+  // الواجب اللي قبل كل واجب (عشان نعرض اسمه على كارت المقفول)
+  var hwPrevMap = useMemo(function() {
+    var map: Record<string, string> = {}
+    var prevTrackable: string | null = null
+    orderedHw.forEach(function(h) {
+      var track = hwTrackable(h)
+      if (track && prevTrackable) map[h.id] = prevTrackable
+      if (track) prevTrackable = h.id
+    })
+    return map
+  }, [orderedHw])
 
   /* Poll the background AI grading until it finishes — then update score + verdicts live */
   const startGradingPoll = (resultId: string, hwId: string) => {
@@ -657,7 +731,7 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
         if (d && d.ok && d.result && d.result.gradingDone) {
           clearInterval(hwPollTimers.current[hwId])
           delete hwPollTimers.current[hwId]
-          setHwResults(function(prev) { return { ...prev, [hwId]: { score: d.result.score, maxScore: d.result.maxScore } } })
+          setHwResults(function(prev) { return { ...prev, [hwId]: { score: d.result.score, maxScore: d.result.maxScore, resultId: resultId } } })
           if (d.result.writingAnswers && d.result.writingAnswers.length > 0) {
             setHwWritingAnswers(function(prev) { return { ...prev, [hwId]: d.result.writingAnswers } })
           }
@@ -681,15 +755,55 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
     fetch('/api/homework-results?studentId=' + studentId)
       .then(function(r) { return r.json() })
       .then(function(data) {
-        var map: Record<string, { score: number; maxScore: number }> = {}
+        var map: Record<string, { score: number; maxScore: number; resultId?: string }> = {}
         ;(data.results || []).forEach(function(r: any) {
-          map[r.homeworkId] = { score: r.score, maxScore: r.maxScore }
+          map[r.homeworkId] = { score: r.score, maxScore: r.maxScore, resultId: r.id }
           onHwSubmitted(r.homeworkId)
         })
         setHwResults(map)
       })
       .catch(function() {})
   }, [studentId])
+
+  /* (2026-و25) — كتابة التصحيح الخلفي (writingResults) توصل للطالب هنا:
+     لما يفتح واجب متسلّم من القايمة بنجيب الحكم المخزنة مرة واحدة، ولو
+     لسه pending — تحديث تلقائي واحد بعد ~12 ثانية + زرار تحديث خفيف.
+     ممنوع polling دائم (طلب المهمة) — الفتح مرة + تحديث واحد كفاية. */
+  const [hwReviewRefreshing, setHwReviewRefreshing] = useState(false)
+  const fetchHwReviewOnce = async (hwId: string): Promise<boolean> => {
+    var res = hwResults[hwId]
+    var resultId = res && res.resultId
+    if (!resultId) return true
+    try {
+      var r = await fetch('/api/homework/result/' + resultId)
+      var d = await r.json()
+      if (d && d.ok && d.result) {
+        if (d.result.writingAnswers && d.result.writingAnswers.length > 0) {
+          setHwWritingAnswers(function(prev) { return { ...prev, [hwId]: d.result.writingAnswers } })
+        }
+        if (typeof d.result.score === 'number') {
+          setHwResults(function(prev) { return { ...prev, [hwId]: { score: d.result.score, maxScore: d.result.maxScore, resultId: resultId } } })
+        }
+        return !!d.result.gradingDone
+      }
+    } catch (e) {}
+    return true
+  }
+  const openHwReview = (hwId: string) => {
+    setBlockedHwId(hwId)
+    var cached = hwWritingAnswers[hwId]
+    if (cached && cached.length > 0) return
+    ;(async function() {
+      var done = await fetchHwReviewOnce(hwId)
+      /* تحديث تلقائي واحد بس بعد ~12 ثانية لو التصحيح لسه شغال */
+      if (!done) setTimeout(async function() { await fetchHwReviewOnce(hwId) }, 12000)
+    })()
+  }
+  const refreshHwReview = async (hwId: string) => {
+    if (hwReviewRefreshing) return
+    setHwReviewRefreshing(true)
+    try { await fetchHwReviewOnce(hwId) } finally { setHwReviewRefreshing(false) }
+  }
 
   if (homework.length === 0) return <EmptyState message="لا توجد واجبات حالياً" />
 
@@ -742,6 +856,68 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                 })}
               </div>
             )}
+            {/* (2026-و25) مراجعة الأسئلة المقالية عند إعادة الفتح — كتابة التصحيح
+                الخلفي (writingResults) بتوصل للطالب هنا: الدرجة + ملاحظة المصحح
+                تحت كل سؤال، ولو لسه pending «بيتصحح دلوقتي…» مع تحديث خفيف */}
+            {(function() {
+              var bWriting = hwWritingAnswers[blockedHwId] || []
+              var bPendingW = bWriting.some(function(wa) { return wa.gradingStatus === 'pending' })
+              var showRefresh = bWriting.length === 0 || bPendingW
+              return (
+                <div className="mt-3 space-y-2">
+                  {bWriting.length > 0 && (
+                    <p className="text-sm font-semibold text-foreground">مراجعة الأسئلة المقالية:</p>
+                  )}
+                  {bWriting.map(function(wa: any, wi: number) {
+                    var waPending = wa.gradingStatus === 'pending' || wa.needsGrading === true
+                    return (
+                      <Card key={'w' + wi} className={waPending ? 'border-amber-200 dark:border-amber-900/40' : wa.isCorrect ? 'border-emerald-200 dark:border-emerald-900/40' : 'border-red-200 dark:border-red-900/40'}>
+                        <CardContent className="p-3 space-y-2">
+                          <div className="flex items-start gap-2">
+                            <span className={"shrink-0 mt-0.5 text-xs font-bold px-2 py-0.5 rounded-full " + (waPending ? 'bg-amber-500/10 text-amber-600' : wa.isCorrect ? 'bg-emerald-500/10 text-emerald-600' : 'bg-red-500/10 text-red-600')}>
+                              {waPending ? 'Pending' : wa.isCorrect ? 'Correct' : ((wa.answer || '').trim() ? 'Wrong' : 'Empty')}
+                            </span>
+                            <p className="text-sm font-medium flex-1 whitespace-pre-wrap break-words" dir="auto">{wi + 1}. <FractionText text={wa.question} /></p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs text-foreground whitespace-pre-wrap break-words" dir="auto">إجابتك: <FractionText text={wa.answer || '(فارغ)'} /></p>
+                            {wa.modelAnswer && (
+                              <p className="text-xs text-emerald-600 whitespace-pre-wrap break-words" dir="auto">الإجابة الصحيحة: <FractionText text={wa.modelAnswer} /></p>
+                            )}
+                            {!waPending && wa.awardedPoints !== undefined && (
+                              <p className="text-[10px] font-semibold text-muted-foreground">الدرجة: {wa.awardedPoints}/{wa.maxPoints || wa.points}</p>
+                            )}
+                            {waPending && (
+                              <div className="mt-2 p-2 rounded bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 flex items-center gap-2">
+                                <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-600 shrink-0" />
+                                <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">بيتصحح دلوقتي…</p>
+                              </div>
+                            )}
+                            {!waPending && (wa.aiFeedback || wa.feedback) && (
+                              <div className={'mt-2.5 p-3 rounded-xl border-2 ' + (wa.isCorrect ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-400 dark:border-emerald-700' : 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-800')}>
+                                <p className={'text-xs font-bold mb-1 flex items-center gap-1.5 ' + (wa.isCorrect ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400')}>
+                                  <span>📝</span> ملاحظة المصحح الذكي:
+                                </p>
+                                <p className="text-xs leading-relaxed text-foreground whitespace-pre-wrap break-words" style={{ textAlign: 'right' }}>{wa.aiFeedback || wa.feedback}</p>
+                              </div>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )
+                  })}
+                  {showRefresh && (
+                    <button
+                      onClick={function() { refreshHwReview(blockedHwId) }}
+                      disabled={hwReviewRefreshing}
+                      className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2 disabled:opacity-60"
+                    >
+                      {hwReviewRefreshing ? <Loader2 className="h-3 w-3 animate-spin" /> : <span>🔄</span>} تحديث نتيجة التصحيح
+                    </button>
+                  )}
+                </div>
+              )
+            })()}
             {/* أحسنت ONLY when the student got the FULL final grade (score === maxScore) */}
             {(function() {
               var bWriting = hwWritingAnswers[blockedHwId] || []
@@ -816,7 +992,7 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                     return (
                       <button
                         key={hw.id}
-                        onClick={function() { setBlockedHwId(hw.id) }}
+                        onClick={function() { openHwReview(hw.id) }}
                         className="w-full flex items-center gap-2 p-2 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors text-right"
                       >
                         <ClipboardList className="h-4 w-4 text-emerald-500 shrink-0" />
@@ -947,7 +1123,7 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                             {writingAns.gradingStatus === 'pending' && (
                               <div className="mt-2 p-2 rounded bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 flex items-center gap-2">
                                 <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-600 shrink-0" />
-                                <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">جاري التصحيح بالذكاء الاصطناعي... النتيجة هتظهر هنا تلقائياً</p>
+                                <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">بيتصحح دلوقتي… النتيجة هتظهر هنا تلقائيًا</p>
                               </div>
                             )}
                             {/* AI extracted answer from image */}
@@ -955,19 +1131,24 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                               <div className="mt-2 p-2 rounded bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-900/40">
                                 <p className="text-[10px] font-bold text-blue-700 dark:text-blue-400 mb-1">🤖 AI قرأ إجابتك من الصورة:</p>
                                 <p className="text-xs text-foreground whitespace-pre-wrap break-words" dir="ltr"><FractionText text={writingAns.aiExtractedAnswer} /></p>
-                                {writingAns.aiFeedback && (
-                                  <p className="text-[10px] text-muted-foreground mt-1">{writingAns.aiFeedback}</p>
-                                )}
                               </div>
                             )}
                             {writingAns.modelAnswer && (
                               <p className="text-xs text-emerald-600 whitespace-pre-wrap break-words" dir="ltr">Correct answer: <FractionText text={writingAns.modelAnswer} /></p>
                             )}
-                            {writingAns.feedback && !writingAns.aiExtractedAnswer && (
-                              <p className="text-[10px] text-muted-foreground" dir="ltr">{writingAns.feedback}</p>
-                            )}
                             {writingAns.awardedPoints !== undefined && (
                               <p className="text-[10px] font-semibold text-muted-foreground">Score: {writingAns.awardedPoints}/{writingAns.maxPoints || writingAns.points}</p>
+                            )}
+                            {/* 2026-و23 — ملاحظة المصحح الذكي في آخر السؤال (طلب المستر الحرفي:
+                                «يديني ملاحظة في آخر السؤال ليه السؤال ده غلط أو ليه السؤال ده صح —
+                                زي ما نحن بنتكلم شات») — صندوق واضح بلون الحكم */}
+                            {(writingAns.aiFeedback || writingAns.feedback) && writingAns.gradingStatus !== 'pending' && (
+                              <div className={'mt-2.5 p-3 rounded-xl border-2 ' + (writingAns.isCorrect === true ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-400 dark:border-emerald-700' : writingAns.isCorrect === false ? 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-800' : 'bg-muted/40 border-border')}>
+                                <p className={'text-xs font-bold mb-1 flex items-center gap-1.5 ' + (writingAns.isCorrect === true ? 'text-emerald-700 dark:text-emerald-400' : writingAns.isCorrect === false ? 'text-red-700 dark:text-red-400' : 'text-foreground')}>
+                                  <span>📝</span> ملاحظة المصحح الذكي:
+                                </p>
+                                <p className="text-xs leading-relaxed text-foreground whitespace-pre-wrap break-words" style={{ textAlign: 'right' }}>{writingAns.aiFeedback || writingAns.feedback}</p>
+                              </div>
                             )}
                           </div>
                         )}
@@ -1100,6 +1281,10 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
         var hasWriting = writingQuestions.length > 0
         var isExpanded = expandedHw === hw.id
         var isSubmitted = completedHwIds.has(hw.id)
+        // مقفول بالتسلسل؟ الواجب اللي قبله لسه متسلمش (زي الفيديوهات — طلب المستر)
+        var isHwSeqLocked = hwLockMap[hw.id] === true
+        var prevHwId = hwPrevMap[hw.id]
+        var prevHwTitle = prevHwId ? ((homework.find(function(x) { return x.id === prevHwId }) || ({} as any)).title || '') : ''
         var myAnswers = hwAnswers[hw.id] || {}
         var existingResult = hwResults[hw.id]
 
@@ -1168,35 +1353,42 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
         var shuffleMap = hwShuffleMaps.current[hw.id] || allQuestions.map(function(_: any, i: number) { return i })
 
         return (
-          <Card key={hw.id} className={isSubmitted ? 'border-emerald-500/30' : hasQuestions ? 'cursor-pointer' : ''}>
+          <Card key={hw.id} className={isHwSeqLocked ? 'border-red-500/30 opacity-90' : isSubmitted ? 'border-emerald-500/30' : hasQuestions ? 'cursor-pointer' : ''}>
             <CardContent className="p-4">
               <div className="flex items-start justify-between gap-3" onClick={hasQuestions ? function() {
-                if (isSubmitted) { setBlockedHwId(hw.id); return }
+                if (isHwSeqLocked) { toast.error('الواجب ده هيتفتح أول ما تسلّم الواجب اللي قبله — سلّم الواجب اللي قبله الأول', { duration: 6000 }); return }
+                if (isSubmitted) { openHwReview(hw.id); return }
                 setExpandedHw(isExpanded ? null : hw.id)
               } : undefined}>
                 <div className="flex items-start gap-3 min-w-0 flex-1">
-                  <div className={"h-9 w-9 rounded-lg flex items-center justify-center shrink-0 mt-0.5 " + (isSubmitted ? 'bg-emerald-500/10' : hasQuestions ? 'bg-emerald-500/10' : 'bg-blue-500/10')}>
-                    <ClipboardList className={"h-4 w-4 " + (isSubmitted ? 'text-emerald-500' : hasQuestions ? 'text-emerald-500' : 'text-blue-500')} />
+                  <div className={"h-9 w-9 rounded-lg flex items-center justify-center shrink-0 mt-0.5 " + (isHwSeqLocked ? 'bg-red-500/10' : isSubmitted ? 'bg-emerald-500/10' : hasQuestions ? 'bg-emerald-500/10' : 'bg-blue-500/10')}>
+                    {isHwSeqLocked ? <Lock className="h-4 w-4 text-red-500" /> : <ClipboardList className={"h-4 w-4 " + (isSubmitted ? 'text-emerald-500' : hasQuestions ? 'text-emerald-500' : 'text-blue-500')} />}
                   </div>
                   <div className="min-w-0 space-y-1">
                     <h3 className="font-semibold text-sm">{hw.title}</h3>
+                    {isHwSeqLocked && (
+                      <p className="text-[11px] text-red-500 font-bold leading-relaxed">
+                        🔒 الواجب ده هيتفتح أول ما تسلّم الواجب اللي قبله{prevHwTitle ? ' — "' + prevHwTitle + '"' : ''}
+                      </p>
+                    )}
                     {hw.content && <p className="text-xs text-muted-foreground line-clamp-2">{hw.content}</p>}
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-[10px] text-muted-foreground">{new Date(hw.createdAt).toLocaleDateString('ar-EG')}</p>
                       {hasMCQ && <Badge variant="outline" className="text-[10px] border-blue-500/40 text-blue-600">{mcqQuestions.length} اختيارات</Badge>}
                       {hasWriting && <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-600">{writingQuestions.length} مقالي</Badge>}
                       {!hasMCQ && !hasWriting && hasQuestions && <Badge variant="outline" className="text-[10px] border-emerald-500/40 text-emerald-600">{allQuestions.length} سؤال</Badge>}
+                      {isHwSeqLocked && <Badge className="text-[10px] bg-red-500 text-white gap-0.5"><Lock className="h-2.5 w-2.5" /> مقفول</Badge>}
                       {isSubmitted && existingResult && <Badge className="text-[10px] bg-emerald-500 text-white">النتيجة: {existingResult.score}/{existingResult.maxScore}</Badge>}
                       {isSubmitted && !existingResult && <Badge className="text-[10px] bg-emerald-500 text-white">تم التسليم</Badge>}
                     </div>
                   </div>
                 </div>
                 {hw.filePath && !hasQuestions && <FileAttachment filePath={hw.filePath} fileType={hw.fileType} />}
-                {hasQuestions && <ChevronLeft className={"h-4 w-4 text-muted-foreground transition-transform shrink-0 mt-1 " + (isExpanded ? 'rotate-90' : '')} />}
+                {hasQuestions && !isHwSeqLocked && <ChevronLeft className={"h-4 w-4 text-muted-foreground transition-transform shrink-0 mt-1 " + (isExpanded ? 'rotate-90' : '')} />}
               </div>
 
               {/* ACTIVE HOMEWORK - not yet submitted */}
-              {isExpanded && hasQuestions && !isSubmitted && (
+              {isExpanded && hasQuestions && !isSubmitted && !isHwSeqLocked && (
                 <div className="mt-4 pt-4 border-t space-y-4">
                   {/* MCQ Section */}
                   {hasMCQ && (
@@ -1206,7 +1398,7 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                         var pts = (typeof q.points === 'number' && q.points > 0) ? q.points : 1
                         return (
                           <div key={'mcq-' + di} className="space-y-2 rounded-lg p-2" dir="ltr">
-                            <p className="font-medium text-sm whitespace-pre-wrap break-words" style={{ textAlign: 'left' }}>{di + 1}. <FractionText text={q.question || q.q} /> <span className="text-muted-foreground text-xs">({pts} {pts === 1 ? 'درجة' : 'درجات'})</span></p>
+                            <p className="font-medium text-sm whitespace-pre-wrap break-words" style={{ textAlign: 'left' }}>{di + 1}. <FractionText text={q.question || q.q} /> <span className="text-muted-foreground text-xs">({pts} {pts === 1 ? 'pt' : 'pts'})</span></p>
                             <div className="space-y-1.5">
                               {(q.options || []).map(function(opt: string, oi: number) {
                                 var isSelected = myAnswers[di] === oi
@@ -1242,8 +1434,8 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                           <div key={'writing-' + wi} className="space-y-2 rounded-lg p-2 border border-amber-500/20 bg-amber-50 dark:bg-amber-900/10" dir="ltr">
                             <p className="font-medium text-sm whitespace-pre-wrap break-words" style={{ textAlign: 'left' }}>
                               {hasMCQ ? displayMcq.length + wi + 1 : wi + 1}. <FractionText text={q.question || q.q} />
-                              <span className="text-muted-foreground text-xs ml-2">({pts} درجات)</span>
-                              <Badge variant="outline" className="text-[9px] ml-2 border-amber-500/40 text-amber-600">مقالي</Badge>
+                              <span className="text-muted-foreground text-xs ml-2">({pts} pts)</span>
+                              <Badge variant="outline" className="text-[9px] ml-2 border-amber-500/40 text-amber-600">Writing</Badge>
                             </p>
                             <div dir="ltr">
                               <MathKeyboard
@@ -1255,6 +1447,9 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                                     return a
                                   })
                                 }}
+                                onUploadStateChange={function(busy: boolean) {
+                                  setHwPhotoBusy(function(prev) { return { ...prev, [hw.id]: busy } })
+                                }}
                                 placeholder="اكتب إجابتك هنا أو ارفع صورة للحل..."
                                 rows={4}
                               />
@@ -1265,7 +1460,7 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                     </div>
                   )}
 
-                  <Button size="sm" disabled={Object.keys(myAnswers).length === 0 && Object.keys(hwAnswers[hw.id] || {}).length === 0 || hwSubmitting === hw.id} onClick={async function() {
+                  <Button size="sm" className="w-full sm:w-auto h-11 sm:h-8 mt-1" disabled={Object.keys(myAnswers).length === 0 && Object.keys(hwAnswers[hw.id] || {}).length === 0 || hwSubmitting === hw.id || hwPhotoBusy[hw.id] === true} onClick={async function() {
                     setHwSubmitting(hw.id)
                     try {
                       // Map display answers back to original indices
@@ -1299,7 +1494,7 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                           toast.success('تم تقديم الواجب بنجاح')
                         }
                         if (data.result) {
-                          setHwResults(function(prev) { return { ...prev, [hw.id]: { score: data.result.score, maxScore: data.result.maxScore } } })
+                          setHwResults(function(prev) { return { ...prev, [hw.id]: { score: data.result.score, maxScore: data.result.maxScore, resultId: data.result.id } } })
                           if (data.result.wrongQuestions && data.result.wrongQuestions.length > 0) {
                             setHwWrongQuestions(function(prev) { return { ...prev, [hw.id]: data.result.wrongQuestions } })
                           }
@@ -1323,7 +1518,7 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                       }
                     } catch { toast.error('خطأ في الاتصال') }
                     setHwSubmitting(null)
-                  }}>{hwSubmitting === hw.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'تسليم الإجابات (' + Object.keys(myAnswers).length + '/' + allQuestions.length + ')'}</Button>
+                  }}>{hwPhotoBusy[hw.id] ? <span className="flex items-center gap-1.5"><Loader2 className="h-4 w-4 animate-spin" /> مستني صورة ورقة الحل تترفع كاملة...</span> : hwSubmitting === hw.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'تسليم الإجابات (' + Object.keys(myAnswers).length + '/' + allQuestions.length + ')'}</Button>
                 </div>
               )}
             </CardContent>
@@ -1348,7 +1543,7 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
             return (
               <button
                 key={hw.id}
-                onClick={function() { setBlockedHwId(hw.id) }}
+                onClick={function() { openHwReview(hw.id) }}
                 className="w-full text-right"
               >
                 <Card className="border-muted bg-muted/20 hover:bg-muted/40 transition-colors">
@@ -1377,23 +1572,340 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
   )
 }
 
+/* ========== (25-b2) امتحانات: مؤقت تنازلي + نتيجة فورية — أدوات مشتركة ========== */
+/* الامتحان المجدول مستقبليًا مينزلش للطالب أصلًا من الـ API — لو ظهر scheduledAt
+   مستقبلي في بيانات قديمة (كاش) نتجاهله بصمت من أي قايمة للطالب */
+function isExamScheduledAhead(e: any): boolean {
+  try {
+    var s = e && e.scheduledAt
+    if (!s) return false
+    var t = new Date(s).getTime()
+    return isFinite(t) && t > Date.now()
+  } catch (err) { return false }
+}
+
+/* تنسيق العداد التنازلي بصيغة MM:SS */
+function formatExamClock(ms: number): string {
+  var total = Math.max(0, Math.floor(ms / 1000))
+  var m = Math.floor(total / 60)
+  var s = total % 60
+  return (m < 10 ? '0' + m : String(m)) + ':' + (s < 10 ? '0' + s : String(s))
+}
+
+/* تطبيع عناصر تصحيح الأسئلة المقالية من رد نتيجة الامتحان — متسامح مع أكثر من
+   شكل رد محتمل من الـ API (writingAnswers / writingResults / writingGrades JSON) */
+function normalizeExamWritingItems(raw: any): any[] {
+  if (!raw) return []
+  var src: any = null
+  try {
+    src = raw.writingAnswers || raw.writingResults || null
+    if (!src && typeof raw.writingGrades === 'string' && raw.writingGrades.trim()) {
+      try { src = JSON.parse(raw.writingGrades) } catch (e2) { src = null }
+    } else if (!src && Array.isArray(raw.writingGrades)) {
+      src = raw.writingGrades
+    }
+  } catch (e) { return [] }
+  if (!Array.isArray(src)) return []
+  return src.map(function(it: any) {
+    if (!it || typeof it !== 'object') return { question: '', answer: '', pending: true }
+    var pending = it.gradingStatus === 'pending' || it.needsGrading === true || (it.isCorrect !== true && it.isCorrect !== false && it.isGraded !== true)
+    return {
+      question: it.question || it.q || '',
+      answer: it.answer || it.studentAnswer || '',
+      modelAnswer: it.modelAnswer || '',
+      isCorrect: typeof it.isCorrect === 'boolean' ? it.isCorrect : null,
+      awardedPoints: typeof it.awardedPoints === 'number' ? it.awardedPoints : undefined,
+      maxPoints: (typeof it.maxPoints === 'number' ? it.maxPoints : it.points),
+      feedback: it.aiFeedback || it.feedback || '',
+      pending: pending,
+    }
+  })
+}
+
 /* ========== EXAMS TAB ========== */
-function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId }: { exams: Exam[]; results: ExamResult[]; completedExamIds: Set<string>; onExamSubmitted: (examId: string) => void; studentId: string }) {
+function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId, onGoHome }: { exams: Exam[]; results: ExamResult[]; completedExamIds: Set<string>; onExamSubmitted: (examId: string) => void; studentId: string; onGoHome?: () => void }) {
   const [takingExam, setTakingExam] = useState<string | null>(null)
   const [answers, setAnswers] = useState<Record<number, number>>({})
   const [writingAnswers, setWritingAnswers] = useState<Record<number, string>>({})
   const [submitting, setSubmitting] = useState(false)
+  /* 2026-و20 — ممنوع تسليم الامتحان لحد ما صور ورقة الحل توصل كاملة */
+  const [examPhotoBusy, setExamPhotoBusy] = useState(false)
   const [examQuestions, setExamQuestions] = useState<any[]>([])
   const [examShuffleMap, setExamShuffleMap] = useState<number[]>([])
   const [examSubmitted, setExamSubmitted] = useState(false)
   const [submittedExamId, setSubmittedExamId] = useState<string | null>(null)
   const [checkingServer, setCheckingServer] = useState(false)
   const [blockedExamId, setBlockedExamId] = useState<string | null>(null)
-  // نتيجة آخر تسليم (الدرجة + تصحيح المقالية بالذكاء الاصطناعي)
-  const [lastResult, setLastResult] = useState<any>(null)
-  const [showGradesFor, setShowGradesFor] = useState<string | null>(null)
+  /* 2026-و12 — طلب المستر: مفيش أي نتيجة تظهر للطالب خالص
+     (الدرجة والتصحيح بيوصل مستر شريف بس من الأدمن)
+     (25-b2) استثناء وحيد: لو المستر فعّل showResult للامتحان نفسه — كارت النتيجة الفوري بيظهر بعد التسليم */
 
-  if (exams.length === 0) return <EmptyState message="لا توجد امتحانات حالياً" />
+  /* ===== (25-b2) العداد التنازلي الاختياري — timeLimitMin > 0 فقط =====
+     وقت البدء بيتسجل مرة واحدة في localStorage (mg_exam_start_{examId}_{studentId})
+     — الـ refresh بيلاقي المفتاح بيكمّل من نفس النقطة مش من الأول.
+     امتحانات بلا وقت: كل الحالات دي فاضية = صفر تغيير عن الحالي */
+  const [examTimeLimitMs, setExamTimeLimitMs] = useState<number | null>(null)
+  const [examTimeLeftMs, setExamTimeLeftMs] = useState<number | null>(null)
+  const [examTimeUp, setExamTimeUp] = useState(false)
+  const [examTimeUpAuto, setExamTimeUpAuto] = useState(false)
+  const examDeadlineRef = useRef<number | null>(null)
+  const examAutoSubmitDoneRef = useRef(false)
+  const examSubmitInFlightRef = useRef(false)
+
+  /* ===== (25-b2) كارت النتيجة الفوري — showResult=true فقط ===== */
+  const [examSubmitResult, setExamSubmitResult] = useState<any | null>(null)
+  const [examWritingReview, setExamWritingReview] = useState<any[] | null>(null)
+  const [examWritingDone, setExamWritingDone] = useState(false)
+  const [examReviewScore, setExamReviewScore] = useState<{ score: number; maxScore: number } | null>(null)
+  const [examReviewRefreshing, setExamReviewRefreshing] = useState(false)
+  const examReviewBusyRef = useRef(false)
+  const examAutoRefreshDoneRef = useRef(false)
+  const doSubmitExamRef = useRef<null | ((opts?: { auto?: boolean }) => Promise<void>)>(null)
+
+  // ===== الترتيب التسلسلي للامتحانات (زي الفيديوهات بالظبط — طلب المستر) =====
+  // الامتحان ميفتحش غير لما الامتحان اللي قبله يتقدّم. الترتيب: من الأقدم للأحدث.
+  // (25-b2) الامتحان المجدول مستقبليًا بيتجاهل بصمت من الترتيب كمان عشان ميقلعش التسلسل
+  var orderedExams = useMemo(function() {
+    return exams.slice().filter(function(e) { return !isExamScheduledAhead(e) }).sort(function(a, b) {
+      var ta = new Date((a as any).createdAt || 0).getTime()
+      var tb = new Date((b as any).createdAt || 0).getTime()
+      return ta - tb
+    })
+  }, [exams])
+
+  var examLockMap = useMemo(function() {
+    var map: Record<string, boolean> = {}
+    var prevTrackable: string | null = null
+    orderedExams.forEach(function(e) {
+      var track = false
+      try {
+        var qs = JSON.parse((e as any).questions || '[]')
+        track = Array.isArray(qs) && qs.length > 0
+      } catch (err) { track = false }
+      if (track && prevTrackable) {
+        var prevDone = completedExamIds.has(prevTrackable) || (results || []).some(function(r) { return r.examId === prevTrackable })
+        map[e.id] = !prevDone
+      } else {
+        map[e.id] = false
+      }
+      if (track) prevTrackable = e.id
+    })
+    return map
+  }, [orderedExams, completedExamIds, results])
+
+  var examPrevMap = useMemo(function() {
+    var map: Record<string, string> = {}
+    var prevTrackable: string | null = null
+    orderedExams.forEach(function(e) {
+      var track = false
+      try {
+        var qs = JSON.parse((e as any).questions || '[]')
+        track = Array.isArray(qs) && qs.length > 0
+      } catch (err) { track = false }
+      if (track && prevTrackable) map[e.id] = prevTrackable
+      if (track) prevTrackable = e.id
+    })
+    return map
+  }, [orderedExams])
+
+  /* ===== (25-b2) دالة التسليم الموحدة — نفس منطق زرار التسليم الأصلي بالظبط
+     (نفس mappedAnswers من answers/writingAnswers state) — والعداد التنازلي
+     بيسلّم بيها تلقائيًا عند 0 بنفس إجابات الطالب المتاحة (حتى لو فاضية) ===== */
+  async function submitExamNow(opts?: { auto?: boolean }) {
+    var auto = !!(opts && opts.auto)
+    var examIdLocal = takingExam
+    if (!examIdLocal || submitting || examPhotoBusy) return
+    /* guard مزامن: التسليم مبيحصلش مرتين ولا من العداد ولا من الزرار */
+    if (examSubmitInFlightRef.current) return
+    examSubmitInFlightRef.current = true
+    setSubmitting(true)
+    try {
+      // Combine MCQ + writing answers - use displayIdx as key
+      var mappedAnswers: Record<number, any> = {}
+      // MCQ answers (answers keys are displayIdx)
+      Object.keys(answers).forEach(function(di) {
+        var displayIdx = parseInt(di)
+        // displayIdx is the position in examQuestions array (shuffled)
+        // examShuffleMap maps displayIdx → original question index
+        var origIdx = examShuffleMap.length > 0 ? examShuffleMap[displayIdx] : displayIdx
+        if (origIdx === undefined) origIdx = displayIdx
+        mappedAnswers[origIdx] = answers[di]
+      })
+      // Writing answers (writingAnswers keys are displayIdx)
+      Object.keys(writingAnswers).forEach(function(di) {
+        var displayIdx = parseInt(di)
+        var origIdx = examShuffleMap.length > 0 ? examShuffleMap[displayIdx] : displayIdx
+        if (origIdx === undefined) origIdx = displayIdx
+        mappedAnswers[origIdx] = writingAnswers[di]
+      })
+      // Add client-side timeout (120s — AI grades the writing questions during submit)
+      var submitController = new AbortController()
+      var submitTimeout = setTimeout(function() { submitController.abort() }, 120000)
+      const res = await fetch('/api/exams/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentId, examId: examIdLocal, answers: mappedAnswers }),
+        signal: submitController.signal,
+      })
+      clearTimeout(submitTimeout)
+      const data = await res.json()
+      if (res.ok && (data.submitted || data.alreadySubmitted)) {
+        /* (25-b2) showResult=true → كارت النتيجة الفوري بدل رسالة الانتظار —
+           غير كده الشاشة الحالية زي ما هي بالظبط */
+        if (data.showResult === true) setExamSubmitResult(data)
+        else setExamSubmitResult(null)
+        if (auto) {
+          /* (25-b2) التسليم حصل تلقائيًا بسبب انتهاء الوقت */
+          toast.warning('انتهى وقت الامتحان — تم تسليم إجاباتك')
+          setExamTimeUpAuto(true)
+        } else {
+          /* (2026-و15) نص المستر: تم بنجاح + انتظر النتيجة من المستر —
+             نص ثابت زي ما هو بالظبط (showResult=false = صفر تغيير) */
+          toast.success('تم تسليم الامتحان بنجاح — انتظر النتيجة من المستر ✅')
+        }
+        /* العداد خلص مهمته — نمسح مفتاح وقت البدء */
+        try { localStorage.removeItem('mg_exam_start_' + examIdLocal + '_' + studentId) } catch (e) {}
+        setSubmittedExamId(examIdLocal)
+        setExamSubmitted(true)
+        onExamSubmitted(examIdLocal)
+      } else if (data.blocked || data.alreadySubmitted) {
+        onExamSubmitted(examIdLocal)
+        setBlockedExamId(examIdLocal)
+      } else {
+        toast.error(data.error || 'خطأ في التقديم')
+      }
+    } catch (e) {
+      /* (إصلاح 2026-و10) ممنوع الكذب: الانقطاع/التايم أوت كان بيقول
+         «تم التقديم» حتى لو التسليم ماوصلش للسيرفر أصلًا — فكان الطالب
+         بيختفي من عند المستر وهو فاكر نفسه سلم. دلوقتي بنسأل السيرفر
+         بجد: هل فيه نتيجة للامتحان ده؟ لو موجودة → اتسلم فعلًا،
+         لو لأ → رسالة صادقة + زرار التسليم لسه شغال يقدر يعيد */
+      try {
+        var verifyRes = await fetch('/api/exam-results?studentId=' + encodeURIComponent(studentId) + '&examId=' + encodeURIComponent(examIdLocal))
+        var verifyData = await verifyRes.json()
+        var vResults = Array.isArray(verifyData) ? verifyData : (verifyData.results || [])
+        var landed = vResults.some(function(r: any) { return r && r.examId === examIdLocal })
+        if (landed) {
+          if (auto) {
+            toast.warning('انتهى وقت الامتحان — تم تسليم إجاباتك')
+            setExamTimeUpAuto(true)
+          } else {
+            toast.success('تم تقديم الامتحان — التسليم وصل ✅')
+          }
+          setSubmittedExamId(examIdLocal)
+          setExamSubmitted(true)
+          onExamSubmitted(examIdLocal)
+        } else {
+          toast.error('حصل انقطاع والتسليم ماوصلش — جرب تسلّم تاني، إجاباتك محفوظة عندك')
+        }
+      } catch (vErr) {
+        toast.error('حصل انقطاع في الشبكة — اتأكد من النت وجرّب تسلّم تاني')
+      }
+    }
+    examSubmitInFlightRef.current = false
+    setSubmitting(false)
+  }
+
+  /* أحدث نسخة من دالة التسليم للـ ref — العداد بيناديها عند 0 بدون stale closure */
+  useEffect(function() {
+    doSubmitExamRef.current = submitExamNow
+  })
+
+  /* ===== (25-b2) العداد التنازلي — interval خفيف كل ثانية، بينضف في cleanup
+     وعند الخروج من شاشة الحل. عند 0 → منع التعديل + التسليم التلقائي تحت ===== */
+  useEffect(function() {
+    if (!takingExam || examSubmitted || !examTimeLimitMs || !examDeadlineRef.current) return
+    var tick = function() {
+      var remain = (examDeadlineRef.current || 0) - Date.now()
+      if (remain <= 0) {
+        setExamTimeLeftMs(0)
+        setExamTimeUp(true)
+      } else {
+        setExamTimeLeftMs(remain)
+      }
+    }
+    tick()
+    var iv = setInterval(tick, 1000)
+    return function() { clearInterval(iv) }
+  }, [takingExam, examTimeLimitMs, examSubmitted])
+
+  /* ===== (25-b2) التسليم التلقائي عند 0 — مرة واحدة بس (guard flag).
+     لو صورة ورقة الحل بتترفع لحظة الانتهاء بيستنى الرفع يخلص الأول (2026-و20)
+     ولو الطالب فتح امتحان وقت خلصانة أصلًا → بيتسلم فورًا بالإجابات المتاحة ===== */
+  useEffect(function() {
+    if (!examTimeUp || !takingExam || examSubmitted) return
+    if (examAutoSubmitDoneRef.current) return
+    if (submitting || examPhotoBusy) return
+    examAutoSubmitDoneRef.current = true
+    ;(async function() {
+      try { await doSubmitExamRef.current?.({ auto: true }) } catch (e) {}
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [examTimeUp, takingExam, examSubmitted, submitting, examPhotoBusy])
+
+  /* ===== (25-b2) تحديث نتيجة المقالي بعد التسليم (showResult=true) — نفس
+     endpoint نتايج الطالب المعتمد في الملف (/api/exam-results) — ممنوع endpoint جديد ===== */
+  async function refreshExamResult() {
+    if (!submittedExamId || examReviewBusyRef.current) return
+    examReviewBusyRef.current = true
+    setExamReviewRefreshing(true)
+    try {
+      var r = await fetch('/api/exam-results?studentId=' + encodeURIComponent(studentId) + '&examId=' + encodeURIComponent(submittedExamId))
+      var d = await r.json()
+      var raw: any = null
+      if (d && Array.isArray(d.results) && d.results.length > 0) raw = d.results[0]
+      else if (d && d.result) raw = d.result
+      else if (d && (d.writingAnswers || d.writingResults || d.writingGrades || d.allQuestions || typeof d.score === 'number')) raw = d
+      var items = normalizeExamWritingItems(raw)
+      if (items.length > 0) setExamWritingReview(items)
+      var anyPending = items.some(function(w) { return w.pending })
+      if (items.length > 0 && !anyPending) setExamWritingDone(true)
+      else if (raw && (raw.gradingDone === true || raw.writingPending === false)) setExamWritingDone(true)
+      if (raw && typeof raw.score === 'number') {
+        setExamReviewScore({ score: raw.score, maxScore: typeof raw.maxScore === 'number' ? raw.maxScore : ((examSubmitResult && examSubmitResult.maxScore) || 0) })
+      }
+    } catch (e) { /* silent — زرار التحديث شغال تاني */ }
+    examReviewBusyRef.current = false
+    setExamReviewRefreshing(false)
+  }
+
+  /* أول ظهور لو المقالي لسه بيتصحح: تحديث تلقائي واحد بعد ~12 ثانية
+     (نفس نمط مراجعة الواجب المقالية 2026-و25) — وبعدها زرار «تحديث الملاحظات» اليدوي */
+  useEffect(function() {
+    if (!examSubmitted || !examSubmitResult || examSubmitResult.writingPending !== true) return
+    if (examWritingDone || examAutoRefreshDoneRef.current) return
+    examAutoRefreshDoneRef.current = true
+    var t = setTimeout(function() { refreshExamResult() }, 12000)
+    return function() { clearTimeout(t) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [examSubmitted, examSubmitResult, examWritingDone])
+
+  /* الخروج من شاشة النجاح — تصفير كامل لحالة العداد والنتيجة */
+  function resetAfterExamView() {
+    if (submittedExamId) onExamSubmitted(submittedExamId)
+    setExamSubmitted(false)
+    setSubmittedExamId(null)
+    setTakingExam(null)
+    setAnswers({})
+    setWritingAnswers({})
+    setExamQuestions([])
+    setExamShuffleMap([])
+    /* (25-b2) تصفير العداد والنتيجة */
+    setExamTimeLimitMs(null)
+    setExamTimeLeftMs(null)
+    setExamTimeUp(false)
+    setExamTimeUpAuto(false)
+    examDeadlineRef.current = null
+    examAutoSubmitDoneRef.current = false
+    setExamSubmitResult(null)
+    setExamWritingReview(null)
+    setExamWritingDone(false)
+    setExamReviewScore(null)
+    examAutoRefreshDoneRef.current = false
+    if (onGoHome) onGoHome()
+  }
+
+  if (orderedExams.length === 0) return <EmptyState message="لا توجد امتحانات حالياً" />
 
   // PERMANENT BLOCK SCREEN — exam already submitted, cannot retake
   if (blockedExamId) {
@@ -1422,66 +1934,150 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
     )
   }
 
-  // EXAM SUBMITTED SUCCESS SCREEN — with the AI-graded score + writing feedback
+  // EXAM SUBMITTED SUCCESS SCREEN — (2026-و15) تحديث نص المستر: «تم تسليم الامتحان بنجاح
+  // انتظر النتيجة من المستر» — برضه من غير أي درجة ولا تصحيح ولا أسئلة — بس زرار العودة.
+  // (25-b2) استثناء: لو رد التسليم جاب showResult:true → كارت النتيجة الفوري
   if (examSubmitted) {
-    var lrGrades: any[] = (lastResult && lastResult.writingGrades) || []
-    return (
-      <div className="flex flex-col items-center justify-center py-12 px-6 space-y-5">
-        <div className="h-24 w-24 rounded-full bg-emerald-500/10 flex items-center justify-center">
-          <CheckCircle2 className="h-14 w-14 text-emerald-500" />
-        </div>
-        <div className="text-center space-y-2">
-          <h2 className="text-xl font-bold text-emerald-600">تم تقديم الامتحان بنجاح</h2>
-          {lastResult && typeof lastResult.score === 'number' ? (
-            <div className="mt-2 inline-flex flex-col items-center gap-1.5">
-              <div className="px-6 py-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30">
-                <p className="text-3xl font-bold text-emerald-600" dir="ltr">{lastResult.score} / {lastResult.maxScore}</p>
-                <p className="text-[10px] text-muted-foreground mt-1">درجتك في الامتحان</p>
-              </div>
-              {lrGrades.length > 0 && <p className="text-xs text-emerald-600 font-medium">✅ الأسئلة المقالية اتصححت بالذكاء الاصطناعي من الإجابة النموذجية</p>}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">المصحح الذكي بيصحح الأسئلة المقالية دلوقتي — النتيجة هتظهر في قائمة الامتحانات خلال شوية</p>
-          )}
-        </div>
-        {lrGrades.length > 0 && (
-          <div className="w-full max-w-xl space-y-2">
-            <p className="text-xs font-semibold text-muted-foreground">تفاصيل تصحيح الأسئلة المقالية:</p>
-            {lrGrades.map(function(g: any, i: number) {
-              var gOk = g.isCorrect === true
-              var gHalf = !gOk && (Number(g.awardedPoints) || 0) > 0
-              return (
-                <Card key={'wg-' + i} className={gOk ? 'border-emerald-200 dark:border-emerald-900/40' : gHalf ? 'border-amber-200 dark:border-amber-900/40' : 'border-red-200 dark:border-red-900/40'}>
-                  <CardContent className="p-3 space-y-1.5">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-xs font-medium min-w-0" style={{ textAlign: 'left' }}><FractionText text={g.question || ''} /></p>
-                      <Badge className={'text-[10px] shrink-0 ' + (gOk ? 'bg-emerald-500 text-white' : gHalf ? 'bg-amber-500 text-white' : 'bg-red-500 text-white')} dir="ltr">{g.awardedPoints}/{g.maxPoints}</Badge>
-                    </div>
-                    {g.feedback && <p className="text-[10px] text-muted-foreground">{g.feedback}</p>}
-                    {g.modelAnswer && (
-                      <p className="text-[10px] text-emerald-600" style={{ textAlign: 'left' }}>الإجابة النموذجية: <FractionText text={g.modelAnswer} /></p>
-                    )}
-                  </CardContent>
-                </Card>
-              )
-            })}
+    var cardRes: any = examSubmitResult && examSubmitResult.showResult === true ? examSubmitResult : null
+    if (!cardRes) {
+      return (
+        <div className="flex flex-col items-center justify-center py-12 px-6 space-y-5">
+          <div className="h-24 w-24 rounded-full bg-emerald-500/10 flex items-center justify-center">
+            <CheckCircle2 className="h-14 w-14 text-emerald-500" />
           </div>
-        )}
-        <Button
-          onClick={() => {
-            if (submittedExamId) onExamSubmitted(submittedExamId)
-            setExamSubmitted(false)
-            setSubmittedExamId(null)
-            setTakingExam(null)
-            setAnswers({})
-            setWritingAnswers({})
-            setExamQuestions([])
-            setExamShuffleMap([])
-          }}
-          className="mt-2"
-        >
-          العودة إلى صفحتك الرئيسية
-        </Button>
+          <div className="text-center space-y-2">
+            <h2 className="text-xl font-bold text-emerald-600">تم تسليم الامتحان بنجاح</h2>
+            <p className="text-sm text-muted-foreground">انتظر النتيجة من المستر</p>
+            {/* (25-b2) يظهر بس لما العداد سلّم تلقائيًا بعد انتهاء الوقت */}
+            {examTimeUpAuto && <p className="text-sm font-semibold text-amber-600 dark:text-amber-400">⏰ انتهى وقت الامتحان — تم تسليم إجاباتك تلقائيًا</p>}
+          </div>
+          <Button onClick={resetAfterExamView} className="mt-2 min-h-[44px] px-6">
+            العودة إلى صفحتك
+          </Button>
+        </div>
+      )
+    }
+    var writingStillPending = cardRes.writingPending === true && !examWritingDone
+    return (
+      <div className="space-y-4 pb-8">
+        {/* هيدر أخضر «تم تسليم الامتحان بنجاح ✓» */}
+        <div className="flex flex-col items-center justify-center pt-10 px-6 space-y-3 text-center">
+          <div className="h-20 w-20 rounded-full bg-emerald-500/10 flex items-center justify-center">
+            <CheckCircle2 className="h-12 w-12 text-emerald-500" />
+          </div>
+          <h2 className="text-xl font-bold text-emerald-600">تم تسليم الامتحان بنجاح ✓</h2>
+          {examTimeUpAuto && <p className="text-sm font-semibold text-amber-600 dark:text-amber-400">⏰ انتهى وقت الامتحان — تم تسليم إجاباتك تلقائيًا</p>}
+        </div>
+
+        <Card className="border-emerald-500/30 mx-auto w-full max-w-2xl">
+          <CardContent className="p-4 sm:p-5 space-y-4">
+            {/* درجة الاختياري — ولو المقالي اتصحح الدرجة الكلية بتتحدث من التحديث */}
+            <div className="flex items-start gap-3 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+              <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                {examReviewScore ? (
+                  <p className="font-bold text-sm sm:text-base text-emerald-700 dark:text-emerald-400">درجتك: {examReviewScore.score} / {examReviewScore.maxScore}</p>
+                ) : (
+                  <p className="font-bold text-sm sm:text-base text-emerald-700 dark:text-emerald-400">
+                    درجتك في الاختياري: {typeof cardRes.mcqScore === 'number' ? cardRes.mcqScore : 0} / {typeof cardRes.maxScore === 'number' ? cardRes.maxScore : 0}
+                    {cardRes.writingPending === true && <span className="text-xs font-semibold text-amber-600 dark:text-amber-400"> (المقالي لسه بيتصحح)</span>}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* قائمة كل سؤال اختياري صح/غلط — سكرول نظيف للقاائم الطويلة */}
+            {Array.isArray(cardRes.mcqResults) && cardRes.mcqResults.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-foreground">مراجعة أسئلة الاختياري:</p>
+                <div className="max-h-96 overflow-y-auto custom-scrollbar space-y-2 pl-0.5">
+                  {cardRes.mcqResults.map(function(m: any, mi: number) {
+                    var pts = typeof m.points === 'number' ? m.points : null
+                    return (
+                      <div key={'mcqr-' + mi} className={'flex items-start gap-2 p-2.5 rounded-lg border text-sm ' + (m.isCorrect ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-red-500/30 bg-red-500/5')}>
+                        {m.isCorrect ? <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" /> : <XCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />}
+                        <div className="flex-1 min-w-0 space-y-0.5">
+                          <p className="text-xs sm:text-sm font-medium break-words" dir="auto">{mi + 1}. <FractionText text={m.question || ''} /></p>
+                          <p className="text-xs text-foreground/90 break-words" dir="auto">
+                            إجابتك: <span dir="ltr" className="font-semibold"><FractionText text={m.studentAnswer || '(فارغ)'} /></span>
+                            {m.isCorrect ? (
+                              <span className="text-emerald-600 font-semibold"> — صح ✓</span>
+                            ) : (
+                              <span> — <span className="text-muted-foreground">الصح:</span> <span dir="ltr" className="text-emerald-600 font-semibold"><FractionText text={m.correctAnswer || ''} /></span></span>
+                            )}
+                          </p>
+                          {pts !== null && <p className="text-[10px] font-semibold text-muted-foreground">({pts} {pts === 1 ? 'درجة' : 'درجات'})</p>}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* مراجعة الأسئلة المقالية بعد ما التصحيح يخلص — «📝 ملاحظة المصحح الذكي» بنفس ستايل مراجعة الواجب */}
+            {examWritingReview && examWritingReview.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-foreground">مراجعة الأسئلة المقالية:</p>
+                {examWritingReview.map(function(w: any, wi: number) {
+                  return (
+                    <Card key={'ewr-' + wi} className={w.pending ? 'border-amber-200 dark:border-amber-900/40' : w.isCorrect ? 'border-emerald-200 dark:border-emerald-900/40' : 'border-red-200 dark:border-red-900/40'}>
+                      <CardContent className="p-3 space-y-2">
+                        <div className="flex items-start gap-2">
+                          <span className={'shrink-0 mt-0.5 text-xs font-bold px-2 py-0.5 rounded-full ' + (w.pending ? 'bg-amber-500/10 text-amber-600' : w.isCorrect ? 'bg-emerald-500/10 text-emerald-600' : 'bg-red-500/10 text-red-600')}>
+                            {w.pending ? 'Pending' : w.isCorrect ? 'Correct' : ((w.answer || '').trim() ? 'Wrong' : 'Empty')}
+                          </span>
+                          <p className="text-sm font-medium flex-1 whitespace-pre-wrap break-words" dir="auto">{wi + 1}. <FractionText text={w.question} /></p>
+                        </div>
+                        <p className="text-xs text-foreground whitespace-pre-wrap break-words" dir="auto">إجابتك: <FractionText text={w.answer || '(فارغ)'} /></p>
+                        {w.modelAnswer && <p className="text-xs text-emerald-600 whitespace-pre-wrap break-words" dir="auto">الإجابة الصحيحة: <FractionText text={w.modelAnswer} /></p>}
+                        {!w.pending && w.awardedPoints !== undefined && <p className="text-[10px] font-semibold text-muted-foreground">الدرجة: {w.awardedPoints}/{w.maxPoints}</p>}
+                        {w.pending && (
+                          <div className="mt-2 p-2 rounded bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 flex items-center gap-2">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-600 shrink-0" />
+                            <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">بيتصحح دلوقتي…</p>
+                          </div>
+                        )}
+                        {!w.pending && w.feedback && (
+                          <div className={'mt-2.5 p-3 rounded-xl border-2 ' + (w.isCorrect ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-400 dark:border-emerald-700' : 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-800')}>
+                            <p className={'text-xs font-bold mb-1 flex items-center gap-1.5 ' + (w.isCorrect ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400')}>
+                              <span>📝</span> ملاحظة المصحح الذكي:
+                            </p>
+                            <p className="text-xs leading-relaxed text-foreground whitespace-pre-wrap break-words" style={{ textAlign: 'right' }}>{w.feedback}</p>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* بانر المقالي — بتصحح بالذكاء الاصطناعي + زرار تحديث واحد (وتلقائي بعد 12 ثانية) */}
+            {writingStillPending && (
+              <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 space-y-2.5">
+                <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 flex items-start gap-2 leading-relaxed">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0 mt-0.5" />
+                  <span>الأسئلة المقالية بتصحح بالذكاء الاصطناعي دلوقتي — ملاحظات المصحح الذكية هتظهر بعد لحظات</span>
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="min-h-[44px] w-full sm:w-auto border-amber-400/60 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40"
+                  disabled={examReviewRefreshing}
+                  onClick={function() { refreshExamResult() }}
+                >
+                  {examReviewRefreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <span>🔄</span>}
+                  تحديث الملاحظات
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <div className="flex justify-center">
+          <Button onClick={resetAfterExamView} className="min-h-[44px] px-6">العودة إلى صفحتك</Button>
+        </div>
       </div>
     )
   }
@@ -1503,11 +2099,54 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
     })
     return (
       <div className="space-y-4" dir="ltr">
-        <div className="flex items-center justify-between">
-          <h3 className="font-bold">{exam.title}</h3>
-          <Button variant="outline" size="sm" onClick={() => { setTakingExam(null); setAnswers({}); setWritingAnswers({}); setExamQuestions([]); setExamShuffleMap([]) }}>رجوع</Button>
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="font-bold truncate min-w-0">{exam.title}</h3>
+          <Button variant="outline" size="sm" className="h-11 sm:h-8 shrink-0" onClick={() => { setTakingExam(null); setAnswers({}); setWritingAnswers({}); setExamQuestions([]); setExamShuffleMap([]); setExamTimeLimitMs(null); setExamTimeLeftMs(null); setExamTimeUp(false); examDeadlineRef.current = null }}>رجوع</Button>
         </div>
-        
+
+        {/* (25-b2) العداد التنازلي — ظابط فوق منطقة الحل — primary عادي،
+            وأحمر نابض animate-pulse في آخر دقيقة — وعند 0 بيسلّم تلقائيًا */}
+        {examTimeLimitMs !== null && (
+          <div className="sticky top-0 z-40" dir="rtl">
+            <div
+              className={
+                'flex items-center justify-center gap-2 w-full min-h-[44px] px-4 py-2 rounded-xl font-bold text-sm shadow-sm border backdrop-blur transition-colors ' +
+                (examTimeUp
+                  ? 'bg-red-100/95 dark:bg-red-900/40 border-red-400/60 text-red-700 dark:text-red-300'
+                  : examTimeLeftMs !== null && examTimeLeftMs <= 60000
+                    ? 'bg-destructive text-white border-destructive animate-pulse'
+                    : 'bg-primary text-primary-foreground border-primary/40')
+              }
+            >
+              <Timer className="h-4 w-4 shrink-0" />
+              {examTimeUp ? (
+                <span>انتهى وقت الامتحان — جاري تسليم إجاباتك…</span>
+              ) : (
+                <>
+                  <span>الوقت المتبقي:</span>
+                  <span dir="ltr" className="tabular-nums">{formatExamClock(examTimeLeftMs || 0)}</span>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 2026-و19 — ورقة الامتحان جوه شاشة الحل — طلب المستر «الورق ما بيحملش كله»:
+            الطالب يقدر يفتح الورقة كاملة في أي لحظة وهو بيحل، ثابتة فوق دايمًا
+            (25-b2: لما العداد شغال بينزل تحت العداد عشان الاتنين sticky فوق) */}
+        {exam.filePath && (
+          <a
+            href={exam.filePath}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={(examTimeLimitMs !== null ? 'sticky top-[48px] z-30' : 'sticky top-0 z-30') + " flex items-center justify-center gap-2 w-full min-h-[44px] px-4 py-2.5 rounded-xl font-bold text-sm text-amber-900 dark:text-amber-300 bg-amber-100/95 dark:bg-amber-900/40 border border-amber-400/60 shadow-sm backdrop-blur hover:bg-amber-200/95 dark:hover:bg-amber-900/60 transition-colors"}
+            dir="rtl"
+          >
+            <FileText className="h-4 w-4 shrink-0" />
+            ورقة الامتحان — اضغط في أي وقت لعرضها كاملة
+            <ExternalLink className="h-3.5 w-3.5 shrink-0 opacity-70" />
+          </a>
+        )}
         {/* MCQ Section */}
         {mcqQs.length > 0 && (
           <div className="space-y-3">
@@ -1525,8 +2164,9 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
                       {(q.options || []).map((opt: string, oi: number) => (
                         <button
                           key={oi}
+                          disabled={examTimeUp}
                           onClick={() => setAnswers(prev => ({ ...prev, [displayIdx]: oi }))}
-                          className={`w-full p-3 rounded-lg border text-sm transition-colors ${
+                          className={`w-full p-3 rounded-lg border text-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
                             answers[displayIdx] === oi ? 'border-primary bg-primary/10 text-primary font-medium' : 'border-border hover:bg-muted/50'
                           }`}
                           style={{ textAlign: 'left' }}
@@ -1559,11 +2199,21 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
                       <span className="text-muted-foreground text-xs ml-2">({pts} درجات)</span>
                       <Badge variant="outline" className="text-[9px] ml-2 border-amber-500/40 text-amber-600">مقالي</Badge>
                     </p>
-                    <div dir="ltr">
+                    {/* (25-b2) عند انتهاء الوقت: منع تعديل نهائي — pointer-events +
+                        قفل الكيبورد على الـ MathKeyboard من غير لمس الملف بتاعه */}
+                    <div
+                      dir="ltr"
+                      className={examTimeUp ? 'pointer-events-none select-none opacity-60' : ''}
+                      onKeyDownCapture={examTimeUp ? function(e: any) { e.preventDefault(); e.stopPropagation() } : undefined}
+                      aria-disabled={examTimeUp || undefined}
+                    >
                       <MathKeyboard
                         value={writingAnswers[displayIdx] || ''}
                         onChange={function(val: string) {
                           setWritingAnswers(function(prev) { return { ...prev, [displayIdx]: val } })
+                        }}
+                        onUploadStateChange={function(busy: boolean) {
+                          setExamPhotoBusy(busy)
                         }}
                         placeholder="اكتب إجابتك هنا أو ارفع صورة..."
                         rows={4}
@@ -1576,66 +2226,14 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
           </div>
         )}
 
+        {/* (25-b2) زرار التسليم — نفس المنطق في submitExamNow (والعداد بيستخدم نفس الدالة).
+            مفيش disable عند examTimeUp عشان لو التسليم التلقائي فشل شبكة الطالب يقدر يعيد بنفسه */}
         <Button
-          className="w-full"
-          disabled={submitting}
-          onClick={async () => {
-            setSubmitting(true)
-            try {
-              // Combine MCQ + writing answers - use displayIdx as key
-              var mappedAnswers: Record<number, any> = {}
-              // MCQ answers (answers keys are displayIdx)
-              Object.keys(answers).forEach(function(di) {
-                var displayIdx = parseInt(di)
-                // displayIdx is the position in examQuestions array (shuffled)
-                // examShuffleMap maps displayIdx → original question index
-                var origIdx = examShuffleMap.length > 0 ? examShuffleMap[displayIdx] : displayIdx
-                if (origIdx === undefined) origIdx = displayIdx
-                mappedAnswers[origIdx] = answers[di]
-              })
-              // Writing answers (writingAnswers keys are displayIdx)
-              Object.keys(writingAnswers).forEach(function(di) {
-                var displayIdx = parseInt(di)
-                var origIdx = examShuffleMap.length > 0 ? examShuffleMap[displayIdx] : displayIdx
-                if (origIdx === undefined) origIdx = displayIdx
-                mappedAnswers[origIdx] = writingAnswers[di]
-              })
-              // Add client-side timeout (120s — AI grades the writing questions during submit)
-              var submitController = new AbortController()
-              var submitTimeout = setTimeout(function() { submitController.abort() }, 120000)
-              const res = await fetch('/api/exams/submit', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ studentId, examId: takingExam, answers: mappedAnswers }),
-                signal: submitController.signal,
-              })
-              clearTimeout(submitTimeout)
-              const data = await res.json()
-              if (res.ok && (data.submitted || data.alreadySubmitted)) {
-                // الدرجة وتصحيح المقالية رجعوا من السيرفر (تصحيح فوري بالذكاء الاصطناعي)
-                if (typeof data.score === 'number') {
-                  setLastResult({ examId: takingExam, score: data.score, maxScore: data.maxScore, writingGrades: data.writingGrades || [] })
-                }
-                setSubmittedExamId(takingExam)
-                setExamSubmitted(true)
-                onExamSubmitted(takingExam)
-              } else if (data.blocked || data.alreadySubmitted) {
-                onExamSubmitted(takingExam)
-                setBlockedExamId(takingExam)
-              } else {
-                toast.error(data.error || 'خطأ في التقديم')
-              }
-            } catch (e) {
-              // If timeout/network error, treat as submitted (server may still be processing)
-              toast.success('تم تقديم الامتحان بنجاح')
-              setSubmittedExamId(takingExam)
-              setExamSubmitted(true)
-              onExamSubmitted(takingExam)
-            }
-            setSubmitting(false)
-          }}
+          className="w-full h-11 sm:h-10"
+          disabled={submitting || examPhotoBusy}
+          onClick={function() { submitExamNow() }}
         >
-          {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : `تسليم الامتحان (${Object.keys(answers).length + Object.keys(writingAnswers).length}/${examQuestions.length})`}
+          {examPhotoBusy ? <span className="flex items-center justify-center gap-1.5"><Loader2 className="h-4 w-4 animate-spin" /> مستني صورة ورقة الحل تترفع كاملة...</span> : submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : `تسليم الامتحان (${Object.keys(answers).length + Object.keys(writingAnswers).length}/${examQuestions.length})`}
         </Button>
       </div>
     )
@@ -1644,22 +2242,25 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
   // EXAM LIST VIEW
   return (
     <div className="space-y-3">
-      {exams.map((exam) => {
+      {/* (25-b2) الامتحان المجدول مستقبليًا يتجاهل بصمت من القايمة */}
+      {exams.filter(function(e) { return !isExamScheduledAhead(e) }).map((exam) => {
         const examResult: any = results.find(r => r.examId === exam.id)
         const isCompleted = examResult || completedExamIds.has(exam.id)
-        // نتيجة لحظية من آخر تسليم (لو لسه متحدثش في اللستة)
-        const liveResult = (lastResult && lastResult.examId === exam.id) ? lastResult : examResult
-        const liveGrades: any[] = (liveResult && liveResult.writingGrades) || []
+        // مقفول بالتسلسل؟ الامتحان اللي قبله لسه متقدمش (زي الفيديوهات — طلب المستر)
+        const isExamSeqLocked = examLockMap[exam.id] === true
+        const prevExamId = examPrevMap[exam.id]
+        const prevExamTitle = prevExamId ? ((exams.find(function(x) { return x.id === prevExamId }) || ({} as any)).title || '') : ''
+        /* 2026-و12 — مفيش نتيجة لحظية ولا تصحيح يتشاف من الطالب */
         let hasQuestions = false
         let parsedQuestions: any[] = []
         try { if ((exam as any).questions) { parsedQuestions = JSON.parse((exam as any).questions); hasQuestions = parsedQuestions.length > 0 } } catch {}
         return (
-          <Card key={exam.id} className={isCompleted ? 'border-emerald-500/30' : ''}>
+          <Card key={exam.id} className={isExamSeqLocked ? 'border-red-500/30 opacity-90' : isCompleted ? 'border-emerald-500/30' : ''}>
             <CardContent className="p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-start gap-3 min-w-0 flex-1">
-                  <div className="h-9 w-9 rounded-lg bg-orange-500/10 flex items-center justify-center shrink-0 mt-0.5">
-                    <FileText className="h-4 w-4 text-orange-500" />
+                  <div className={"h-9 w-9 rounded-lg flex items-center justify-center shrink-0 mt-0.5 " + (isExamSeqLocked ? 'bg-red-500/10' : 'bg-orange-500/10')}>
+                    {isExamSeqLocked ? <Lock className="h-4 w-4 text-red-500" /> : <FileText className="h-4 w-4 text-orange-500" />}
                   </div>
                   <div className="min-w-0 space-y-1.5">
                     <h3 className="font-semibold text-sm">{exam.title}</h3>
@@ -1669,22 +2270,36 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
                         📄 {(exam as any).modelName}
                       </Badge>
                     )}
+                    {/* (25-b2) امتحان عليه وقت محدد — العلامة تظهر قبل ما يبدأ */}
+                    {(function() {
+                      var tlShow = Number((exam as any).timeLimitMin || 0)
+                      return isFinite(tlShow) && tlShow > 0 ? (
+                        <Badge variant="outline" className="text-[10px] border-primary/40 text-primary w-fit">⏱ {tlShow} دقيقة</Badge>
+                      ) : null
+                    })()}
+                    {isExamSeqLocked && (
+                      <p className="text-[11px] text-red-500 font-bold leading-relaxed">
+                        🔒 الامتحان ده هيتفتح أول ما تاخد الامتحان اللي قبله{prevExamTitle ? ' — "' + prevExamTitle + '"' : ''}
+                      </p>
+                    )}
                     {isCompleted ? (
                       <div className="flex items-center gap-2 flex-wrap">
                         <Badge className="text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
-                          تم تقديم الامتحان
+                          تم تسليم الامتحان
                         </Badge>
-                        {liveResult && typeof liveResult.score === 'number' && (
-                          <Badge className="text-xs bg-primary text-primary-foreground" dir="ltr">{liveResult.score}/{liveResult.maxScore}</Badge>
-                        )}
-                        {liveGrades.length > 0 && (
-                          <button type="button" onClick={function() { setShowGradesFor(showGradesFor === exam.id ? null : exam.id) }} className="text-[11px] font-medium text-primary hover:underline cursor-pointer">
-                            {showGradesFor === exam.id ? 'اقفل التصحيح' : 'شوف تصحيح المقالية 👁'}
-                          </button>
-                        )}
                       </div>
+                    ) : isExamSeqLocked ? (
+                      <button
+                        type="button"
+                        onClick={function() { toast.error('الامتحان ده هيتفتح أول ما تاخد الامتحان اللي قبله — امتحان " ' + (prevExamTitle || 'اللي قبله') + ' " الأول', { duration: 6000 }) }}
+                        className="inline-flex items-center gap-1.5 text-[11px] font-bold text-red-500 hover:text-red-600 cursor-not-allowed"
+                        aria-label="الامتحان مقفول — هيتفتح أول ما تاخد الامتحان اللي قبله"
+                      >
+                        <Lock className="h-3.5 w-3.5" />
+                        مقفول — سلّم اللي قبله الأول
+                      </button>
                     ) : hasQuestions ? (
-                      <Button size="sm" disabled={checkingServer} onClick={async () => {
+                      <Button size="sm" className="h-11 sm:h-8" disabled={checkingServer} onClick={async () => {
                         setCheckingServer(true)
                         try {
                           var checkRes = await fetch('/api/exam-results?studentId=' + studentId + '&examId=' + exam.id)
@@ -1707,8 +2322,42 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
                           var shuffled = indices.map(function(i: number) { return parsedQuestions[i] })
                           setExamQuestions(shuffled)
                           setExamShuffleMap(indices)
-                          setTakingExam(exam.id)
                           setAnswers({})
+                          /* ===== (25-b2) تهيئة العداد التنازلي + تصفير حالة النتيجة =====
+                             وقت البدء بيتسجل مرة واحدة في localStorage — لو موجود بيتاخد زي ما هو
+                             (الـ refresh بيكمّل من نفس النقطة مش من الأول)، ولو العدّاد خلص
+                             أصلًا setExamTimeUp(true) → التسليم التلقائي فورًا بالإجابات المتاحة */
+                          examAutoSubmitDoneRef.current = false
+                          examSubmitInFlightRef.current = false
+                          setExamSubmitResult(null)
+                          setExamWritingReview(null)
+                          setExamWritingDone(false)
+                          setExamReviewScore(null)
+                          examAutoRefreshDoneRef.current = false
+                          setExamTimeUpAuto(false)
+                          var tlMin = Number((exam as any).timeLimitMin || 0)
+                          if (isFinite(tlMin) && tlMin > 0) {
+                            var startKey = 'mg_exam_start_' + exam.id + '_' + studentId
+                            var startVal: string | null = null
+                            try { startVal = localStorage.getItem(startKey) } catch (e) {}
+                            var startNum = startVal ? parseInt(startVal, 10) : NaN
+                            if (!isFinite(startNum) || startNum <= 0) {
+                              startNum = Date.now()
+                              try { localStorage.setItem(startKey, String(startNum)) } catch (e) {}
+                            }
+                            examDeadlineRef.current = startNum + tlMin * 60 * 1000
+                            setExamTimeLimitMs(tlMin * 60 * 1000)
+                            var remainMs = examDeadlineRef.current - Date.now()
+                            setExamTimeLeftMs(Math.max(0, remainMs))
+                            setExamTimeUp(remainMs <= 0)
+                          } else {
+                            /* امتحان بلا وقت — صفر تغيير */
+                            examDeadlineRef.current = null
+                            setExamTimeLimitMs(null)
+                            setExamTimeLeftMs(null)
+                            setExamTimeUp(false)
+                          }
+                          setTakingExam(exam.id)
                         } catch { toast.error('خطأ في تحميل الأسئلة') }
                       }}>{checkingServer ? <Loader2 className="h-4 w-4 animate-spin" /> : 'ابدأ الامتحان'}</Button>
                     ) : (
@@ -1719,30 +2368,6 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
                 </div>
                 {exam.filePath && <FileAttachment filePath={exam.filePath} fileType={exam.fileType} />}
               </div>
-              {/* تفاصيل تصحيح المقالية بالذكاء الاصطناعي */}
-              {isCompleted && showGradesFor === exam.id && liveGrades.length > 0 && (
-                <div className="mt-3 pt-3 border-t space-y-2">
-                  {liveGrades.map(function(g: any, gi: number) {
-                    var gOk = g.isCorrect === true
-                    var gHalf = !gOk && (Number(g.awardedPoints) || 0) > 0
-                    return (
-                      <div key={'g-' + gi} className={'p-2.5 rounded-lg border space-y-1 ' + (gOk ? 'border-emerald-200 bg-emerald-50/50 dark:border-emerald-900/40 dark:bg-emerald-900/10' : gHalf ? 'border-amber-200 bg-amber-50/50 dark:border-amber-900/40 dark:bg-amber-900/10' : 'border-red-200 bg-red-50/50 dark:border-red-900/40 dark:bg-red-900/10')}>
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-xs font-medium min-w-0" style={{ textAlign: 'left' }}><FractionText text={g.question || ''} /></p>
-                          <Badge className={'text-[10px] shrink-0 ' + (gOk ? 'bg-emerald-500 text-white' : gHalf ? 'bg-amber-500 text-white' : 'bg-red-500 text-white')} dir="ltr">{g.awardedPoints}/{g.maxPoints}</Badge>
-                        </div>
-                        {g.answer && (
-                          <p className="text-[10px] text-muted-foreground" style={{ textAlign: 'left' }}>إجابتك: <FractionText text={g.answer} /></p>
-                        )}
-                        {g.modelAnswer && (
-                          <p className="text-[10px] text-emerald-600" style={{ textAlign: 'left' }}>الإجابة النموذجية: <FractionText text={g.modelAnswer} /></p>
-                        )}
-                        {g.feedback && <p className="text-[10px] text-muted-foreground">🤖 {g.feedback}</p>}
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
             </CardContent>
           </Card>
         )
@@ -1872,16 +2497,27 @@ function DiscussionsTab({ grade, studentId, studentName }: { grade: string; stud
 }
 
 /* ========== SHARED COMPONENTS ========== */
+/* 2026-و19 — «الورق ما بيحملش كله» — المرفق بقى بيتفتح كامل: صورة الورقة
+ * قابلة للضغط بتفتح الصورة الأصلية كاملة (تبويب جديد + زوم المتصفح)
+ * والـ PDF زرار واضح 44px — والطالب بيشوف الورقة كاملة مش مصغرة 48px */
 function FileAttachment({ filePath, fileType }: { filePath: string; fileType: string }) {
   const isImage = fileType?.startsWith('image/')
   const isPdf = fileType === 'application/pdf'
   if (isImage) {
-    return <Image src={filePath} alt="Attachment" width={48} height={48} className="max-h-12 rounded-lg border" unoptimized />
+    return (
+      <a href={filePath} target="_blank" rel="noopener noreferrer" className="inline-block group align-top" title="اضغط لعرض الورقة كاملة">
+        <Image src={filePath} alt="ورقة الامتحان — اضغط للعرض الكامل" width={120} height={96} className="max-h-24 w-auto rounded-lg border group-hover:ring-2 ring-primary/60 transition-all" unoptimized />
+        <span className="flex items-center gap-1 text-[11px] font-bold text-primary mt-1">
+          <Search className="h-3 w-3" />
+          اضغط لعرض الورقة كاملة
+        </span>
+      </a>
+    )
   }
   return (
-    <a href={filePath} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 p-2 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors text-xs shrink-0">
+    <a href={filePath} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-3 py-2.5 min-h-[44px] rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors text-xs font-bold shrink-0">
       <FileDown className="h-4 w-4" />
-      {isPdf ? 'PDF' : 'ملف'}
+      {isPdf ? 'افتح الورقة كاملة (PDF)' : 'افتح الملف كامل'}
     </a>
   )
 }
@@ -1915,7 +2551,7 @@ function StudentGuide({ onClose, onEnterPortal }: { onClose: () => void; onEnter
     {
       icon: FileText,
       title: 'ادخل الامتحانات',
-      desc: 'تاب "الامتحانات" فيه كل الامتحانات اللي المستر نزلها لصفك. اضغط على الامتحان وادخل حل الأسئلة، هتشوف نتيجتك بعد ما تخلص.',
+      desc: 'تاب "الامتحانات" فيه كل الامتحانات اللي المستر نزلها لصفك. اضغط على الامتحان وادخل حل الأسئلة، ونتيجتك هتظهر لمستر شريف بعد ما تسلّم.',
       color: 'text-orange-600 bg-orange-100 dark:bg-orange-900/30',
     },
     {

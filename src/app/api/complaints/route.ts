@@ -56,7 +56,9 @@ export async function POST(request: Request) {
     }
 
     var studentId = cleanText(body.studentId, 64)
-    var source = body.source === 'ai' ? 'ai' : 'student'
+    /* (2026-و26) source = 'public' → شكوى من صفحة الشكاوى العامة (من غير حساب)
+       — بتوصل للأدمن ببادج «زائر» */
+    var source = body.source === 'ai' ? 'ai' : (body.source === 'public' ? 'public' : 'student')
     var summary = cleanText(body.summary, 300)
 
     var studentName = cleanText(body.studentName, 120)
@@ -79,6 +81,11 @@ export async function POST(request: Request) {
       } catch (e) {}
     }
 
+    /* (2026-و26) الشكوى العامة: مش محتاجة حساب — الاسم + التليفون كفاية.
+       لو مفيش الاتنين يبقى لازم تسجيل دخول. */
+    if (!studentId && (!studentName || !phone)) {
+      return NextResponse.json({ error: 'اكتب اسمك ورقم تليفونك عشان المستر يقدر يواصل معاك' }, { status: 400 })
+    }
     if (!studentName && !phone) {
       return NextResponse.json({ error: 'لازم تكون مسجل دخول عشان تبعت شكوى' }, { status: 401 })
     }
@@ -92,6 +99,19 @@ export async function POST(request: Request) {
         )
         if (cnt && cnt[0] && Number(cnt[0].c) >= 8) {
           return NextResponse.json({ error: 'بعت شكاوى كتير النهاردة — المستر هشوفها كلها بإذن الله 🙏' }, { status: 429 })
+        }
+      } catch (e) {}
+    }
+
+    /* (2026-و26) حد spam للشكاوى العامة: أقصى 5 في اليوم لنفس رقم التليفون */
+    if (!studentId && phone) {
+      try {
+        var pcnt = await db.$queryRawUnsafe(
+          "SELECT COUNT(*) as c FROM Complaint WHERE phone = ? AND createdAt >= datetime('now', '-1 day')",
+          phone
+        )
+        if (pcnt && pcnt[0] && Number(pcnt[0].c) >= 5) {
+          return NextResponse.json({ error: 'بعت شكاوى كتير النهاردة من الرقم ده — المستر هشوفها كلها بإذن الله 🙏' }, { status: 429 })
         }
       } catch (e) {}
     }
@@ -137,6 +157,34 @@ export async function GET(request: Request) {
       } else {
         rows = (await db.$queryRawUnsafe('SELECT * FROM Complaint ORDER BY createdAt DESC LIMIT 300')) || []
       }
+    }
+
+    /* (2026-و12 — طلب المستر: أي شكوى توصلله باسم الطالب ورقم تليفونه)
+       شكاوى قديمة متخزنة من غير اسم/تليفون → بنكمل هويتها من جدول الطلاب */
+    if (!studentId) {
+      try {
+        var needIds: string[] = []
+        rows.forEach(function (r: any) {
+          if (r.studentId && (!r.studentName || !r.phone) && needIds.indexOf(r.studentId) === -1) needIds.push(r.studentId)
+        })
+        if (needIds.length > 0) {
+          var ph = needIds.map(function () { return '?' }).join(',')
+          var srows = (await db.$queryRawUnsafe(
+            'SELECT id, name, phone, grade FROM Student WHERE id IN (' + ph + ')',
+            ...needIds
+          )) || []
+          var smap: any = {}
+          srows.forEach(function (s: any) { smap[s.id] = s })
+          rows.forEach(function (r: any) {
+            var s = smap[r.studentId]
+            if (s) {
+              if (!r.studentName) r.studentName = String(s.name || '')
+              if (!r.phone) r.phone = String(s.phone || '')
+              if (!r.grade) r.grade = String(s.grade || '')
+            }
+          })
+        }
+      } catch (e) {}
     }
 
     var newCount = rows.filter(function (r) { return r.status === 'new' }).length

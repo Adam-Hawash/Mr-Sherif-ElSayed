@@ -202,10 +202,15 @@ export async function POST(request: Request) {
         return zaiChat(systemPrompt, history, content, timeoutMs)
       })
     } else {
+      // **طلب المستر (2026-و7): Gemini 3.6 هو الأساسي في النصوص كمان —
+      // المفتاح موجود في Vercel → Environment Variables (GEMINI_API_KEYS)
+      // ولو المفتاح مش متظبط أو الحصة خلصت، ZAI بيفضل شبكة أمان**
+      if (hasGeminiKey()) {
+        engines.push(function () {
+          return callGemini({ parts: [{ text: systemPrompt + '\n\nرسالة الطالب: ' + message }], generationConfig: { temperature: 0.3, maxOutputTokens: 4096 }, timeoutMs: timeoutMs, thinking: 'low' })
+        })
+      }
       engines.push(function () { return zaiChat(systemPrompt, history, message, timeoutMs) })
-      engines.push(function () {
-        return callGemini({ parts: [{ text: systemPrompt + '\n\nرسالة الطالب: ' + message }], generationConfig: { temperature: 0.3, maxOutputTokens: 4096 }, timeoutMs: timeoutMs, thinking: 'low' })
-      })
     }
 
     // ---------- SSE STREAMING ----------

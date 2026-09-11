@@ -1,5 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { db, safeWrite } from '@/lib/db'
+import { isAdmin } from '@/lib/video-guard'
+
+/* (25-ب1) أعمدة الميزات الجديدة (إظهار الإجابات / المؤقت / جدولة الظهور) —
+   defensive ALTERs بنفس نمط الكود في المشروع: لو العمود موجود الأصلًا
+   الفشل بيتجاهل بصمت. ممنوع db:push — كل قاعدة بيانات بتترقّى تلقائيًا هنا. */
+async function ensureExamFeatureColumns() {
+  try { await db.$executeRawUnsafe('ALTER TABLE Exam ADD COLUMN showResult INTEGER DEFAULT 0') } catch (e) {}
+  try { await db.$executeRawUnsafe('ALTER TABLE Exam ADD COLUMN timeLimitMin INTEGER DEFAULT 0') } catch (e) {}
+  try { await db.$executeRawUnsafe('ALTER TABLE Exam ADD COLUMN scheduledAt DATETIME') } catch (e) {}
+  try { await db.$executeRawUnsafe('ALTER TABLE Homework ADD COLUMN scheduledAt DATETIME') } catch (e) {}
+  /* (2026-و26) استهداف الطلاب — نفس نمط الفيديوهات (VideoSchedule.studentIds):
+     JSON array من ids الطلاب — فاضي = الكل يشوفه */
+  try { await db.$executeRawUnsafe("ALTER TABLE Exam ADD COLUMN targetStudentIds TEXT DEFAULT ''") } catch (e) {}
+}
+
+/* (2026-و26) تطبيع قايمة الطلاب المستهدفين — بتوصل array أو JSON string
+   والخروج JSON string نظيفة (بدون تكرار). undefined = مش متغيرة */
+export function normalizeTargetIds(v: unknown): string | undefined {
+  if (v === undefined || v === null) return undefined
+  var arr: unknown[] = []
+  if (Array.isArray(v)) arr = v
+  else {
+    try { var p = JSON.parse(String(v)); if (Array.isArray(p)) arr = p } catch (e) { return '[]' }
+  }
+  var clean = arr.map(function (x) { return String(x == null ? '' : x).trim() }).filter(Boolean)
+  clean = clean.filter(function (x, i) { return clean.indexOf(x) === i })
+  return JSON.stringify(clean)
+}
+
+/* (2026-و26) قراءة قايمة الاستهداف من صف */
+function parseTargetIds(raw: unknown): string[] {
+  try { var p = JSON.parse(String(raw || '[]')); return Array.isArray(p) ? p : [] } catch (e) { return [] }
+}
 
 // Normalize grade names so old and new naming conventions match
 function normalizeGrade(grade: string): string {
@@ -72,11 +105,16 @@ function applyModelForStudent(exam: any, studentId: string) {
 
 export async function GET(request: NextRequest) {
   try {
+    await ensureExamFeatureColumns()
     const { searchParams } = new URL(request.url)
     const grade = searchParams.get('grade')
     const keyword = searchParams.get('keyword')
     // لو الطلب من حساب طالب → امسح له النموذج المخصص عشوائيًا
     const studentId = searchParams.get('studentId') || ''
+    // (25-ب1) تمييز الأدمن بنفس النمط الموجود في المشروع (adminId + isAdmin
+    // زي /api/videos بالظبط) — الأدمن بس اللي يشوف العناصر المجدولة
+    const adminId = searchParams.get('adminId')
+    const admin = await isAdmin(adminId)
     const page = parseInt(searchParams.get('page') || '1')
     const pageSize = parseInt(searchParams.get('pageSize') || '20')
 
@@ -92,6 +130,12 @@ export async function GET(request: NextRequest) {
     if (keyword) {
       where.OR = where.OR ? [...(where.OR as unknown[]), { title: { contains: keyword } }] : [{ title: { contains: keyword } }]
     }
+    /* (25-ب1) جدولة الظهور: أي امتحان موعده في المستقبل **متنزلش**
+       لأي طلب مش من أدمن (الطالب/الزائر) — هو بس اللي يشوفها (ببادج مجدول).
+       الفلتر الافتراضي = أمان: لو مفيش إثبات أدمن الرد نضيف. */
+    if (!admin) {
+      where.AND = [{ OR: [{ scheduledAt: null }, { scheduledAt: { lte: new Date() } }] }]
+    }
 
     const [exams, total] = await Promise.all([
       db.exam.findMany({
@@ -103,9 +147,29 @@ export async function GET(request: NextRequest) {
       db.exam.count({ where }),
     ])
 
+    /* (2026-و26) استهداف الطلاب (نفس نمط الفيديوهات): الامتحان الموجه
+       لطلاب محددين **مش بيوصل** غير للي اسمه في القايمة — الفلتر هنا
+       على السيرفر فمفيش أي بيانات بتسرب للطالب المستبعد */
+    let visibleExams = exams as unknown as any[]
+    if (!admin) {
+      visibleExams = visibleExams.filter(function (e) {
+        var t = parseTargetIds(e && (e as any).targetStudentIds)
+        return t.length === 0 || (!!studentId && t.indexOf(studentId) !== -1)
+      })
+    }
+
     // توزيع النموذج للطالب (عشوائي ثابت أو نموذج واحد ثابت للكل حسب اختيار
     // المستر) — وإلا الامتحان زي ما هو
-    const outExams = studentId ? exams.map(function (e: any) { return applyModelForStudent(e, studentId) }) : exams
+    let outExams = studentId ? visibleExams.map(function (e: any) { return applyModelForStudent(e, studentId) }) : visibleExams
+
+    /* (25-ب1) للأدمن بس: بادج «مجدول» — العناصر اللي موعدها في المستقبل
+       بترجع مع flag scheduled: true عشان اللوحة تعرضها بوضوح */
+    if (admin) {
+      outExams = (outExams as any[]).map(function (e: any) {
+        var isScheduled = e && e.scheduledAt ? new Date(e.scheduledAt).getTime() > Date.now() : false
+        return { ...e, scheduled: isScheduled }
+      })
+    }
 
     return NextResponse.json({ exams: outExams, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
   } catch (error: any) {
@@ -116,29 +180,54 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    await ensureExamFeatureColumns()
     const body = await request.json()
-    const { title, content, grade, filePath, fileType, questions, models, modelMode, fixedModel, passScore, answerKeyPath, answerKeyType, thumbnail } = body
+    const { title, content, grade, filePath, fileType, questions, models, modelMode, fixedModel, passScore, answerKeyPath, answerKeyType, thumbnail, showResult, timeLimitMin, scheduledAt, targetStudentIds } = body
 
     if (!title || !grade) {
       return NextResponse.json({ error: 'Title and grade are required' }, { status: 400 })
     }
 
-    const exam = await db.exam.create({
-      data: {
-        title,
-        content: content || '',
-        grade,
-        filePath: filePath || '',
-        fileType: fileType || '',
-        answerKeyPath: answerKeyPath || '',
-        answerKeyType: answerKeyType || '',
-        thumbnail: thumbnail || '',
-        questions: questions || '',
-        models: models || '',
-        modelMode: modelMode === 'fixed' ? 'fixed' : 'random',
-        fixedModel: (modelMode === 'fixed' && fixedModel) ? String(fixedModel) : '',
-        passScore: passScore ? parseFloat(passScore) : 50,
-      },
+    /* (25-ب1) إعدادات الامتحان الجديدة:
+       - showResult: إظهار الإجابات/النتيجة للطالب بعد التسليم (افتراضي مغطّأ)
+       - timeLimitMin: مؤقت بالدقائق — 0 أو فاضي = بلا وقت
+       - scheduledAt: موعد ظهور للطلاب (ISO string أو null = يظهر فورًا) */
+    var scheduledDate: Date | null = null
+    if (scheduledAt) {
+      try {
+        var d = new Date(String(scheduledAt))
+        if (!isNaN(d.getTime())) scheduledDate = d
+      } catch (e) {}
+    }
+    var timeLimit = parseInt(String(timeLimitMin === undefined || timeLimitMin === null || timeLimitMin === '' ? '0' : timeLimitMin), 10)
+    if (isNaN(timeLimit) || timeLimit < 0) timeLimit = 0
+
+    /* (2026-و26) استهداف الطلاب: array ids → JSON string (فاضي = الكل) */
+    var targetIds = normalizeTargetIds(targetStudentIds)
+    if (targetIds === undefined) targetIds = '[]'
+
+    const exam = await safeWrite(function () {
+      return db.exam.create({
+        data: {
+          title,
+          content: content || '',
+          grade,
+          filePath: filePath || '',
+          fileType: fileType || '',
+          answerKeyPath: answerKeyPath || '',
+          answerKeyType: answerKeyType || '',
+          thumbnail: thumbnail || '',
+          questions: questions || '',
+          models: models || '',
+          modelMode: modelMode === 'fixed' ? 'fixed' : 'random',
+          fixedModel: (modelMode === 'fixed' && fixedModel) ? String(fixedModel) : '',
+          passScore: passScore ? parseFloat(passScore) : 50,
+          showResult: showResult === true || showResult === 'true' || showResult === 1,
+          timeLimitMin: timeLimit,
+          scheduledAt: scheduledDate,
+          targetStudentIds: targetIds,
+        },
+      })
     })
 
     return NextResponse.json({ message: 'Exam added', exam }, { status: 201 })

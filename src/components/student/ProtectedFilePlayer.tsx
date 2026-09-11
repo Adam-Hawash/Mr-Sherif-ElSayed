@@ -13,9 +13,16 @@
 //    (بدل مشغّل أبل الأصلي اللي بيلغي أي طبقة فوق الفيديو)
 //  - يحاول يقفل الشاشة على Landscape أثناء ملء الشاشة على الموبايل
 //  - تقارير تقدم المشاهدة لـ /api/video-progress
+//
+// ===== الجودة للملف المفرد (2026-م — طلب المستر) =====
+// الفيديو ده **ملف MP4 واحد** — مش بث متعدد الجودات (HLS/DASH):
+//  • بيتشغل دايمًا **بأعلى جودة أصلية في الملف نفسه** — المتصفح بيرسم
+//    الفيديو بدقته الأصلية الكاملة (object-contain) ومفيش أي تصغير للجودة.
+//  • تبديل الجودات الديناميكي (360p/720p/1080p) محتاج ملفات متعددة —
+//    فزرار الجودة بيعرض رسالة توضيحية صادقة بدل واجهة وهمية.
 // ============================================================
 import { useState, useEffect, useRef } from 'react'
-import { Maximize, Minimize } from 'lucide-react'
+import { Maximize, Minimize, Settings } from 'lucide-react'
 import { VideoWatermark } from '@/components/student/VideoWatermark'
 
 function formatTime(sec: number) {
@@ -60,6 +67,9 @@ export function ProtectedFilePlayer({
   const [rotated, setRotated] = useState(false)
   const [vp, setVp] = useState({ w: 0, h: 0 })
   const hideTimerRef = useRef<any>(null)
+  // الجودة للملف المفرد: أعلى جودة أصلية دايمًا + رسالة توضيحية صادقة
+  const [showQInfo, setShowQInfo] = useState(false)
+  const [nativeRes, setNativeRes] = useState(0)
 
   useEffect(function () { onWatchRef.current = onWatch }, [onWatch])
 
@@ -249,7 +259,13 @@ export function ProtectedFilePlayer({
         onPause={function () { setPlaying(false) }}
         onTimeUpdate={handleTimeUpdate}
         onEnded={handleEnded}
-        onLoadedMetadata={function () { if (videoRef.current) setDuration(videoRef.current.duration) }}
+        onLoadedMetadata={function () {
+          if (videoRef.current) {
+            setDuration(videoRef.current.duration)
+            /* الجودة الأصلية الحقيقية للملف — بتتعرض في رسالة زرار الجودة */
+            try { setNativeRes(videoRef.current.videoHeight || 0) } catch (e) {}
+          }
+        }}
       />
 
       {/* ووترمارك الطالب — جوه الكونتينر فبتفضل ظاهرة في ملء الشاشة */}
@@ -274,7 +290,7 @@ export function ProtectedFilePlayer({
       >
         <div
           ref={progressRef}
-          className="w-full h-1.5 bg-white/30 cursor-pointer relative"
+          className="w-full h-1 bg-white/30 cursor-pointer relative"
           onClick={handleSeek}
           onTouchEnd={function (e) { e.preventDefault(); e.stopPropagation(); handleSeek(e) }}
         >
@@ -282,7 +298,8 @@ export function ProtectedFilePlayer({
           <div className="absolute top-0 left-0 h-full bg-primary pointer-events-none" style={{ width: progressPercent + '%' }} />
         </div>
 
-        <div className="flex items-center gap-1 px-3 py-2.5 bg-gradient-to-t from-black/85 to-transparent">
+        {/* 2026-و23 — الشريط بقى 60px بالظبط زي مشغل يوتيوب — الووترمارك السفلية على حدّه */}
+        <div className="flex items-center gap-1 px-3 py-2 bg-gradient-to-t from-black/85 to-transparent">
           <button
             type="button"
             aria-label={playing ? 'إيقاف مؤقت' : 'تشغيل'}
@@ -301,15 +318,44 @@ export function ProtectedFilePlayer({
             {formatTime(currentTime)} / {formatTime(duration)}
           </span>
 
-          <button
-            type="button"
-            className="w-10 h-10 flex items-center justify-center text-white hover:text-primary transition-colors shrink-0 ml-auto"
-            onClick={handleFullscreen}
-            onTouchEnd={function (e) { e.preventDefault(); e.stopPropagation(); handleFullscreen(e) }}
-            aria-label={fsActive ? 'خروج من ملء الشاشة' : 'ملء الشاشة'}
-          >
-            {fsActive ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
-          </button>
+          <div className="ml-auto flex items-center gap-1 relative">
+            {/* الجودة للملف المفرد: أعلى جودة أصلية دايمًا + رسالة توضيحية صادقة
+                (تبديل الجودات الديناميكي محتاج بث متعدد الجودات HLS/DASH) */}
+            <button
+              type="button"
+              aria-label="معلومات جودة الفيديو"
+              aria-expanded={showQInfo}
+              className={'h-10 min-w-[44px] px-1 flex items-center justify-center text-white hover:text-primary transition-colors shrink-0 ' + (showQInfo ? 'text-primary' : '')}
+              onClick={function (e) { e.preventDefault(); e.stopPropagation(); setShowQInfo(function (v) { return !v }) }}
+              onTouchEnd={function (e) { e.preventDefault(); e.stopPropagation(); setShowQInfo(function (v) { return !v }) }}
+            >
+              <Settings className={'w-5 h-5 transition-transform ' + (showQInfo ? 'rotate-90' : '')} />
+            </button>
+            {showQInfo && (
+              <div
+                role="note"
+                aria-label="معلومات جودة الفيديو"
+                className="absolute bottom-full right-0 mb-3 w-64 rounded-xl bg-black/90 backdrop-blur-sm border border-white/10 p-3 shadow-2xl"
+                style={{ direction: 'rtl' }}
+              >
+                <p className="text-[11px] font-bold text-white mb-1.5">جودة الفيديو</p>
+                <p className="text-[10.5px] leading-relaxed text-white/75">
+                  الفيديو ده ملف واحد مرفوع — بيتشغل دايمًا بأعلى جودة أصلية فيه
+                  {nativeRes ? <b className="text-white"> ({nativeRes}p)</b> : null}.
+                  تبديل الجودات (360p/720p/1080p) محتاج ملفات متعددة الجودات — مش متاح للملف المفرد.
+                </p>
+              </div>
+            )}
+            <button
+              type="button"
+              className="w-10 h-10 flex items-center justify-center text-white hover:text-primary transition-colors shrink-0"
+              onClick={handleFullscreen}
+              onTouchEnd={function (e) { e.preventDefault(); e.stopPropagation(); handleFullscreen(e) }}
+              aria-label={fsActive ? 'خروج من ملء الشاشة' : 'ملء الشاشة'}
+            >
+              {fsActive ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
+            </button>
+          </div>
         </div>
       </div>
       </div>

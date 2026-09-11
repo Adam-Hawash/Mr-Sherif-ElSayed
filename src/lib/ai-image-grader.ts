@@ -21,20 +21,44 @@ import { callGemini as callGeminiCentral, hasGeminiKey } from '@/lib/gemini'
 import { repairModelJson, repairCorruptMath } from '@/lib/math-text'
 
 // Grading calls: low thinking = much faster, output is small structured JSON.
-// One automatic retry — a transient failure should NEVER leave a submission
-// stuck on "needs manual correction" (teacher request: AI finishes the job).
-async function callGrader(parts: any[]): Promise<{ ok: boolean; text?: string; error?: string }> {
+/* 2026-و25 — 3 محاولات بـ backoff صريح (1.5s ثم 4s) على 429/فشل: مفتاح Gemini
+   الواحد المجاني بيضرب 429 بسهولة (خاصة مع تسلسل أسئلة مقالي كتير) — المحاولتين
+   القديمين (1.2s بس) كانوا مش كفاية، وأول فشل كان بيسقط على فولباك الصفر.
+   timeoutMs: 35s افتراضي للنص (حدود duration السيرفلس) — الصور بتمرر 60s
+   (صور الحل الكبيرة كانت بتقطع لو قللناه — درس 2026-و12). */
+async function callGrader(parts: any[], timeoutMs?: number): Promise<{ ok: boolean; text?: string; error?: string }> {
   var lastErr = ''
-  for (var attempt = 0; attempt < 2; attempt++) {
+  var backoffs = [1500, 4000]
+  for (var attempt = 0; attempt < 3; attempt++) {
     var result = await callGeminiCentral({
       parts: parts,
-      generationConfig: { temperature: 0.1, maxOutputTokens: 2048 },
-      timeoutMs: 35000,
+      /* 2026-و12 — توكنز أكتر + وقت أطول: صور الحل الكبيرة كانت بتقطع
+         الـ JSON أو تطقطع التايم أوت فيرجع حكم غلط بدل تصحيح سليم */
+      generationConfig: { temperature: 0.1, maxOutputTokens: 4096 },
+      timeoutMs: timeoutMs || 35000,
       thinking: 'low',
     })
     if (result.ok) return { ok: true, text: result.text }
     lastErr = result.error || 'unknown'
-    if (attempt === 0) await new Promise(function (r) { setTimeout(r, 1200) })
+    if (attempt < 2) await new Promise(function (r) { setTimeout(r, backoffs[attempt]) })
+  }
+  return { ok: false, error: lastErr }
+}
+
+/* (2026-و25) نداء التحقق الرخيص — STRICT VERIFY: بيقارن القيم النهائية بس.
+   2 محاولات بتايم أوت قصير (20s) — دي مكالمة صغيرة (رد JSON سطر واحد). */
+async function callVerifier(parts: any[]): Promise<{ ok: boolean; text?: string; error?: string }> {
+  var lastErr = ''
+  for (var attempt = 0; attempt < 2; attempt++) {
+    var result = await callGeminiCentral({
+      parts: parts,
+      generationConfig: { temperature: 0.0, maxOutputTokens: 1024 },
+      timeoutMs: 20000,
+      thinking: 'low',
+    })
+    if (result.ok) return { ok: true, text: result.text }
+    lastErr = result.error || 'unknown'
+    if (attempt === 0) await new Promise(function (r) { setTimeout(r, 1500) })
   }
   return { ok: false, error: lastErr }
 }
@@ -91,6 +115,139 @@ export function normalizeFinalAnswer(s: string): string {
 function finalPart(s: string): string {
   var parts = String(s || '').split('=')
   return (parts[parts.length - 1] || '').trim()
+}
+
+/* ------------------------------------------------------------------
+ * 2026-و12 — التصحيح على الإجابة النهائية (طلب المستر الحرفي:
+ * «يصحح بناءً على الإجابة النهائية اللي هي آخر حاجة»).
+ * الشكل المعكوس دايماً متكافئ: "1/4 = x" === "x = 1/4" — اسم المتغير
+ * ومكانه مبيغيروش حاجة، المقارنة بالقيم.
+ * finalAnswerCandidates بترجع كل القيم المرشحة للإجابة النهائية:
+ *   آخر جزء بعد آخر "=" + (لو النص جزأين وفيه متغير عاري) الجزء القيمي التاني.
+ * المتغير العاري (x, y, n) ملوش قيمة لوحده — بنمنع مطابقة عاري×عاري
+ * عشان "1/4 = x" مايتطابقش مع "2 = y" عن طريق "x"==="y".
+ * ------------------------------------------------------------------ */
+export function isBareVariable(s: string): boolean {
+  return /^[a-z]{1,2}$/.test(normalizeFinalAnswer(s))
+}
+
+function finalAnswerCandidatesSingle(text: string): string[] {
+  var t = String(text || '').toLowerCase()
+  var parts = t.split(/[=:]/)
+  var segs: string[] = []
+  for (var i = 0; i < parts.length; i++) {
+    var s = (parts[i] || '').trim()
+    if (s) segs.push(s)
+  }
+  var out: string[] = []
+  if (segs.length === 0) {
+    var whole = t.trim()
+    if (whole) out.push(whole)
+    return out
+  }
+  out.push(segs[segs.length - 1])
+  if (segs.length === 2) {
+    var lastBare = isBareVariable(segs[1])
+    var firstBare = isBareVariable(segs[0])
+    if (lastBare !== firstBare) {
+      if (!firstBare && out.indexOf(segs[0]) === -1) out.push(segs[0])
+      if (!lastBare && out.indexOf(segs[1]) === -1) out.push(segs[1])
+    }
+  }
+  return out
+}
+
+export function finalAnswerCandidates(text: string): string[] {
+  var t = String(text || '').toLowerCase()
+  /* 2026-و13 — النموذج ممكن يكون فيه أكتر من إجابة مقبولة مفصولة بـ
+     «أو / او / or / |» (زي "x = 2 أو x = 1/4") — بنستخرج مرشحين
+     لكل بديل لوحده عشان أي بديل يعتبر إجابة صحيحة.
+     ملحوظة: ممنوع القسمة على "/" — دي بتاعة الكسور (1/2). */
+  var alternatives = t.split(/\s+(?:أو|او|or)\s+|\s*\|\s*/)
+    .map(function (x) { return x.trim() })
+    .filter(Boolean)
+  if (alternatives.length === 0) alternatives = [t]
+  var out: string[] = []
+  alternatives.forEach(function (alt: string) {
+    finalAnswerCandidatesSingle(alt).forEach(function (c: string) {
+      if (c && out.indexOf(c) === -1) out.push(c)
+    })
+  })
+  return out
+}
+
+/* أي قيمة من إجابة الطالب متكافئة مع أي قيمة من النموذج/المقبولة؟
+   (ممنوع مطابقة حرفية، وممنوع عاري×عاري) */
+export function anyFinalEquivalent(studentText: string, modelText: string, acceptedAnswers?: string[]): boolean {
+  var sCands = finalAnswerCandidates(studentText)
+  var mCands = finalAnswerCandidates(modelText)
+  var all: string[] = mCands.slice()
+  ;(acceptedAnswers || []).forEach(function (a: string) { if (a && all.indexOf(a) === -1) all.push(a) })
+  for (var i = 0; i < sCands.length; i++) {
+    var sc = sCands[i]
+    if (!sc) continue
+    for (var j = 0; j < all.length; j++) {
+      var cc = all[j]
+      if (!cc) continue
+      if (isBareVariable(sc) && isBareVariable(cc)) continue
+      if (exactEquivalent(sc, cc)) return true
+    }
+  }
+  return false
+}
+
+/* كل القيم النهائية المقبولة من جهة النموذج: أجزاء الإجابة النموذجية
+   + المربّع \\boxed + 【…】 + الإجابات المقبولة الإضافية */
+export function modelFinalCandidates(modelAnswer: string, acceptedAnswers?: string[]): string[] {
+  var out: string[] = []
+  var push = function (v: string) {
+    var t = String(v || '').trim()
+    if (t && out.indexOf(t) === -1) out.push(t)
+  }
+  var m = String(modelAnswer || '')
+  finalAnswerCandidates(m).forEach(push)
+  var boxedM = m.match(/\\boxed\{([^}]+)\}/g) || []
+  for (var bi = 0; bi < boxedM.length; bi++) push(boxedM[bi].replace(/^\\boxed\{/, '').replace(/\}$/, ''))
+  var jpM = m.match(/【([^】]+)】/g) || []
+  for (var ji = 0; ji < jpM.length; ji++) push(jpM[ji].replace(/[【】]/g, ''))
+  ;(acceptedAnswers || []).forEach(push)
+  return out
+}
+
+/* ------------------------------------------------------------------
+ * 2026-و25 — STRICT VERIFY: نداء تحقق ثاني رخيص ضد «الـ AI واثق إنه غلط وهو غلطان».
+ * لما الحكم الأول يقول غلط بنبعت مكالمة صغيرة مركّزة على حاجة واحدة:
+ * «قارن قيم الإجابة النهائية بس — نفس القيمة؟» — لو رجع same=true يقلب الحكم صح.
+ * ده اللي بيقتل شكوى «أسئلة صح بيحسبها غلط» من جذورها.
+ * الفشل هنا آمن: لو النداء فشل بنسيب الحكم الأول زي ما هو.
+ * ------------------------------------------------------------------ */
+export async function verifyFinalAnswerEqual(params: {
+  studentFinals: string[]
+  modelFinals: string[]
+  question?: string
+}): Promise<boolean> {
+  if (!hasGeminiKey()) return false
+  var cut = function (v: string) { return String(v || '').trim().substring(0, 80) }
+  var sVals = (params.studentFinals || []).map(cut).filter(Boolean).slice(0, 3)
+  var mVals = (params.modelFinals || []).map(cut).filter(Boolean).slice(0, 3)
+  if (sVals.length === 0 || mVals.length === 0) return false
+
+  var prompt = 'You are checking ONE thing only: are the student final value(s) and the correct final value(s) the SAME mathematical VALUE?\n\n'
+  prompt += 'Compare ONLY the final numeric/algebraic values — variable names, sides of the equation, notation, order, units and formatting NEVER matter.\n'
+  prompt += 'All of these are the SAME value: 2^5 = 32, 1/2 = 0.5 = ½ = 50%, x^6y^4 = y^4x^6, "1/4 = x" === "x = 1/4", √50 = 5√2, 3:4 = 3/4, 3,5 = 3.5, ٤٢ = 42.\n\n'
+  if (params.question) {
+    prompt += 'Question (context only): ' + String(params.question).substring(0, 300) + '\n'
+  }
+  prompt += 'Student final value(s): ' + sVals.join(' | ') + '\n'
+  prompt += 'Correct final value(s): ' + mVals.join(' | ') + '\n\n'
+  prompt += 'Is ANY student value mathematically EQUAL to ANY correct value? Answer true only if a value truly matches; false if every student value is genuinely a different value.\n'
+  prompt += 'Respond with ONLY this JSON — no other text:\n{"same": true}\nor\n{"same": false}\n'
+
+  var result = await callVerifier([{ text: prompt }])
+  if (!result.ok || !result.text) return false
+  var parsed = parseAIJson(result.text)
+  if (!parsed) return false
+  return parsed.same === true || parsed.verdict === true || parsed.equal === true
 }
 
 /* canonicalize a pure monomial so x^6y^4 === y^4*x^6 (order never matters).
@@ -270,23 +427,24 @@ export async function gradeImageAnswer(params: {
   prompt += 'STEP 4 — Find the student\'s FINAL ANSWER. Priority order:\n'
   prompt += '   (a) If ANY value is written inside a BOX / frame / مربع / circled / clearly boxed at the end → THAT is the final answer. Students are taught to box their final answer — the box is the answer, ALWAYS.\n'
   prompt += '   (b) If there is no box → the final answer is the LAST line they wrote (the value after the LAST "=").\n'
-  prompt += '   ABSOLUTE RULE — IGNORE EVERYTHING ELSE: all steps, drafts, side calculations, crossed-out work, random notes — anything that is NOT the boxed value or the last line. The student scratch work is IRRELEVANT: do NOT read it, do NOT check it, do NOT let it affect isCorrect in ANY way. Even if every step looks wrong or messy or does not match the model solution, the answer is STILL correct as long as the boxed/last-line value matches.\n'
-  prompt += '   EXAMPLE: student writes "5+3=9" (wrong arithmetic) then boxes "8" or writes "الإجابة النهائية: 8" at the end → the answer is 8 → grade 8 → CORRECT, full marks. NEVER grade the "9".\n'
   prompt += '   CRITICAL: every intermediate step, every middle result, every scratched-out attempt is NOT the answer. Do NOT grade an intermediate value. Many students write wrong-looking middle steps and still end with the CORRECT boxed final answer — that is CORRECT, full marks. If you compare a middle step against the model answer instead of the boxed/last value, you FAIL.\n'
   prompt += '   Set answerSource = "boxed" if found in a box, "last-line" if from the last line, "unclear" if you truly cannot read any final value.\n'
-  prompt += 'STEP 5 — Compare the student\'s final answer VALUE with the model final answer and accepted answers. You are comparing MATHEMATICAL VALUES, not strings. All of these are the SAME answer: 2^7 = 128, 1/2 = 0.5 = ½ = 50%, n=6 = n = 6 = 6, x^4y^3 = y^3x^4, √50 = 5√2, 2^{n+2} = 2^n·4, 3:4 = 3/4, 3,5 = 3.5, ٤٢ = 42. Units and labels NEVER matter (12 سم = 12 cm = 12). Simplify BOTH sides mentally before deciding.\n'
-  prompt += 'STEP 6 — A correct final answer with wrong/missing/unreadable steps is still CORRECT (full points). A genuinely DIFFERENT final value is WRONG even if the steps look nice. Never mark an answer wrong just because the handwriting is hard to read or the steps are messy — judge the final value ONLY. Scratch work NEVER lowers the grade.\n'
+  prompt += 'STEP 5 — Compare the student\'s final answer VALUE with the model final answer and accepted answers. You are comparing MATHEMATICAL VALUES, not strings. The model answer may list MULTIPLE acceptable final answers separated by "أو" / "او" / "or" (like "x = 2 أو x = 1/4") — the student\'s final answer is CORRECT if it matches ANY ONE of those alternatives. All of these are the SAME answer: 2^7 = 128, 1/2 = 0.5 = ½ = 50%, n=6 = n = 6 = 6, x^4y^3 = y^3x^4, √50 = 5√2, 2^{n+2} = 2^n·4, 3:4 = 3/4, 3,5 = 3.5, ٤٢ = 42. Units and labels NEVER matter (12 سم = 12 cm = 12). "1/4 = x" and "x = 1/4" are the SAME answer — the variable name and its side/position NEVER matter; grade ONLY the final VALUE the student ended with (the LAST thing written). Simplify BOTH sides mentally before deciding.\n'
+  prompt += 'STEP 6 — A correct final answer with wrong/missing/unreadable steps is still CORRECT (full points). A genuinely DIFFERENT final value is WRONG even if the steps look nice. Never mark an answer wrong just because the handwriting is hard to read or the steps are messy — judge the final value.\n'
+  prompt += 'STEP 6.5 — UNDERSTAND the solution like a human teacher (as if the student is explaining it to you), NEVER literal matching: a small SLIP in a MIDDLE step (sign slip like writing "-4x = 1" instead of "-4x = -1", a small arithmetic slip, a crossed-out attempt, a step the student self-corrected right after) does NOT make the work wrong when the student ENDED at the correct final answer. Students stumble mid-way and fix themselves — judge where they ENDED. Only the FINAL value decides correct/wrong.\n'
+  prompt += 'STEP 6.6 — READ HANDWRITING CAREFULLY (the worst failure is grading a CORRECT answer as wrong because you misread a digit): read every handwritten digit with FULL attention (4 vs 9, 1 vs 7, 5 vs 3, 0 vs 6, 2 vs 7). Re-read the final answer TWICE before deciding. If the final value you read equals the model value → it is CORRECT, full stop.\n'
   prompt += 'STEP 7 — ALWAYS give a definite verdict (isCorrect true or false). Only say onTopic=false when the photo truly contains NO student work at all.\n\n'
-  prompt += 'awardedPoints: an integer from 0 to ' + maxPoints + ' (' + maxPoints + ' only when isCorrect=true).\n\n'
+  prompt += 'awardedPoints: an integer from 0 to ' + maxPoints + '. HARD RULE — no partial credit: if isCorrect=true then awardedPoints MUST be exactly ' + maxPoints + ' (NEVER deduct for messy/hard-to-read/unfinished-looking steps when the final answer is right); if isCorrect=false then awardedPoints MUST be 0.\n\n'
+  prompt += 'FEEDBACK STYLE (2026-و24 — the teacher wants STRONG teacher-style notes like a real chat with the student): write the feedback in Egyptian Arabic talking DIRECTLY to the student (استخدم «انت») — 2–3 short sentences. Correct → praise + say WHAT he did right (the method/rule + the final value): «برافو عليك! تبسيطك للأسس صح ووصلت للناتج المطلوب بالظبط.» Wrong → (1) WHERE exactly the mistake happened (which step/rule), (2) the correct approach, (3) the correct final answer: «في الخطوة التانية ضربت الأس غلط — الضرب بيجمّع الأسس a^6 × a^2 = a^8 مش a^4، طبّق القاعدة تاني والصح a^4 b^6.» NEVER generic (ممنوع «إجابة غلط» لوحدها).\n\n'
   prompt += 'Respond with ONLY this JSON — no markdown, no extra text:\n'
-  prompt += '{"onTopic": true, "extractedAnswer": "the student\'s own work, max 3 short lines", "finalAnswer": "only the final boxed/last value", "answerSource": "boxed", "isCorrect": true, "awardedPoints": ' + maxPoints + ', "confidence": "high", "feedback": "تعليق قصير بالعامية المصرية"}\n'
+  prompt += '{"onTopic": true, "extractedAnswer": "the student\'s own work, max 3 short lines", "finalAnswer": "only the final boxed/last value", "answerSource": "boxed", "isCorrect": true, "awardedPoints": ' + maxPoints + ', "confidence": "high", "feedback": "ملاحظة بالمصري للطالب: ليه صح أو ليه غلط — كأنك بتكلمه بجد (جملتين كحد أقصى)"}\n'
 
   var parts = [
     { text: prompt },
     { inlineData: { mimeType: mimeType, data: media.data } },
   ]
 
-  var result = await callGrader(parts)
+  var result = await callGrader(parts, 60000)
 
   if (!result.ok) {
     console.error('[gradeImageAnswer] Gemini failed:', result.error)
@@ -312,6 +470,30 @@ export async function gradeImageAnswer(params: {
   var awardedPoints = clampPoints(parsed.awardedPoints, maxPoints)
   var feedback = String(parsed.feedback || '').trim()
   var needsGrading = false
+
+  // ---- GUARD 0 (2026-و19): الصورة واصلة **مقطوعة/ناقصة** — دي صور رفع
+  // قديم قبل إصلاح تجميع الأجزاء (أول 2MB بس كانت بتتحفظ). ممنوع صفر ظالم
+  // على عيب في الرفع مش في حل الطالب: درجة محاولة عادلة (نص الدرجة)
+  // والمراجعة اليدوية متاحة للمستر من الأدمن زي أي سؤال.
+  // (الصور الجديدة بعد إصلاح الرفع بتوصل كاملة والحردهم مش بتشتغل)
+  var truncHay = (feedback + ' \n ' + extractedAnswer).toLowerCase()
+  var truncHint = /(?:الصورة|الصوره|الصور|photo|image|picture|screenshot)[^\n.]{0,40}(?:مقطوع|مقصوص|متقطع|ناقص|ناقصة|غير كامل|مش كامل|مش مكتمل|غير مكتمل|cut|cropped|truncat|incomplete|partial)|(?:cut off|cut-off|truncated|incomplete|cropped|partially)[^\n.]{0,30}(?:photo|image|picture)|only (?:the )?(?:top|first|upper|beginning|part of)[^\n.]{0,40}(?:photo|image|visible|shown|page)/i.test(truncHay)
+  if (!isCorrect && truncHint) {
+    var fairAttempt = maxPoints > 0 ? Math.max(1, Math.ceil(maxPoints / 2)) : 0
+    return {
+      extractedAnswer: extractedAnswer,
+      finalAnswer: finalAns,
+      isCorrect: false,
+      awardedPoints: fairAttempt,
+      maxPoints: maxPoints,
+      feedback: feedback
+        ? feedback + ' — الصورة وصلت ناقصة (رفع قديم) فاتحسبت درجة محاولة عادلة؛ عدّلها يدويًا من هنا لو حل الطالب كامل وصحيح'
+        : 'الصورة وصلت ناقصة (رفع قديم قبل إصلاح الرفع) — اتحسبت نص الدرجة كمحاولة عادلة، عدّلها يدويًا من الأدمن لو الحل كامل وصحيح',
+      onTopic: true,
+      confidence: 'low',
+      needsGrading: false,
+    }
+  }
 
   // ---- GUARD 1: photo is not actually the student's solution to THIS question.
   // Decisive verdict (0 points + clear feedback) instead of stalling on manual
@@ -350,12 +532,13 @@ export async function gradeImageAnswer(params: {
 
   // ---- GUARD 3: exact-equivalence false-negative fix (AI said wrong but the
   // final answers are EXACTLY equivalent after normalization).
-  // Candidates: model final part + ALL boxed values in the model solution
-  // (\boxed{..} / 【..】) + accepted answers.
+  // 2026-و12: بيقارن كل قيم الإجابة النهائية (الطالب × [كل أجزاء النموذج
+  // + المربّع + المقبولة]) — بيصلّح الشكل المعكوس "1/4 = x" vs "x = 1/4".
   if (!isCorrect && finalAns) {
     var candidates: string[] = []
     if (modelAnswer) {
-      candidates.push(finalPart(modelAnswer))
+      var mCands3 = finalAnswerCandidates(modelAnswer)
+      for (var m3 = 0; m3 < mCands3.length; m3++) candidates.push(mCands3[m3])
       var boxedM = modelAnswer.match(/\\boxed\{([^}]+)\}/g) || []
       for (var bi = 0; bi < boxedM.length; bi++) {
         var inner = boxedM[bi].replace(/^\\boxed\{/, '').replace(/\}$/, '')
@@ -365,19 +548,50 @@ export async function gradeImageAnswer(params: {
       for (var ji = 0; ji < jpM.length; ji++) candidates.push(jpM[ji].replace(/[【】]/g, ''))
     }
     acceptedAnswers.forEach(function (a) { candidates.push(a) })
-    for (var ci = 0; ci < candidates.length; ci++) {
-      if (candidates[ci] && exactEquivalent(finalAns, candidates[ci])) {
-        isCorrect = true
-        awardedPoints = maxPoints
-        if (!feedback || feedback.indexOf('غلط') >= 0 || feedback.indexOf('خطأ') >= 0 || feedback.indexOf('خاطئة') >= 0) {
-          feedback = 'إجابة صحيحة — الإجابة النهائية (المربّعة) مطابقة للصحيحة'
+    var sCands3 = finalAnswerCandidates(finalAns)
+    var flipped = false
+    for (var si = 0; si < sCands3.length && !flipped; si++) {
+      var sc3 = sCands3[si]
+      if (!sc3) continue
+      for (var ci = 0; ci < candidates.length; ci++) {
+        var cc3 = candidates[ci]
+        if (!cc3) continue
+        if (isBareVariable(sc3) && isBareVariable(cc3)) continue
+        if (exactEquivalent(sc3, cc3)) {
+          isCorrect = true
+          awardedPoints = maxPoints
+          flipped = true
+          if (!feedback || feedback.indexOf('غلط') >= 0 || feedback.indexOf('خطأ') >= 0 || feedback.indexOf('خاطئة') >= 0) {
+            feedback = 'إجابة صحيحة — الإجابة النهائية (الأخيرة) مطابقة للصحيحة'
+          }
+          break
         }
-        break
       }
     }
   }
-  // AI said correct but gave 0 points → give full
-  if (isCorrect && awardedPoints === 0) awardedPoints = maxPoints
+  // ---- GUARD 3.5 (2026-و25): الـ AI رفض والحكم غلط والإجابة النهائية مقروءة
+  // → نداء تحقق ثاني رخيص (STRICT VERIFY) يقارن القيم النهائية بس — لو same
+  // يقلب صح كاملة. ده بيقتل «بيحسبها غلط وهي صح» في مسار الصور كمان.
+  if (!isCorrect && finalAns && (modelAnswer || acceptedAnswers.length > 0)) {
+    try {
+      var mCandsV = modelFinalCandidates(modelAnswer, acceptedAnswers).slice(0, 3)
+      if (mCandsV.length > 0) {
+        var sameImg = await verifyFinalAnswerEqual({ studentFinals: [finalAns], modelFinals: mCandsV, question: question })
+        if (sameImg) {
+          isCorrect = true
+          awardedPoints = maxPoints
+          needsGrading = false
+          if (!feedback || feedback.indexOf('غلط') >= 0 || feedback.indexOf('خطأ') >= 0 || feedback.indexOf('خاطئة') >= 0) {
+            feedback = 'إجابة صحيحة — الإجابة النهائية (' + finalAns + ') مطابقة للصحيحة (اتأكدنا منها مرتين)'
+          }
+        }
+      }
+    } catch (verErr) { console.error('[gradeImageAnswer] verify error:', verErr) }
+  }
+  // 2026-و19 — الصح = الدرجة كاملة دايمًا (طلب المستر الحرفي: التصحيح على
+  // الإجابة النهائية — الموديل كان بيفهم صح ويعطي isCorrect=true لكن يخصم
+  // نقطة ببلاش من حل كامل ويدّي 4/5 — ممنوع، الحكم النهائي هو اللي بيحدد)
+  if (isCorrect) awardedPoints = maxPoints
   // AI said wrong → 0 points, period
   if (!isCorrect) awardedPoints = 0
 
@@ -486,22 +700,27 @@ export async function gradeTextAnswer(params: {
   var prompt = 'You are an expert, FAIR math teacher who grades by MATHEMATICAL VALUE — never by literal wording. Grade the student\'s typed answer.\n\n'
   prompt += 'THE QUESTION:\n' + repairCorruptMath(question) + '\n\n'
   prompt += 'STUDENT ANSWER:\n' + repairCorruptMath(studentAnswer) + '\n\n'
-  prompt += 'MODEL SOLUTION:\n' + (modelAnswer ? repairCorruptMath(modelAnswer) : '(none - SOLVE the question yourself CAREFULLY, then DOUBLE-CHECK your own final answer by re-solving or substituting back. Only after YOU are sure your answer is right, grade the student against it. Correct final → full points, correct method with small slip → about half)') + '\n'
+  prompt += 'MODEL SOLUTION:\n' + (modelAnswer ? repairCorruptMath(modelAnswer) : '(none - SOLVE the question yourself step by step, find the correct final answer, then grade the student answer against YOUR solution. Grade on the final answer AND the solution steps: correct final → full points, correct method with small slip → about half)') + '\n'
   prompt += acceptedStr + '\n\n'
   prompt += 'CORE PRINCIPLE — the student answer is CORRECT (full points) whenever its FINAL value is mathematically EQUAL to the model final value, even if written differently:\n'
+  prompt += '- The model answer may list MULTIPLE acceptable final answers separated by "أو" / "او" / "or" (like "x = 2 أو x = 1/4") — the student answer is CORRECT if it matches ANY ONE of those alternatives\n'
   prompt += '- Different order: y^4x^6 = x^6y^4\n'
+  prompt += '- REVERSED equation forms are the SAME answer: "1/4 = x" === "x = 1/4" — the variable name and its side/position NEVER matter\n'
   prompt += '- Different notation: a^7 = aaaaaaa (a multiplied 7 times), 2^10 = 1024, 1/2 = 0.5 = ½ = 50%, x^(1/2) = √x, √50 = 5√2, 3:4 = 3/4, 3,5 = 3.5\n'
   prompt += '- Arabic digits ٤٢ = 42; units and labels are IGNORED (12 سم = 12 cm = 12, x = 5 = 5); with or without × * · spaces or steps\n'
   prompt += '- The final value may be CONTAINED in the model solution (model shows steps, student wrote only the final result) → still CORRECT\n'
   prompt += 'Rules:\n'
-  prompt += '1. Extract the student\'s FINAL answer ONLY: the value inside a box/circle (مربع/دايرة) if present, otherwise the LAST line (the value after the last "="). COMPLETELY IGNORE all other text — steps, drafts, notes, crossed-out work. They must NEVER affect the verdict even if they look wrong or messy.\n'
+  prompt += '1. Extract the student\'s FINAL answer (after the last "=" or the last result written).\n'
   prompt += '2. Compare ONLY final values with the model final answer / accepted answers — accept all equivalent forms above.\n'
   prompt += '3. A correct final answer with wrong/missing steps is CORRECT. A genuinely different final value is WRONG.\n'
+  prompt += '3b. UNDERSTAND the answer like you are talking with the student — interpret what they MEANT mathematically (never literal string matching). A small slip in a MIDDLE step (sign slip, arithmetic slip, self-corrected step) does NOT make the work wrong when the FINAL value is correct — students stumble mid-way and fix themselves; judge where they ENDED.\n'
   prompt += '4. If the student answer does not actually address the question (e.g. it is just the question text, or unrelated) → isCorrect=false and confidence="low".\n'
-  prompt += '5. Never guess. If unsure → confidence="low".\n\n'
-  prompt += 'awardedPoints: integer 0 to ' + maxPoints + ' (' + maxPoints + ' only when isCorrect=true).\n\n'
+  prompt += '5. Never guess. If unsure → confidence="low".\n'
+  prompt += '6. READ CAREFULLY (worst failure = a correct answer graded wrong): re-read the student final answer TWICE — read every digit carefully (4 vs 9, 1 vs 7, 5 vs 3, 0 vs 6). If the final value you read equals the model value → CORRECT, full stop.\n\n'
+  prompt += 'FEEDBACK STYLE (2026-و24 — STRONG teacher-style note like a real chat): Egyptian Arabic, talk to him directly (انت) — 2–3 short sentences. Correct → praise + WHAT he did right (the rule/method + final value): «برافو عليك! وزعت الأس صح ووصلت لـ a^4 b^6 — ده بالظبط المطلوب.» Wrong → (1) WHERE the mistake happened (which step/rule), (2) the correct approach, (3) the correct final answer: «في الخطوة التانية ضربت الأس غلط — الضرب بيجمّع الأسس a^6 × a^2 = a^8 مش a^4، طبّق القاعدة تاني والصح a^4 b^6.» NEVER generic.\n\n'
+  prompt += 'awardedPoints: integer 0 to ' + maxPoints + '. HARD RULE — no partial credit: isCorrect=true ⇒ awardedPoints exactly ' + maxPoints + '; isCorrect=false ⇒ 0.\n\n'
   prompt += 'Respond with ONLY this JSON — no markdown:\n'
-  prompt += '{"isCorrect": true, "awardedPoints": ' + maxPoints + ', "confidence": "high", "feedback": "تعليق قصير بالعامية المصرية"}\n'
+  prompt += '{"isCorrect": true, "awardedPoints": ' + maxPoints + ', "confidence": "high", "feedback": "ملاحظة بالمصري للطالب: ليه صح أو ليه غلط — كأنك بتكلمه بجد (جملتين كحد أقصى)"}\n'
 
   var result = await callGrader([{ text: prompt }])
   if (!result.ok || !result.text) return null
@@ -513,22 +732,49 @@ export async function gradeTextAnswer(params: {
   var confidence = String(parsed.confidence || 'high').toLowerCase()
   var awardedPoints = clampPoints(parsed.awardedPoints, maxPoints)
 
-  // exact-equivalence false-negative fix (model final part + boxed values + accepted)
+  // exact-equivalence false-negative fix (2026-و12): كل قيم إجابة الطالب
+  // مقابل كل قيم النموذج + المربّع + المقبولة — بيصلّح الشكل المعكوس
   if (!isCorrect) {
     var candidates: string[] = []
-    candidates.push(finalPart(modelAnswer))
+    var mCands4 = finalAnswerCandidates(modelAnswer)
+    for (var m4 = 0; m4 < mCands4.length; m4++) candidates.push(mCands4[m4])
     var boxedM = modelAnswer.match(/\\boxed\{([^}]+)\}/g) || []
     for (var bi = 0; bi < boxedM.length; bi++) candidates.push(boxedM[bi].replace(/^\\boxed\{/, '').replace(/\}$/, ''))
     var jpM = modelAnswer.match(/【([^】]+)】/g) || []
     for (var ji = 0; ji < jpM.length; ji++) candidates.push(jpM[ji].replace(/[【】]/g, ''))
     acceptedAnswers.forEach(function (a) { candidates.push(a) })
-    var studentFinal = finalPart(studentAnswer)
-    for (var ci = 0; ci < candidates.length; ci++) {
-      if (candidates[ci] && studentFinal && exactEquivalent(studentFinal, candidates[ci])) {
-        isCorrect = true
-        break
+    var sCands4 = finalAnswerCandidates(studentAnswer)
+    for (var si2 = 0; si2 < sCands4.length && !isCorrect; si2++) {
+      var sc4 = sCands4[si2]
+      if (!sc4) continue
+      for (var ci2 = 0; ci2 < candidates.length; ci2++) {
+        var cc4 = candidates[ci2]
+        if (!cc4) continue
+        if (isBareVariable(sc4) && isBareVariable(cc4)) continue
+        if (exactEquivalent(sc4, cc4)) { isCorrect = true; break }
       }
     }
+  }
+  // ---- STRICT VERIFY (2026-و25): الـ AI واثق إنه غلط؟ نداء تحقق ثاني رخيص
+  // يقارن قيم الإجابة النهائية بس — لو رجع same يقلب الحكم صح كاملة.
+  // ده علاج شكوى «أسئلة صح بيحسبها غلط» — المقارنة الأولى بتغلط في قراية
+  // الشكل/الصياغة، والتحديده بيتم على القيمة بس.
+  if (!isCorrect && (modelAnswer || acceptedAnswers.length > 0)) {
+    try {
+      var sCandsV = finalAnswerCandidates(studentAnswer).slice(0, 3)
+      if (sCandsV.length > 0) {
+        var mCandsV = modelFinalCandidates(modelAnswer, acceptedAnswers).slice(0, 3)
+        if (mCandsV.length > 0) {
+          var sameTxt = await verifyFinalAnswerEqual({ studentFinals: sCandsV, modelFinals: mCandsV, question: question })
+          if (sameTxt) {
+            isCorrect = true
+            awardedPoints = maxPoints
+            confidence = 'high'
+            feedback = 'برافو عليك ✓ الإجابة النهائية (' + sCandsV[0] + ') مطابقة للإجابة الصحيحة — تم التأكد من القيمة مرتين'
+          }
+        }
+      }
+    } catch (verErr) { console.error('[gradeTextAnswer] verify error:', verErr) }
   }
   if (isCorrect && awardedPoints === 0) awardedPoints = maxPoints
   if (!isCorrect) awardedPoints = 0

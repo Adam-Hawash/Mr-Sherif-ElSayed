@@ -1,6 +1,20 @@
 // @ts-nocheck
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { db } from '@/lib/db'
+// (2026-و16) self-heal خلفي: تسليمات الواجب القديمة الناقصة التصحيح بتتصحح
+// تلقائيًا بنفس مسار الذكاء الاصطناعي الحاسم — البادج مش بيفضل معلق للأبد
+import { regradeHomeworkResult, gradesLookPending, questionsHaveWriting } from '@/lib/regrade-core'
+
+/* (2026-و22) قراءة إجابة الطالب **بالفهرس الأصلي** — نفس helper التسليم */
+function lookupByOrigIdx(ans: any, idx: number): any {
+  try {
+    if (Array.isArray(ans)) return ans[idx]
+    if (ans !== null && typeof ans === 'object') {
+      return ans[idx] !== undefined ? ans[idx] : ans[String(idx)]
+    }
+  } catch (e) {}
+  return undefined
+}
 
 // GET /api/homework-results?studentId=xxx - Student: own results (basic info)
 // GET /api/homework-results?homeworkId=xxx - Admin: all results for a homework with per-student details
@@ -69,6 +83,26 @@ export async function GET(request: NextRequest) {
         }
       }
 
+      // (2026-و16) self-heal: تسليمات قديمة قبل التصحيح الفوري (writingResults
+      // فاضية أو فيها pending/needsGrading) ← إعادة تصحيح خلفية بنفس مسار
+      // regrade-core الحاسم بعد ما الرد يتبعت — البادج بيختفي بعد تحديث بسيط
+      try {
+        if (hwInfo && questionsHaveWriting(hwInfo.questions)) {
+          var healIds: string[] = []
+          for (var hi = 0; hi < (rawResults || []).length; hi++) {
+            if (healIds.length < 10 && gradesLookPending(rawResults[hi].writingResults)) healIds.push(rawResults[hi].id)
+          }
+          if (healIds.length > 0) {
+            var healBatch = healIds.slice(0, 10)
+            after(async function () {
+              for (var hj = 0; hj < healBatch.length; hj++) {
+                try { await regradeHomeworkResult(healBatch[hj]) } catch (e) {}
+              }
+            })
+          }
+        }
+      } catch (e) {}
+
       // Get student info for each result
       var studentIds = rawResults.map((r: any) => r.studentId).filter(Boolean)
       var studentMap: any = {}
@@ -94,18 +128,18 @@ export async function GET(request: NextRequest) {
         }
       } catch (e) {}
 
-      // Separate MCQ from writing
+      // Separate MCQ from writing — **بالفهرس الأصلي** (2026-و22)
       var mcqQs: any[] = []
       var writingQs: any[] = []
-      hwQuestions.forEach(function(q: any) {
+      hwQuestions.forEach(function(q: any, qOrigIdx: number) {
         var isWriting = q.type === 'writing' || q.type === 'essay'
         if (!isWriting && Array.isArray(q.options)) {
           var allNA = q.options.length > 0 && q.options.every(function(o: any) { return !o || o === 'N/A' || o === 'لا يوجد' || String(o).trim() === '' })
           if (allNA) isWriting = true
         }
         if (!isWriting && (!q.options || q.options.length === 0)) isWriting = true
-        if (isWriting) writingQs.push(q)
-        else mcqQs.push(q)
+        if (isWriting) writingQs.push({ q: q, origIdx: qOrigIdx })
+        else mcqQs.push({ q: q, origIdx: qOrigIdx })
       })
 
       // Build per-student results with all questions review
@@ -134,21 +168,15 @@ export async function GET(request: NextRequest) {
           }
         } catch (e) {}
 
-        // MCQ all questions
-        mcqQs.forEach(function(q, qi) {
+        // MCQ all questions — بالفهرس الأصلي (2026-و22) مش بمكان السؤال
+        mcqQs.forEach(function(item: any) {
+          var q = item.q
           var qText = q.question || q.q || ''
           var opts = Array.isArray(q.options) ? q.options : []
           var correctIdx = typeof q.correct === 'number' ? q.correct : 0
           if (correctIdx < 0 || correctIdx >= opts.length) correctIdx = 0
 
-          var ans = undefined
-          try {
-            if (Array.isArray(studentAns)) {
-              ans = studentAns[qi]
-            } else if (studentAns !== null && typeof studentAns === 'object') {
-              ans = studentAns[qi] !== undefined ? studentAns[qi] : studentAns[String(qi)]
-            }
-          } catch (e) {}
+          var ans = lookupByOrigIdx(studentAns, item.origIdx)
 
           var isCorrect = ans !== undefined && ans !== null && Number(ans) === correctIdx
           var studentAnswerText = (typeof ans === 'number' && opts[ans] && opts[ans] !== 'N/A')
@@ -175,18 +203,16 @@ export async function GET(request: NextRequest) {
           }
         })
 
-        // Writing all questions (offset by mcq length) — from STORED verdicts only
+        // Writing all questions — بالفهرس الأصلي (2026-و22) — من STORED verdicts فقط
         for (var wi = 0; wi < writingQs.length; wi++) {
-          var wq = writingQs[wi]
+          var wItem = writingQs[wi]
+          var wq = wItem.q
+          var wOrigIdx = wItem.origIdx
           var qText = wq.question || wq.q || ''
           var studentText = ''
-          var offset = mcqQs.length
           try {
-            if (Array.isArray(studentAns)) {
-              studentText = studentAns[offset + wi] || ''
-            } else if (studentAns && typeof studentAns === 'object') {
-              studentText = studentAns[offset + wi] || studentAns[String(offset + wi)] || ''
-            }
+            var lookedUp = lookupByOrigIdx(studentAns, wOrigIdx)
+            studentText = lookedUp !== undefined && lookedUp !== null ? String(lookedUp) : ''
           } catch (e) {}
           studentText = typeof studentText === 'string' ? studentText : String(studentText || '')
 
@@ -194,8 +220,10 @@ export async function GET(request: NextRequest) {
           var acceptedAnswers = Array.isArray(wq.acceptedAnswers) ? wq.acceptedAnswers : []
           var pts = (typeof wq.points === 'number' && wq.points > 0) ? wq.points : 5
 
-          // Stored verdict for this writing question (match by question text, then by index)
-          var stored = storedWriting.find(function(sw: any) { return (sw.question || '') === qText })
+          // Stored verdict for this writing question — **بالفهرس الأصلي** (2026-و22)
+          // → نص السؤال → الموضع (للتسليمات القديمة بس)
+          var stored = storedWriting.find(function(sw: any) { return sw && sw.origIdx === wOrigIdx })
+            || storedWriting.find(function(sw: any) { return sw && (sw.question || '') === qText })
             || storedWriting[wi]
             || null
 

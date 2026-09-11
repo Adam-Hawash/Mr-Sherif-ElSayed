@@ -2,30 +2,30 @@
 // ============================================================
 // VideoWatermark — ووترمارك الطالب فوق الفيديو (اسمه + رقمه)
 // ============================================================
-// مواصفات المستر النهائية (تحديث 2026-ز):
-//  1) **مفيش أي شِپات على الحواف** — اتشالت كلها بطلب المستر،
-//     مفيش حاجة غير الووترمارك الكبير في النص + الكارتين (فوق شمال + تحت يمين).
-//  2) ووترمارك كبير واحد في نص الخلفية على **سطرين** (زي ما المستر طلب
-//     حرفيًا: "الاسم الثنائي وتحتيه الرقم — لازم الرقم يظهر"):
-//     • السطر الأول:  الاسم الثنائي (أول كلمتين من اسم الطالب)
-//     • السطر التاني: **رقم الطالب تحته** (أصغر شوية — باين ومقروء)
-//  3) **ثابت تمامًا من غير أي نبض** (طلب المستر 2026-ز حرفيًا: "خليها
-//     ثابتة ما تغيرهاش — الشفافية بتاعتها حلوة") — نفس الشفافية الخفيفة
-//     السابقة بس **ثابتة على طول** مفيش ظهور واختفاء خالص.
-//  4) **كارتين** (الاسم الكامل + الرقم):
-//     • كارت فوق في **الناحية الشمال** (فوق شمال — طلب المستر حرفيًا:
-//       "أضفلي كارت فوق فيه الاسم والرقم فوق الناحية الشمال")
-//     • الكارت الأصلي ثابت في الزاوية تحت على اليمين
-//  5) الاسم من غير قص أي حرف:
+// مواصفات المستر الجديدة (طلب حرفي 2026-ح):
+//  1) **4 ووترمارك صغيرة ثابتة** ظاهرة على طول:
+//     • واحدة فوق في النص
+//     • اتنين في نص الفيديو: واحدة على اليمين وواحدة على الشمال
+//     • واحدة تحت خالص في نص الفيديو
+//  2) **الووترمارك الكبيرة الشفافة في نص الفيديو**: بتظهر **10 ثواني**
+//     وبتختفي **20 ثانية** (دورة 30 ثانية — بتكرر لوحدها على طول).
+//  3) الاسم من غير قص أي حرف:
 //     • ممنوع letter-spacing نهائيًا (بيقطع اتصال الحروف العربية)
 //     • paintOrder: 'stroke' عشان الحواف السودة متاكلش الحروف
-//  6) pointer-events-none → مش بيمنع أي تفاعل مع الفيديو.
-//  7) بيفضل ظاهر في ملء الشاشة (جوه عنصر الـ fullscreen نفسه).
-//  8) لو حد شال الطبقة من الـ DOM بـ devtools → بترجع لوحده كل 6 ثواني.
+//  4) pointer-events-none → مش بيمنع أي تفاعل مع الفيديو.
+//  5) بيفضل ظاهر في ملء الشاشة (جوه عنصر الـ fullscreen نفسه).
+//  6) لو حد شال الطبقة من الـ DOM بـ devtools → بترجع لوحده كل 6 ثواني.
 // ============================================================
 import { useEffect, useRef, useState } from 'react'
 
-/* الكارت المشترك (الاسم الكامل + الرقم) — نفس الشكل في الفوق والتحت */
+/* دورة الووترمارك الكبيرة: 30 ثانية = ظاهرة 10 ثواني (0→33%) + مخفية 20 ثانية (33%→100%)
+   مع انتقال ناعم بسيط عند الظهور والاختفاء */
+const WM_BLINK_CSS =
+  '@keyframes wmBlink30 {' +
+  '0% { opacity: 0 } 1.5% { opacity: 0.5 } 31.5% { opacity: 0.5 } 33.5% { opacity: 0 } ' +
+  '98.5% { opacity: 0 } 100% { opacity: 0.5 } }'
+
+/* الكارت المشترك (الاسم الكامل + الرقم) — نفس الشكل في المواضع الأربعة */
 function WmCard({ nm, num }: { nm: string; num: string }) {
   return (
     <div
@@ -74,55 +74,6 @@ function WmCard({ nm, num }: { nm: string; num: string }) {
   )
 }
 
-/* الكارت الصغير (تحت الشمال) — بمقاس أصغر يناسب الركن (طلب المستر 2026-ح) */
-function WmCardSmall({ nm, num }: { nm: string; num: string }) {
-  return (
-    <div
-      style={{
-        display: 'inline-block',
-        background: 'rgba(0,0,0,0.72)',
-        border: '1px solid rgba(255,255,255,0.28)',
-        color: '#fff',
-        borderRadius: 10,
-        padding: '4px 12px',
-        textAlign: 'center',
-        direction: 'rtl',
-        boxShadow: '0 6px 18px rgba(0,0,0,0.5)',
-      }}
-    >
-      <span
-        style={{
-          display: 'block',
-          fontSize: 'clamp(9.5px, 1.15vw, 12px)',
-          fontWeight: 800,
-          unicodeBidi: 'plaintext',
-          letterSpacing: 0,
-          whiteSpace: 'nowrap',
-          textShadow: '0 1px 2px rgba(0,0,0,0.8)',
-        }}
-      >
-        {nm || num}
-      </span>
-      {nm && num && (
-        <span
-          style={{
-            display: 'block',
-            fontSize: 'clamp(8.5px, 1vw, 10.5px)',
-            fontWeight: 700,
-            direction: 'ltr',
-            unicodeBidi: 'plaintext',
-            letterSpacing: 0,
-            opacity: 0.85,
-            marginTop: 1,
-          }}
-        >
-          {num}
-        </span>
-      )}
-    </div>
-  )
-}
-
 export function VideoWatermark({ name, phone }: { name?: string; phone?: string }) {
   const layerRef = useRef<HTMLDivElement>(null)
   const [, setTick] = useState(0)
@@ -149,13 +100,14 @@ export function VideoWatermark({ name, phone }: { name?: string; phone?: string 
       className="absolute inset-0 z-[60] pointer-events-none select-none overflow-hidden"
       aria-hidden="true"
     >
-      {/* الووترمارك الكبير في نص الخلفية — سطرين: الاسم الثنائي فوق
-          والرقم تحته — **ثابت تمامًا** من غير أي نبض وحركات (طلب المستر
-          2026-ز: "خليها ثابتة ما تغيرهاش — الشفافية بتاعتها حلوة")
-          وبنفس الشفافية الخفيفة عشان مش يغطي كلام الفيديو */}
+      <style dangerouslySetInnerHTML={{ __html: WM_BLINK_CSS }} />
+
+      {/* ===== الووترمارك الكبيرة الشفافة في نص الفيديو =====
+          بتظهر 10 ثواني وبتختفي 20 ثانية (دورة 30 ثانية متكررة —
+          الـ keyframes فوق هي اللي بتتحكم في الظهور والاختفاء) */}
       <div
         className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
-        style={{ opacity: 0.5 }}
+        style={{ animation: 'wmBlink30 30s linear infinite' }}
       >
         <div
           className="text-center font-black"
@@ -203,23 +155,27 @@ export function VideoWatermark({ name, phone }: { name?: string; phone?: string 
         </div>
       </div>
 
-      {/* كارت الطالب فوق في **الناحية الشمال** (فوق شمال) — ثابت تمامًا
-          (طلب المستر 2026-ز: "أضفلي كارت فوق فيه الاسم والرقم فوق
-          الناحية الشمال") — وكمان بيبقى فوق مكان عنوان/قناة يوتيوب
-          وقت الوقف فبيغطيه زيادة */}
-      <div className="absolute z-[61]" style={{ top: '2.8%', left: '2.2%' }}>
+      {/* ===== 4 ووترمارك ثابتة (طلب المستر الحرفي) ===== */}
+
+      {/* 1) فوق في النص */}
+      <div className="absolute z-[61]" style={{ top: '2.8%', left: '50%', transform: 'translateX(-50%)' }}>
         <WmCard nm={nm} num={num} />
       </div>
 
-      {/* كارت الطالب (الاسم الكامل + الرقم) — ثابت في الزاوية تحت على اليمين */}
-      <div className="absolute z-[61]" style={{ bottom: '7.5%', right: '2.2%' }}>
+      {/* 2) نص الفيديو على اليمين */}
+      <div className="absolute z-[61]" style={{ top: '50%', right: '2.2%', transform: 'translateY(-50%)' }}>
         <WmCard nm={nm} num={num} />
       </div>
 
-      {/* كارت أصغر تحت على **الشمال** (طلب المستر 2026-ح) — مكان علامة الشير
-          وعلامة يوتيوب، بمقاس أصغر، وفوق شريط الكنترولز مش على جزء منه */}
-      <div className="absolute z-[61]" style={{ bottom: 64, left: 10 }}>
-        <WmCardSmall nm={nm} num={num} />
+      {/* 3) نص الفيديو على الشمال */}
+      <div className="absolute z-[61]" style={{ top: '50%', left: '2.2%', transform: 'translateY(-50%)' }}>
+        <WmCard nm={nm} num={num} />
+      </div>
+
+      {/* 4) تحت خالص في النص — واقفة **بالظبط** على حد الشريط العلوي
+          (الشريط بقى 60px في 2026-و23 — «واصل لأول الـ watermark ما يعديهاش») */}
+      <div className="absolute z-[61]" style={{ bottom: 60, left: '50%', transform: 'translateX(-50%)' }}>
+        <WmCard nm={nm} num={num} />
       </div>
     </div>
   )

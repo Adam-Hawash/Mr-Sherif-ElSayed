@@ -17,6 +17,30 @@ export async function POST(request) {
     var title = formData.get('title') || ''
     var questionsJson = formData.get('questions') || '[]'
 
+    /* (25-ب1) إعدادات الامتحان الجديدة (تتبعت من AIExtractionPanel):
+       showResult (سوتش إظهار الإجابات) + timeLimitMin (مؤقت بالدقائق)
+       + scheduledAt (موعد ظهور للطلاب — فاضي = يظهر فورًا) */
+    var showResultRaw = formData.get('showResult')
+    var timeLimitRaw = formData.get('timeLimitMin')
+    var scheduledAtRaw = formData.get('scheduledAt') || ''
+    var showResult = showResultRaw === 'true' || showResultRaw === '1' || showResultRaw === 1
+    var timeLimitMin = parseInt(String(timeLimitRaw === null || timeLimitRaw === undefined || timeLimitRaw === '' ? '0' : timeLimitRaw), 10)
+    if (isNaN(timeLimitMin) || timeLimitMin < 0) timeLimitMin = 0
+    var scheduledDate = null
+    if (String(scheduledAtRaw).trim()) {
+      try {
+        var sd = new Date(String(scheduledAtRaw).trim())
+        if (!isNaN(sd.getTime())) scheduledDate = sd
+      } catch (e) {}
+    }
+
+    /* defensive ALTERs (نفس نمط المشروع — ممنوع db:push) عشان الكتابة
+       بالحقول الجديدة ماتفشلش لو الداتابيز لسه قديمة */
+    try { await db.$executeRawUnsafe('ALTER TABLE Exam ADD COLUMN showResult INTEGER DEFAULT 0') } catch (e) {}
+    try { await db.$executeRawUnsafe('ALTER TABLE Exam ADD COLUMN timeLimitMin INTEGER DEFAULT 0') } catch (e) {}
+    try { await db.$executeRawUnsafe('ALTER TABLE Exam ADD COLUMN scheduledAt DATETIME') } catch (e) {}
+    try { await db.$executeRawUnsafe('ALTER TABLE Homework ADD COLUMN scheduledAt DATETIME') } catch (e) {}
+
     if (!grade.trim()) {
       return NextResponse.json({ error: 'Grade is required' }, { status: 400 })
     }
@@ -33,6 +57,27 @@ export async function POST(request) {
 
     if (!Array.isArray(questions) || questions.length === 0) {
       return NextResponse.json({ error: 'No questions to save' }, { status: 400 })
+    }
+
+    /* 2026-و11 — حرس سيرفر: ممنوع تسجيل أي سؤال اختياري من غير إجابة مؤكدة
+       — «ما تكونش بالحر» — العميل كان بيفلتر بس، وده بيقفل التجاوز نهائيًا */
+    var unanswered: number[] = []
+    questions.forEach(function(q: any, i: number) {
+      var isWriting = q.type === 'writing' || q.type === 'essay'
+      if (!isWriting && Array.isArray(q.options)) {
+        var allNA = q.options.length > 0 && q.options.every(function(o: any) { return !o || o === 'N/A' || o === 'لا يوجد' || String(o).trim() === '' })
+        if (allNA) isWriting = true
+      }
+      if (!isWriting && (!q.options || q.options.length === 0)) isWriting = true
+      if (!isWriting) {
+        var c = typeof q.correct === 'number' ? q.correct : -99
+        if (c < 0 || c > 3) unanswered.push(i + 1)
+      }
+    })
+    if (unanswered.length > 0) {
+      return NextResponse.json({
+        error: 'في أسئلة من غير إجابة مؤكدة من المفتاح (أسئلة: ' + unanswered.join('، ') + ') — ثبّت إجابتها بإيدك الأول قبل الحفظ'
+      }, { status: 422 })
     }
 
     // Convert to DB format - preserve ALL fields (type, modelAnswer, acceptedAnswers)
@@ -83,7 +128,11 @@ export async function POST(request) {
             grade: grade,
             content: questions.length + ' questions extracted by AI',
             questions: questionsStr,
-            passScore: 50
+            passScore: 50,
+            /* (25-ب1) إعدادات الامتحان: إظهار الإجابات + المؤقت + جدولة الظهور */
+            showResult: showResult,
+            timeLimitMin: timeLimitMin,
+            scheduledAt: scheduledDate,
           }
         })
       })
@@ -99,7 +148,9 @@ export async function POST(request) {
             title: title.trim(),
             grade: grade,
             content: questions.length + ' questions extracted by AI',
-            questions: questionsStr
+            questions: questionsStr,
+            /* (25-ب1) موعد ظهور الواجب للطلاب (اختياري — فاضي = فورًا) */
+            scheduledAt: scheduledDate,
           }
         })
       })

@@ -8,7 +8,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, Flag, CheckCircle2, Clock3, RefreshCw, User, Phone, GraduationCap, Bot, MessageSquareReply, RotateCcw } from 'lucide-react'
+import { Loader2, Flag, CheckCircle2, Clock3, RefreshCw, User, Phone, GraduationCap, Bot, MessageSquareReply, RotateCcw, UserRound } from 'lucide-react'
 import { toast } from 'sonner'
 
 type Complaint = {
@@ -137,6 +137,10 @@ export function AdminComplaints() {
                       {c.grade && <Badge variant="secondary" className="gap-1 text-[11px]"><GraduationCap className="h-3 w-3" />{c.grade}</Badge>}
                       {c.source === 'ai' && (
                         <Badge variant="outline" className="text-[10px] gap-1 text-purple-600 border-purple-300 dark:text-purple-400"><Bot className="h-3 w-3" />المساعد الذكي سجلها</Badge>
+                      )}
+                      {/* (2026-و26) شكوى من صفحة الشكاوى العامة — زائر من غير حساب */}
+                      {c.source === 'public' && (
+                        <Badge variant="outline" className="text-[10px] gap-1 text-sky-600 border-sky-300 dark:text-sky-400"><UserRound className="h-3 w-3" />زائر — من غير حساب</Badge>
                       )}
                     </div>
                     <div className="flex items-center gap-1.5">
