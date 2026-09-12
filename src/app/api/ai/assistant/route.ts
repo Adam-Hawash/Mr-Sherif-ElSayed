@@ -3,6 +3,8 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { callGemini, callGeminiStream, hasGeminiKey } from '@/lib/gemini'
 import ZAI from 'z-ai-web-dev-sdk'
+/* (2026-و33) منقّي الرموز المشترك — نفس المكتبة اللي بتنضّف ملاحظات المصحح */
+import { sanitizeMathText } from '@/lib/math-sanitize'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -35,6 +37,10 @@ function extractComplaint(text: string): { clean: string; summary: string } {
   var clean = String(text || '').replace(COMPLAINT_MARKER_RE, '').replace(/\n{3,}/g, '\n\n').trim()
   return { clean: clean, summary: m ? String(m[1] || '').trim().slice(0, 300) : '' }
 }
+
+/* (2026-و33) منقّي رموز الرياضيات اتنقل للمكتبة المشتركة src/lib/math-sanitize.ts
+   (sanitizeMathText مستورد فوق) — بيتنفذ على رد الموديل قبل العرض
+   فالطالب ما يشوفش غير رموز المنصة النضيفة: كسور رأسية وأُس وجُذور */
 
 async function logAutoComplaint(studentId: string, studentMessage: string, summary: string) {
   try {
@@ -103,14 +109,27 @@ function buildSystemPrompt(platformName: string, subjectLine: string): string {
     '- ردودك قصيرة ومنظمة: نقاط أو خطوات مرقمة لما الموضوع يستحق، وإيموجي بسيط (✅ 💡 📚) من غير مبالغة.',
     '- ممنوع تبدأ ردك بترحيب طويل كل مرة — ادخل في الجواب على طول.',
     '',
+    '## قاعدة كتابة الرموز الرياضية (أهم قاعدة في الكلام كله — طلب المستر حرفيًا):',
+    '- إنت بتكتب في منصة ليها عارض رياضيات خاص بيحوّل أوامر LaTeX لرموز حقيقية (كسور رأسية وأُس فوق الرقم وجذر بخط فوقه). عشان كده:',
+    '- ممنوع منعًا باتًا علامات الدولار $ أو $$ حوالين أي رمز — دي بتظهر للطالب كحروف خام ووخة. اكتب الرمز لوحده على طول.',
+    '- ممنوع منعًا باتًا أي ماركداون: لا **نص** ولا *نص* ولا # ولا شرطات ماركداون — النجوم بتظهر للطالب زي ما هي.',
+    '- الكسر اكتبه: \\frac{فوق}{تحت} — مثال: \\frac{3}{4} هيظهر كسر رأسي حقيقي. ممنوع تكتب 3/4 ولا "$\\frac{3}{4}$".',
+    '- الأُس اكتبه: 2^{3} أو x^{2} — هيظهر الرقم فوق الرقم حقيقي. الجذر اكتبه: \\sqrt{5} وجذر تكعيبي \\sqrt[3]{8}.',
+    '- الضرب × والقسمة ÷ والزاوية ° وال pi دايمًا بالرموز مش بالكلمات.',
+    '- قبل ما تبعت الرد راجع نفسك: لو لقيت $ أو ** أو \\ .. \\ في كلامك يبقى فيه غلط — شيلهم.',
+    '',
+    '## قاعدة الكلام الإنجليزي (عشان اللخبطة ما تحصلش):',
+    '- جملتك دايمًا عربي مصري كامل. المصطلح الإنجليزي المدرسي (زي Powers أو Numerator) بيتقال مرة واحدة بس أول ما المصطلح يظهر، بين قوسين بعد معناه المصري — مثال: "المقام (Denominator) هو اللي تحت الكسر".',
+    '- ممنوع تكتب جملة نصها إنجليزي ونصها عربي، وممنوع تحط كلمة إنجليزي في كل سطر على أساس إنها شرح.',
+    '',
     '## معلومات عنك وعن المنصة:',
     '- اسمك: المساعد الذكي. وأنت جزء من المنصة نفسها — شغال 24 ساعة.',
     '- بتساعد الطلاب في: شرح أي جزئية رياضيات، مراجعة حل الواجبات من الصور، أسئلة الامتحانات، وتنظيم المذاكرة.',
     '- المنصة فيها: فيديوهات الشرح، واجبات، امتحانات، نقاط وتقييمات، ومناقشات.',
     '',
     '## قواعد الرياضيات:',
-    '- المصطلحات دايمًا إنجليزي مدرسي: Powers, Roots, Fractions (Numerator / Denominator), Exponents, Equations, Brackets, Squares, Square roots, Cube roots, Geometry, Algebra.',
     '- لما تحل مسألة: اكتب الخطوات بالترتيب خطوة خطوة، وبعدين الإجابة النهائية واضحة.',
+    '- اشرح بذكاء: قول للطالب عمل إيه، وليه الخطوة دي بتيجي كده، وليه الاختيار الصح هو الصح — مش بس "الإجابة C" من غير سبب.',
     '- راجع حسابك قبل ما تكتب النتيجة — الدقة أهم من السرعة.',
     '',
     '## قاعدة الواجبات والصور (مهم جدًا):',
@@ -239,7 +258,7 @@ export async function POST(request: Request) {
           if (result) {
             // تسجيل الشكوى التلقائية لو المساعد اكتشف مشكلة (وسم أو كلمات قوية)
             var complaintInfo = extractComplaint(result.text)
-            result.text = complaintInfo.clean
+            result.text = sanitizeMathText(complaintInfo.clean)
             var autoSummary = complaintInfo.summary || (HARD_ISSUE_RE.test(message) ? ('مشكلة من كلام الطالب: ' + message.slice(0, 120)) : '')
             if (autoSummary) { try { await logAutoComplaint(String(context.studentId || ''), message, autoSummary) } catch (e) {} }
 
@@ -281,7 +300,7 @@ export async function POST(request: Request) {
         var r2 = await engines[ei2]()
         if (r2 && r2.ok && r2.text) {
           var ci = extractComplaint(r2.text)
-          r2.text = ci.clean
+          r2.text = sanitizeMathText(ci.clean)
           var autoSummary2 = ci.summary || (HARD_ISSUE_RE.test(message) ? ('مشكلة من كلام الطالب: ' + message.slice(0, 120)) : '')
           if (autoSummary2) { try { await logAutoComplaint(String(context.studentId || ''), message, autoSummary2) } catch (e) {} }
           return NextResponse.json({ reply: r2.text })
