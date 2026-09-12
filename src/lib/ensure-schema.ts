@@ -164,6 +164,17 @@ import { createHash } from 'crypto'
 
 var SCHEMA_HASH_KEY = 'schema_heal_hash'
 
+/* ============================================================
+ * 2026-و30 — تسريع أول دخول (طلب المستر: «لما يجي يدخل الطفل الأولاني
+ * بيقعد وقت... لو تقدر سرعه»):
+ * (1) الترميم الكامل كان ~80 استعلام متسلسل على Turso (كل واحد =
+ *     roundtrip شبكة) = 10-14 ثانية على أول طلب بعد كل نشر — بقوا
+ *     **متوازيين** على دفعات = ~2 ثانية.
+ * (2) ميمو على مستوى الموديول: بعد أول نجاح في نفس الـ instance
+ *     مفيش حتى استعلام البصمة — الدوال بترجع فورًا.
+ * ============================================================ */
+var _schemaVerifiedInProcess = false
+
 function currentSchemaHash(): string {
   var joined = SCHEMA_TABLES.join('||') + '##' +
     SCHEMA_COLUMNS.map(function (c) { return c.join('.') }).join('|') + '##' +
@@ -172,9 +183,32 @@ function currentSchemaHash(): string {
   return createHash('md5').update(joined).digest('hex').substring(0, 12)
 }
 
+/* تنفيذ استعلام متسامح: بيجرب مرتين (الدفعة المتوازية ممكن تصطدم بـ
+   busy لحظي) وبيتجاهل duplicate/already exists — والفشل الحقيقي
+   بيتسجل في النتايج من غير ما يبوّظ الباقي */
+async function execTolerant(client: any, sql: string, meta: any, results: any[]) {
+  for (var attempt = 0; attempt < 2; attempt++) {
+    try {
+      await client.execute(sql)
+      if (results) results.push(Object.assign({ ok: true }, meta))
+      return
+    } catch (e: any) {
+      var msg = String((e && e.message) || '')
+      if (msg.indexOf('duplicate') !== -1 || msg.indexOf('already exists') !== -1) return
+      if (attempt === 0) { await new Promise(function (r) { setTimeout(r, 250) }); continue }
+      if (results) results.push(Object.assign({ ok: false, error: msg }, meta))
+    }
+  }
+}
+
 export async function ensureSchema(client: any, opts?: { force?: boolean }) {
   var force = !!(opts && opts.force)
   var results: any[] = []
+
+  /* المسار الأسرع: الـ instance ده اتأكد من السكيما قبل كده → صفر استعلامات */
+  if (!force && _schemaVerifiedInProcess) {
+    return { missing: [], repaired: false, skipped: true, memo: true, results: [] }
+  }
 
   /* المسار السريع: البصمة متخزنة ومطابقة → مفيش أي ترميم محتاج
      (استعلام واحد بدل ~70 — ده اللي هيخلي الدخول ولوحة الطلاب فورًا) */
@@ -186,6 +220,7 @@ export async function ensureSchema(client: any, opts?: { force?: boolean }) {
       })
       var stored = flagRes && flagRes.rows && flagRes.rows.length > 0 ? String(flagRes.rows[0].value || '') : ''
       if (stored && stored === currentSchemaHash()) {
+        _schemaVerifiedInProcess = true
         return { missing: [], repaired: false, skipped: true, results: [] }
       }
     } catch (e) {
@@ -204,35 +239,32 @@ export async function ensureSchema(client: any, opts?: { force?: boolean }) {
 
   // Only run DDL when something is actually missing (or when forced by explicit setup)
   var tablesToRun = (missing.length > 0 || force) ? SCHEMA_TABLES : []
-  for (var j = 0; j < tablesToRun.length; j++) {
-    try { await client.execute(tablesToRun[j]); results.push({ table: tablesToRun[j].match(/CREATE TABLE IF NOT EXISTS (\w+)/)?.[1], ok: true }) }
-    catch (e: any) { results.push({ table: tablesToRun[j].match(/CREATE TABLE IF NOT EXISTS (\w+)/)?.[1], ok: false, error: e.message }) }
+  // (2026-و30) الجداول متوازية — مستقلة عن بعض (IF NOT EXISTS)
+  await Promise.all(tablesToRun.map(function (sql) {
+    var name = sql.match(/CREATE TABLE IF NOT EXISTS (\w+)/)?.[1]
+    return execTolerant(client, sql, { table: name }, results)
+  }))
+
+  // Columns (tolerant of duplicates) — (2026-و30) على دفعات متوازية بدل تسلسلي
+  var CHUNK = 8
+  for (var k = 0; k < SCHEMA_COLUMNS.length; k += CHUNK) {
+    await Promise.all(SCHEMA_COLUMNS.slice(k, k + CHUNK).map(function (c) {
+      var sql = 'ALTER TABLE ' + c[0] + ' ADD COLUMN ' + c[1] + ' ' + c[2] + ' ' + c[3]
+      return execTolerant(client, sql, { table: c[0], column: c[1] }, results)
+    }))
   }
 
-  // Columns (tolerant of duplicates)
-  for (var k = 0; k < SCHEMA_COLUMNS.length; k++) {
-    var c = SCHEMA_COLUMNS[k]
-    try {
-      await client.execute('ALTER TABLE ' + c[0] + ' ADD COLUMN ' + c[1] + ' ' + c[2] + ' ' + c[3])
-      results.push({ table: c[0], column: c[1], ok: true })
-    } catch (e: any) {
-      var msg = String(e && e.message) || ''
-      if (msg.indexOf('duplicate') === -1 && msg.indexOf('already exists') === -1) {
-        results.push({ table: c[0], column: c[1], ok: false, error: msg })
-      }
-    }
-  }
+  // NULL fixes — (2026-و30) متوازية (كلها idempotent)
+  await Promise.all(SCHEMA_FIXES.map(function (sql) {
+    return client.execute(sql).catch(function () {})
+  }))
 
-  // NULL fixes
-  for (var m = 0; m < SCHEMA_FIXES.length; m++) {
-    try { await client.execute(SCHEMA_FIXES[m]) } catch (e) {}
-  }
+  // Indexes (idempotent — CREATE INDEX IF NOT EXISTS) — متوازية
+  await Promise.all(SCHEMA_INDEXES.map(function (sql) {
+    return execTolerant(client, sql, { index: sql }, results)
+  }))
 
-  // Indexes (idempotent — CREATE INDEX IF NOT EXISTS)
-  for (var ix = 0; ix < SCHEMA_INDEXES.length; ix++) {
-    try { await client.execute(SCHEMA_INDEXES[ix]); results.push({ index: SCHEMA_INDEXES[ix], ok: true }) }
-    catch (e: any) { results.push({ index: SCHEMA_INDEXES[ix], ok: false, error: String(e && e.message) || '' }) }
-  }
+  _schemaVerifiedInProcess = true
 
   // تخزين بصمة البنية — الإقلاعات الجاية بتتخطى الترميم كله
   try {
