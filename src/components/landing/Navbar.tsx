@@ -25,14 +25,20 @@ import {
   LayoutDashboard,
   Shield,
   Youtube,
+  Trophy,
 } from 'lucide-react'
 import { toast } from 'sonner'
+/* (2026-و29) «أوائل الطلبة» في النافبار — طلب المستر: زرار جنب Geometry
+   يفتح دايلوج بأول 3 طلاب — والقسم اتشال من الصفحة الرئيسية */
+import { TopStudentsDialog } from './TopStudentsDialog'
 
 export function Navbar() {
   const { theme, setTheme } = useTheme()
   const emptySubscribe = () => () => {}
   const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false)
   const [mobileMenu, setMobileMenu] = useState(false)
+  /* (2026-و29) دايلوج أوائل الطلبة */
+  const [topStudentsOpen, setTopStudentsOpen] = useState(false)
 
   const {
     currentView,
@@ -115,6 +121,16 @@ export function Navbar() {
 
           {/* Desktop Nav */}
           <nav className="hidden md:flex items-center gap-2">
+            {/* (2026-و29) أوائل الطلبة — دايلوج أول 3 طلاب (والقسم اتشال من الرئيسية) */}
+            <button
+              type="button"
+              onClick={function () { setTopStudentsOpen(true) }}
+              title="أوائل الطلبة — أفضل 3 طلاب"
+              className="inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-xl text-sm font-bold text-[#EA580C] dark:text-[#FB923C] hover:bg-[#EA580C]/10 transition-colors cursor-pointer"
+            >
+              <Trophy className="h-4 w-4" />
+              أوائل الطلبة
+            </button>
             {currentStudent ? (
               <div className="flex items-center gap-3">
                 <span className="text-sm text-muted-foreground">
@@ -179,6 +195,17 @@ export function Navbar() {
 
           {/* YouTube + Theme Toggle + Mobile Menu Button */}
           <div className="flex items-center gap-2">
+            {/* (2026-و29) «أوائل الطلبة» في الموبايل فوق — دايلوج أول 3 طلاب */}
+            <button
+              type="button"
+              onClick={function () { setTopStudentsOpen(true) }}
+              title="أوائل الطلبة — أفضل 3"
+              aria-label="أوائل الطلبة — أفضل 3 طلاب"
+              className="md:hidden flex items-center gap-1 min-h-[44px] px-2.5 rounded-xl text-[#EA580C] dark:text-[#FB923C] bg-[#EA580C]/10 border border-[#EA580C]/40 hover:bg-[#EA580C]/20 transition-colors cursor-pointer"
+            >
+              <Trophy className="h-5 w-5" />
+              <span className="text-xs font-bold">الأوائل</span>
+            </button>
             {youtubeLink && (
               <a
                 href={youtubeLink}
@@ -227,6 +254,15 @@ export function Navbar() {
         {/* Mobile Menu */}
         {mobileMenu && (
           <div className="md:hidden border-t bg-background/95 backdrop-blur-md px-4 py-3 space-y-2">
+            {/* (2026-و29) أوائل الطلبة في قايمة الموبايل كمان */}
+            <button
+              type="button"
+              onClick={function () { setMobileMenu(false); setTopStudentsOpen(true) }}
+              className="flex items-center gap-2 min-h-[44px] px-3 rounded-xl border border-[#EA580C]/40 bg-[#EA580C]/10 text-[#EA580C] dark:text-[#FB923C] font-bold text-sm cursor-pointer"
+            >
+              <Trophy className="h-4 w-4" />
+              أوائل الطلبة
+            </button>
             {currentStudent ? (
               <>
                 <p className="text-sm text-muted-foreground py-2">
@@ -293,6 +329,9 @@ export function Navbar() {
           </div>
         )}
       </header>
+
+      {/* (2026-و29) دايلوج أوائل الطلبة — أول 3 طلاب */}
+      <TopStudentsDialog open={topStudentsOpen} onOpenChange={setTopStudentsOpen} />
 
       {/* Admin Login Dialog - Hidden Entry Point */}
       <AdminLoginDialog />

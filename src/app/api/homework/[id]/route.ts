@@ -4,10 +4,19 @@ import { db, safeWrite } from '@/lib/db'
 import { isAdmin } from '@/lib/video-guard'
 
 /* (25-ب1) جدولة الظهور — defensive ALTER بنفس نمط المشروع (ممنوع db:push) */
+/* (2026-و29) كاش على مستوى الموديول: كل ALTER = نداء شبكة لقاعدة البيانات — تنفيذها في كل ريكوست كان بيدفع نداءات ضاية في كل تحميل (من أكبر أسباب بطء المنصة) — دلوقتي مرة واحدة لكل instance */
+var _hwColsReady: Promise<void> | null = null
 async function ensureHomeworkFeatureColumns() {
+  if (!_hwColsReady) {
+    _hwColsReady = (async function () {
   try { await db.$executeRawUnsafe('ALTER TABLE Homework ADD COLUMN scheduledAt DATETIME') } catch (e) {}
   /* (2026-و26) استهداف الطلاب — نفس نمط الفيديوهات */
   try { await db.$executeRawUnsafe("ALTER TABLE Homework ADD COLUMN targetStudentIds TEXT DEFAULT ''") } catch (e) {}
+  /* (2026-و29) استهداف المجموعات */
+  try { await db.$executeRawUnsafe("ALTER TABLE Homework ADD COLUMN targetGroupIds TEXT DEFAULT ''") } catch (e) {}
+})()
+  }
+  await _hwColsReady
 }
 
 // GET /api/homework/[id] - جلب واجب بالمعرف
@@ -54,7 +63,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'الواجب غير موجود' }, { status: 404 })
     }
 
-    if (body.scheduledAt === undefined && body.targetStudentIds === undefined) {
+    if (body.scheduledAt === undefined && body.targetStudentIds === undefined && body.targetGroupIds === undefined) {
       return NextResponse.json({ error: 'لا توجد حقول للتعديل' }, { status: 400 })
     }
 
@@ -68,6 +77,16 @@ export async function PATCH(
       var tClean = tArr.map(function (x) { return String(x == null ? '' : x).trim() }).filter(Boolean)
       tClean = tClean.filter(function (x: string, i: number) { return tClean.indexOf(x) === i })
       data.targetStudentIds = JSON.stringify(tClean)
+    }
+
+    /* (2026-و29) استهداف المجموعات — نفس المنطق بالظبط */
+    if (body.targetGroupIds !== undefined) {
+      var gArr: unknown[] = []
+      if (Array.isArray(body.targetGroupIds)) gArr = body.targetGroupIds
+      else { try { var gp = JSON.parse(String(body.targetGroupIds)); if (Array.isArray(gp)) gArr = gp } catch (e) {} }
+      var gClean = gArr.map(function (x) { return String(x == null ? '' : x).trim() }).filter(Boolean)
+      gClean = gClean.filter(function (x: string, i: number) { return gClean.indexOf(x) === i })
+      data.targetGroupIds = JSON.stringify(gClean)
     }
 
     if (body.scheduledAt !== undefined) {

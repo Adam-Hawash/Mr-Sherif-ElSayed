@@ -5,7 +5,11 @@ import { isAdmin } from '@/lib/video-guard'
 /* (25-ب1) أعمدة الميزات الجديدة (إظهار الإجابات / المؤقت / جدولة الظهور) —
    defensive ALTERs بنفس نمط الكود في المشروع: لو العمود موجود الأصلًا
    الفشل بيتجاهل بصمت. ممنوع db:push — كل قاعدة بيانات بتترقّى تلقائيًا هنا. */
+/* (2026-و29) كاش على مستوى الموديول: كل ALTER = نداء شبكة لقاعدة البيانات — تنفيذها في كل ريكوست كان بيدفع نداءات ضاية في كل تحميل (من أكبر أسباب بطء المنصة) — دلوقتي مرة واحدة لكل instance */
+var _examColsReady: Promise<void> | null = null
 async function ensureExamFeatureColumns() {
+  if (!_examColsReady) {
+    _examColsReady = (async function () {
   try { await db.$executeRawUnsafe('ALTER TABLE Exam ADD COLUMN showResult INTEGER DEFAULT 0') } catch (e) {}
   try { await db.$executeRawUnsafe('ALTER TABLE Exam ADD COLUMN timeLimitMin INTEGER DEFAULT 0') } catch (e) {}
   try { await db.$executeRawUnsafe('ALTER TABLE Exam ADD COLUMN scheduledAt DATETIME') } catch (e) {}
@@ -13,6 +17,11 @@ async function ensureExamFeatureColumns() {
   /* (2026-و26) استهداف الطلاب — نفس نمط الفيديوهات (VideoSchedule.studentIds):
      JSON array من ids الطلاب — فاضي = الكل يشوفه */
   try { await db.$executeRawUnsafe("ALTER TABLE Exam ADD COLUMN targetStudentIds TEXT DEFAULT ''") } catch (e) {}
+  /* (2026-و29) استهداف المجموعات — نفس النمط: JSON array بids المجموعات */
+  try { await db.$executeRawUnsafe("ALTER TABLE Exam ADD COLUMN targetGroupIds TEXT DEFAULT ''") } catch (e) {}
+})()
+  }
+  await _examColsReady
 }
 
 /* (2026-و26) تطبيع قايمة الطلاب المستهدفين — بتوصل array أو JSON string
@@ -152,9 +161,23 @@ export async function GET(request: NextRequest) {
        على السيرفر فمفيش أي بيانات بتسرب للطالب المستبعد */
     let visibleExams = exams as unknown as any[]
     if (!admin) {
+      /* (2026-و29) مجموعة الطالب — نداء واحد رخيص (فاضي لو مفيش مجموعة) */
+      var studentGroup = ''
+      if (studentId) {
+        try {
+          var sgRows = await db.$queryRawUnsafe('SELECT groupId FROM Student WHERE id = ? LIMIT 1', studentId) as any[]
+          if (sgRows && sgRows.length > 0) studentGroup = String(sgRows[0].groupId || '')
+        } catch (sgErr) {}
+      }
       visibleExams = visibleExams.filter(function (e) {
         var t = parseTargetIds(e && (e as any).targetStudentIds)
-        return t.length === 0 || (!!studentId && t.indexOf(studentId) !== -1)
+        var g = parseTargetIds(e && (e as any).targetGroupIds)
+        /* (2026-و29) من غير استهداف = الكل — لو فيه استهداف طلاب أو مجموعات:
+           الطالب يشوفه لو اسمه في قايمة الطلاب أو مجموعته في قايمة المجموعات */
+        if (t.length === 0 && g.length === 0) return true
+        var byStudent = !!studentId && t.indexOf(studentId) !== -1
+        var byGroup = !!studentGroup && g.indexOf(studentGroup) !== -1
+        return byStudent || byGroup
       })
     }
 
@@ -182,7 +205,7 @@ export async function POST(request: NextRequest) {
   try {
     await ensureExamFeatureColumns()
     const body = await request.json()
-    const { title, content, grade, filePath, fileType, questions, models, modelMode, fixedModel, passScore, answerKeyPath, answerKeyType, thumbnail, showResult, timeLimitMin, scheduledAt, targetStudentIds } = body
+    const { title, content, grade, filePath, fileType, questions, models, modelMode, fixedModel, passScore, answerKeyPath, answerKeyType, thumbnail, showResult, timeLimitMin, scheduledAt, targetStudentIds, targetGroupIds } = body
 
     if (!title || !grade) {
       return NextResponse.json({ error: 'Title and grade are required' }, { status: 400 })
@@ -205,6 +228,9 @@ export async function POST(request: NextRequest) {
     /* (2026-و26) استهداف الطلاب: array ids → JSON string (فاضي = الكل) */
     var targetIds = normalizeTargetIds(targetStudentIds)
     if (targetIds === undefined) targetIds = '[]'
+    /* (2026-و29) استهداف المجموعات — نفس التطبيع بالظبط */
+    var targetGids = normalizeTargetIds(targetGroupIds)
+    if (targetGids === undefined) targetGids = '[]'
 
     const exam = await safeWrite(function () {
       return db.exam.create({
@@ -226,6 +252,7 @@ export async function POST(request: NextRequest) {
           timeLimitMin: timeLimit,
           scheduledAt: scheduledDate,
           targetStudentIds: targetIds,
+          targetGroupIds: targetGids,
         },
       })
     })

@@ -14,6 +14,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { resolveQuestionsForStudent, parseQuestions } from '@/lib/exam-models'
 
 export const runtime = 'nodejs'
 
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest) {
     try { await db.$executeRawUnsafe("ALTER TABLE " + table + " ADD COLUMN answers TEXT DEFAULT ''") } catch (e) {}
 
     var rows = await db.$queryRawUnsafe(
-      'SELECT id, ' + fk + ' AS parentId, score, maxScore, answers, gradeOverrides, writingResults FROM ' + table + ' WHERE id = ? LIMIT 1',
+      'SELECT id, ' + fk + ' AS parentId, studentId, score, maxScore, answers, gradeOverrides, writingResults FROM ' + table + ' WHERE id = ? LIMIT 1',
       resultId
     )
     if (!rows || rows.length === 0) {
@@ -66,13 +67,26 @@ export async function POST(request: NextRequest) {
     var res = rows[0]
 
     var qRows = await db.$queryRawUnsafe(
-      'SELECT id, questions FROM ' + qTable + ' WHERE id = ? LIMIT 1',
+      'SELECT * FROM ' + qTable + ' WHERE id = ? LIMIT 1',
       res.parentId
     )
-    var questions = []
+    var questions: any[] = []
     if (qRows && qRows.length > 0) {
-      var parsed = parseJsonCol(qRows[0].questions)
-      if (Array.isArray(parsed)) questions = parsed
+      /* (2026-و29) امتحانات النماذج: أسئلة الطالب = نموذجه هو (نفس منطق
+         التسليم والعرض بالظبط) — كان بيقري أسئلة الأساس فقط فكان بيحسب
+         override والمسحوب منه من مساحة فهارس مختلفة تمامًا عن شاشة الأدمن */
+      try {
+        if (kind === 'exam' && res.studentId) {
+          questions = resolveQuestionsForStudent(qRows[0], res.studentId, String(res.parentId))
+        }
+      } catch (rqErr) { console.error('[override] resolve questions error:', rqErr) }
+      if (!questions || questions.length === 0) {
+        var parsed = parseJsonCol(qRows[0].questions)
+        if (Array.isArray(parsed)) questions = parsed
+        if (!questions || questions.length === 0) {
+          try { questions = parseQuestions(qRows[0].questions) } catch (pqErr) { questions = [] }
+        }
+      }
     }
     if (questions.length === 0) {
       return NextResponse.json({ error: 'الأسئلة غير موجودة' }, { status: 404 })

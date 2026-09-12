@@ -140,7 +140,7 @@ export async function POST(request) {
     var homework = null
     try {
       var hwRows = await db.$queryRawUnsafe(
-        'SELECT id, title, questions, targetStudentIds FROM Homework WHERE id = ? LIMIT 1',
+        'SELECT id, title, questions, targetStudentIds, targetGroupIds FROM Homework WHERE id = ? LIMIT 1',
         homeworkId
       )
       homework = hwRows && hwRows.length > 0 ? hwRows[0] : null
@@ -153,10 +153,27 @@ export async function POST(request) {
     }
 
     /* (2026-و26) حارس الاستهداف: الواجب الموجه لطلاب محددين — التسليم
-       مسموح للي اسمه في القايمة بس */
+       مسموح للي اسمه في القايمة بس
+       (2026-و29) + استهداف المجموعات: عضو المجموعة المستهدفة مسموح برضه */
     try {
       var tParsed = JSON.parse(String((homework as any).targetStudentIds || '[]'))
-      if (Array.isArray(tParsed) && tParsed.length > 0 && tParsed.indexOf(String(studentId)) === -1) {
+      var gParsed: string[] = []
+      try { var gpX = JSON.parse(String((homework as any).targetGroupIds || '[]')); if (Array.isArray(gpX)) gParsed = gpX } catch (e) {}
+      var allowedHw = true
+      if ((Array.isArray(tParsed) && tParsed.length > 0) || gParsed.length > 0) {
+        allowedHw = false
+        if (Array.isArray(tParsed) && tParsed.indexOf(String(studentId)) !== -1) allowedHw = true
+        if (!allowedHw && gParsed.length > 0) {
+          try {
+            var sgRowsHw = await db.$queryRawUnsafe('SELECT groupId FROM Student WHERE id = ? LIMIT 1', studentId) as any[]
+            if (sgRowsHw && sgRowsHw.length > 0) {
+              var sgHw = String(sgRowsHw[0].groupId || '')
+              if (sgHw && gParsed.indexOf(sgHw) !== -1) allowedHw = true
+            }
+          } catch (sgErr) {}
+        }
+      }
+      if (!allowedHw) {
         return NextResponse.json({ error: 'الواجب ده مش موجه ليك — كلمني لو فيه غلط' }, { status: 403 })
       }
     } catch (e) {}

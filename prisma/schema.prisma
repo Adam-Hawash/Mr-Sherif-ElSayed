@@ -41,6 +41,8 @@ model Student {
   creationDeviceFp  String  @default("")
   deviceType        String  @default("")
   allowAllDevices Boolean @default(false)
+  // (2026-و29) المجموعات — الطالب عضو في مجموعة واحدة (أو ولا حاجة لو فاضي)
+  groupId      String  @default("")
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
   examResults  ExamResult[]
@@ -91,6 +93,8 @@ model Homework {
   // (2026-و26) استهداف الطلاب — نفس نمط الفيديوهات (VideoSchedule):
   // JSON array بids طلاب محددين — فاضي "[]" = الكل يشوفه
   targetStudentIds String      @default("")
+  // (2026-و29) استهداف المجموعات — زي الامتحانات بالظبط
+  targetGroupIds  String      @default("")
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
   results       HomeworkResult[]
@@ -141,6 +145,10 @@ model Exam {
   // (2026-و26) استهداف الطلاب — نفس نمط الفيديوهات (VideoSchedule):
   // JSON array بids طلاب محددين — فاضي "[]" = الكل يشوفه
   targetStudentIds String      @default("")
+  // (2026-و29) استهداف المجموعات — نفس نمط الاستهداف بالطلاب بالظبط:
+  // JSON array بids المجموعات (StudentGroup) — الامتحان يظهر لأعضاء المجموعة
+  // (مع scheduledAt: مخفي تمامًا قبل الموعد — من غير عداد)
+  targetGroupIds  String      @default("")
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
   results       ExamResult[]
@@ -296,4 +304,32 @@ model Complaint {
 
   @@index([status])
   @@index([studentId])
+}
+
+// ============================================================
+// (2026-و29) نظام المجموعات — طلب المستر الحرفي:
+//   «عاوزين نقسم الطلاب لمجموعتين... مجموعة التلات أو مجموعة الأحد...
+//    الفيديو يظهر لمجموعة والتانية ما يظهرلهاش غير في ميعادها»
+// ============================================================
+model StudentGroup {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  @@index([name])
+}
+
+// جدولة الفيديوهات للمجموعات — سطر لكل (فيديو × مجموعة):
+//   unlockAt = null  → المجموعة تشوف الفيديو فورًا
+//   unlockAt مستقبلي → الفيديو **مخفي تمامًا** عن المجموعة قبل الموعد
+//                       (من غير عداد — طلب المستر صريح) وبيظهر عند موعدها
+model VideoGroupSchedule {
+  id        String    @id @default(cuid())
+  videoId   String
+  groupId   String
+  unlockAt  DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([videoId])
+  @@index([groupId])
 }

@@ -89,14 +89,29 @@ export async function GET(request: NextRequest) {
           studentId, examId
         )
         var withGrades: any[] = []
+        var pendingShowIds: string[] = []
         for (var wi2 = 0; wi2 < (fullRows || []).length; wi2++) {
           var rRow = fullRows[wi2]
           var wgArr: any[] = []
           try { wgArr = rRow.writingGrades ? JSON.parse(rRow.writingGrades) : [] } catch (e) { wgArr = [] }
+          /* (2026-و29) self-heal لفرع showResult: التصحيح الخلفي لو اتقطع
+             (serverless timeout) كان الطالب في كارت النتيجة بيفضل شايف
+             «بيتصحح دلوقتي» للأبد — دلوقتي أي نتيجة pending بتترمي
+             لإعادة التصحيح في الخلفية بعد الرد */
+          try {
+            if (gradesLookPending(rRow.writingGrades)) pendingShowIds.push(rRow.id)
+          } catch (pErr) {}
           withGrades.push({
             id: rRow.id, examId: rRow.examId, studentId: rRow.studentId,
             score: rRow.score, maxScore: rRow.maxScore, submittedAt: rRow.submittedAt,
             writingGrades: wgArr,
+          })
+        }
+        if (pendingShowIds.length > 0) {
+          after(async function () {
+            for (var hi2 = 0; hi2 < pendingShowIds.length; hi2++) {
+              try { await regradeExamResult(pendingShowIds[hi2]) } catch (e) {}
+            }
           })
         }
         return NextResponse.json({ results: withGrades })

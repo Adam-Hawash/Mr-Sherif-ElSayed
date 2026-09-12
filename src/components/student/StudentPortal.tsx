@@ -924,8 +924,9 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                       <Card key={'w' + wi} className={waPending ? 'border-amber-200 dark:border-amber-900/40' : wa.isCorrect ? 'border-emerald-200 dark:border-emerald-900/40' : 'border-red-200 dark:border-red-900/40'}>
                         <CardContent className="p-3 space-y-2">
                           <div className="flex items-start gap-2">
-                            <span className={"shrink-0 mt-0.5 text-xs font-bold px-2 py-0.5 rounded-full " + (waPending ? 'bg-amber-500/10 text-amber-600' : wa.isCorrect ? 'bg-emerald-500/10 text-emerald-600' : 'bg-red-500/10 text-red-600')}>
-                              {waPending ? 'Pending' : wa.isCorrect ? 'Correct' : ((wa.answer || '').trim() ? 'Wrong' : 'Empty')}
+                            <span className={"shrink-0 mt-0.5 text-xs font-bold px-2 py-0.5 rounded-full " + (waPending ? 'bg-amber-500/10 text-amber-600' : wa.isCorrect ? 'bg-emerald-500/10 text-emerald-600' : ((wa.awardedPoints || 0) > 0 && (wa.answer || '').trim()) ? 'bg-amber-500/10 text-amber-600' : 'bg-red-500/10 text-red-600')}>
+                              {/* (2026-و29) درجة جزئية → «جزئي» بدل غلط — رسالة أصدق للطالب */}
+                              {waPending ? 'Pending' : wa.isCorrect ? 'Correct' : ((wa.awardedPoints || 0) > 0 && (wa.answer || '').trim()) ? 'جزئي' : ((wa.answer || '').trim() ? 'Wrong' : 'Empty')}
                             </span>
                             <p className="text-sm font-medium flex-1 whitespace-pre-wrap break-words" dir="auto">{wi + 1}. <FractionText text={wa.question} /></p>
                           </div>
@@ -1656,7 +1657,12 @@ function normalizeExamWritingItems(raw: any): any[] {
     }
   } catch (e) { return [] }
   if (!Array.isArray(src)) return []
-  return src.map(function(it: any) {
+  return src
+    /* (2026-و29) فلترة أسئلة «المفتاح الناقص» — دي أسئلة اختيارية مش مقالية
+       وبتتخزن جوه writingGrades للمراجعة — كانت بتظهر للطالب ككروت مقالية
+       غلط إضافية في مراجعة الأسئلة المقالية */
+    .filter(function(it: any) { return !(it && typeof it === 'object' && it.needsManualKey === true) })
+    .map(function(it: any) {
     if (!it || typeof it !== 'object') return { question: '', answer: '', pending: true }
     var pending = it.gradingStatus === 'pending' || it.needsGrading === true || (it.isCorrect !== true && it.isCorrect !== false && it.isGraded !== true)
     return {
@@ -2029,7 +2035,7 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
                   <p className="font-bold text-sm sm:text-base text-emerald-700 dark:text-emerald-400">درجتك: {examReviewScore.score} / {examReviewScore.maxScore}</p>
                 ) : (
                   <p className="font-bold text-sm sm:text-base text-emerald-700 dark:text-emerald-400">
-                    درجتك في الاختياري: {typeof cardRes.mcqScore === 'number' ? cardRes.mcqScore : 0} / {typeof cardRes.maxScore === 'number' ? cardRes.maxScore : 0}
+                    درجتك في الاختياري: {typeof cardRes.mcqScore === 'number' ? cardRes.mcqScore : 0} / {typeof cardRes.mcqMaxScore === 'number' && cardRes.mcqMaxScore > 0 ? cardRes.mcqMaxScore : (typeof cardRes.maxScore === 'number' ? cardRes.maxScore : 0)}
                     {cardRes.writingPending === true && <span className="text-xs font-semibold text-amber-600 dark:text-amber-400"> (المقالي لسه بيتصحح)</span>}
                   </p>
                 )}
@@ -2074,8 +2080,10 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
                     <Card key={'ewr-' + wi} className={w.pending ? 'border-amber-200 dark:border-amber-900/40' : w.isCorrect ? 'border-emerald-200 dark:border-emerald-900/40' : 'border-red-200 dark:border-red-900/40'}>
                       <CardContent className="p-3 space-y-2">
                         <div className="flex items-start gap-2">
-                          <span className={'shrink-0 mt-0.5 text-xs font-bold px-2 py-0.5 rounded-full ' + (w.pending ? 'bg-amber-500/10 text-amber-600' : w.isCorrect ? 'bg-emerald-500/10 text-emerald-600' : 'bg-red-500/10 text-red-600')}>
-                            {w.pending ? 'Pending' : w.isCorrect ? 'Correct' : ((w.answer || '').trim() ? 'Wrong' : 'Empty')}
+                          <span className={'shrink-0 mt-0.5 text-xs font-bold px-2 py-0.5 rounded-full ' + (w.pending ? 'bg-amber-500/10 text-amber-600' : w.isCorrect ? 'bg-emerald-500/10 text-emerald-600' : (!w.isCorrect && (w.awardedPoints || 0) > 0) ? 'bg-amber-500/10 text-amber-600' : 'bg-red-500/10 text-red-600')}>
+                            {/* (2026-و29) درجة جزئية/مؤقتة → بادج كهرماني بدل «غلط» —
+                               المستر هو اللي يأكد من اللوحة */}
+                            {w.pending ? 'Pending' : w.isCorrect ? 'Correct' : ((w.awardedPoints || 0) > 0 && (w.answer || '').trim()) ? 'جزئي' : ((w.answer || '').trim() ? 'Wrong' : 'Empty')}
                           </span>
                           <p className="text-sm font-medium flex-1 whitespace-pre-wrap break-words" dir="auto">{wi + 1}. <FractionText text={w.question} /></p>
                         </div>

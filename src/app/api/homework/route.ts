@@ -4,10 +4,19 @@ import { isAdmin } from '@/lib/video-guard'
 
 /* (25-ب1) جدولة الظهور للواجبات — defensive ALTER بنفس نمط المشروع
    (ممنوع db:push — كل قاعدة بيانات بتترقّى تلقائيًا هنا) */
+/* (2026-و29) كاش على مستوى الموديول: كل ALTER = نداء شبكة لقاعدة البيانات — تنفيذها في كل ريكوست كان بيدفع نداءات ضاية في كل تحميل (من أكبر أسباب بطء المنصة) — دلوقتي مرة واحدة لكل instance */
+var _hwColsReady: Promise<void> | null = null
 async function ensureHomeworkFeatureColumns() {
+  if (!_hwColsReady) {
+    _hwColsReady = (async function () {
   try { await db.$executeRawUnsafe('ALTER TABLE Homework ADD COLUMN scheduledAt DATETIME') } catch (e) {}
   /* (2026-و26) استهداف الطلاب — نفس نمط الفيديوهات (VideoSchedule.studentIds) */
   try { await db.$executeRawUnsafe("ALTER TABLE Homework ADD COLUMN targetStudentIds TEXT DEFAULT ''") } catch (e) {}
+  /* (2026-و29) استهداف المجموعات — نفس النمط */
+  try { await db.$executeRawUnsafe("ALTER TABLE Homework ADD COLUMN targetGroupIds TEXT DEFAULT ''") } catch (e) {}
+})()
+  }
+  await _hwColsReady
 }
 
 /* (2026-و26) قراءة قايمة الاستهداف من صف */
@@ -94,9 +103,23 @@ export async function GET(request: NextRequest) {
        لطلاب محددين مش بيوصل غير للي اسمه في القايمة — فلترة على السيرفر */
     let visibleHw = homework as unknown as any[]
     if (!admin) {
+      /* (2026-و29) مجموعة الطالب — نداء واحد رخيص */
+      var studentGroupHw = ''
+      if (studentId) {
+        try {
+          var sgRowsHw = await db.$queryRawUnsafe('SELECT groupId FROM Student WHERE id = ? LIMIT 1', studentId) as any[]
+          if (sgRowsHw && sgRowsHw.length > 0) studentGroupHw = String(sgRowsHw[0].groupId || '')
+        } catch (sgErr) {}
+      }
       visibleHw = visibleHw.filter(function (h) {
         var t = parseTargetIds(h && (h as any).targetStudentIds)
-        return t.length === 0 || (!!studentId && t.indexOf(studentId) !== -1)
+        var g = parseTargetIds(h && (h as any).targetGroupIds)
+        /* (2026-و29) من غير استهداف = الكل — استهداف طلاب أو مجموعات =
+           اسمه في الطلاب أو مجموعته في المجموعات */
+        if (t.length === 0 && g.length === 0) return true
+        var byStudent = !!studentId && t.indexOf(studentId) !== -1
+        var byGroup = !!studentGroupHw && g.indexOf(studentGroupHw) !== -1
+        return byStudent || byGroup
       })
     }
 
@@ -120,7 +143,7 @@ export async function POST(request: NextRequest) {
   try {
     await ensureHomeworkFeatureColumns()
     const body = await request.json()
-    const { title, content, grade, filePath, fileType, answerKeyPath, answerKeyType, thumbnail, questions, scheduledAt, targetStudentIds } = body
+    const { title, content, grade, filePath, fileType, answerKeyPath, answerKeyType, thumbnail, questions, scheduledAt, targetStudentIds, targetGroupIds } = body
 
     if (!title || !grade) {
       return NextResponse.json({ error: 'Title and grade are required' }, { status: 400 })
@@ -146,9 +169,20 @@ export async function POST(request: NextRequest) {
       targetIds = JSON.stringify(tClean)
     }
 
+    /* (2026-و29) استهداف المجموعات — نفس التطبيع بالظبط */
+    var targetGids = '[]'
+    if (targetGroupIds !== undefined && targetGroupIds !== null) {
+      var gArr: unknown[] = []
+      if (Array.isArray(targetGroupIds)) gArr = targetGroupIds
+      else { try { var gp2 = JSON.parse(String(targetGroupIds)); if (Array.isArray(gp2)) gArr = gp2 } catch (e) {} }
+      var gClean = gArr.map(function (x) { return String(x == null ? '' : x).trim() }).filter(Boolean)
+      gClean = gClean.filter(function (x: string, i: number) { return gClean.indexOf(x) === i })
+      targetGids = JSON.stringify(gClean)
+    }
+
     const homework = await safeWrite(function () {
       return db.homework.create({
-        data: { title, content: content || '', grade, filePath: filePath || '', fileType: fileType || '', thumbnail: thumbnail || '', answerKeyPath: answerKeyPath || '', answerKeyType: answerKeyType || '', questions: questions || '', scheduledAt: scheduledDate, targetStudentIds: targetIds },
+        data: { title, content: content || '', grade, filePath: filePath || '', fileType: fileType || '', thumbnail: thumbnail || '', answerKeyPath: answerKeyPath || '', answerKeyType: answerKeyType || '', questions: questions || '', scheduledAt: scheduledDate, targetStudentIds: targetIds, targetGroupIds: targetGids },
       })
     })
 

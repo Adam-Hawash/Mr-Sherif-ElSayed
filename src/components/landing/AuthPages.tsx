@@ -20,6 +20,16 @@ var fadeInUp = {
 var TEXT_ONLY_REGEX = /^[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFFa-zA-Z\s]+$/
 var PHONE_REGEX = /^\d{11}$/
 
+/* (2026-و29) تطبيع كلمة السر: أرقام عربية/فارسية ← لاتيني + شيل المسافات
+   الطالب اللي كاتب باسورده بأرقام عربية (١٢٣٤٥٦) كان بياخد «الرقم أو الباسورد غلط»
+   وده كان سبب رئيسي لشكاوى الدخول — التطبيع على الفورم + السيرفر مع بعض */
+function normPasswordInput(v: string): string {
+  var t = String(v || '')
+  t = t.replace(/[٠-٩]/g, function (d) { return String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)) })
+  t = t.replace(/[۰-۹]/g, function (d) { return String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)) })
+  return t.replace(/\s+/g, '').trim()
+}
+
 /* (2026-و26) لينك قسم الشكاوى — بطلب المستر: الكلمة تبقى لينك تحتيه خط،
    اللي يدوس عليه يروح صفحة الشكاوى العامة (/complaints) ويكتب اسمه
    ورقم تليفونه وشكواه من غير تسجيل دخول — والشكوى توصل للأدمن */
@@ -154,7 +164,12 @@ export function LoginView() {
 
     setStudentLoading(true)
     try {
-      var res = await fetch('/api/students?phone=' + encodeURIComponent(studentPhone.trim()) + '&password=' + encodeURIComponent(studentPassword.trim()) + '&deviceId=' + encodeURIComponent(getDeviceId()) + '&deviceIds=' + encodeURIComponent(JSON.stringify(getDeviceCandidates())) + '&deviceTraits=' + encodeURIComponent(JSON.stringify(getDeviceTraits())) + '&deviceType=' + encodeURIComponent(getDeviceType()))
+      /* (2026-و29) مهلة اتصال 25 ثانية — الطلب المعلق للأبد كان سبب
+         «استنى شوية» على طول من غير دخول؛ بعد المهلة رسالة واضحة والزرار يرجع */
+      var loginController = new AbortController()
+      var loginTimeout = setTimeout(function () { loginController.abort() }, 25000)
+      var res = await fetch('/api/students?phone=' + encodeURIComponent(studentPhone.trim()) + '&password=' + encodeURIComponent(normPasswordInput(studentPassword)) + '&deviceId=' + encodeURIComponent(getDeviceId()) + '&deviceIds=' + encodeURIComponent(JSON.stringify(getDeviceCandidates())) + '&deviceTraits=' + encodeURIComponent(JSON.stringify(getDeviceTraits())) + '&deviceType=' + encodeURIComponent(getDeviceType()), { signal: loginController.signal })
+      clearTimeout(loginTimeout)
       var data = await res.json()
       // ربط الجهاز: الحساب مربوط بجهاز تاني → رسالة حمراء واضحة جوه الكارت
       if (res.status === 403 && data.deviceBlocked) {
@@ -194,8 +209,13 @@ export function LoginView() {
       } else {
         toast.error('تم حذف حسابك من المنصة، تواصل مع المستر')
       }
-    } catch (e) {
-      toast.error('حدث خطأ في الاتصال')
+    } catch (e: any) {
+      /* (2026-و29) مهلة/انقطاع → رسالة واضحة بدل سطور عالقة */
+      if (e && (e.name === 'AbortError' || String(e.message || '').indexOf('abort') >= 0)) {
+        toast.error('الاتصال بطيء — تأكد من النت وجرب تاني', { duration: 8000 })
+      } else {
+        toast.error('حدث خطأ في الاتصال')
+      }
     } finally {
       setStudentLoading(false)
     }
