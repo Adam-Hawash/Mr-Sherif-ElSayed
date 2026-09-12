@@ -13,6 +13,8 @@ export function makeLibsqlClient() {
 }
 
 export var SCHEMA_TABLES = [
+  'CREATE TABLE IF NOT EXISTS StudentGroup (id TEXT PRIMARY KEY, name TEXT NOT NULL, createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
+  'CREATE TABLE IF NOT EXISTS VideoGroupSchedule (id TEXT PRIMARY KEY, videoId TEXT NOT NULL, groupId TEXT NOT NULL, unlockAt DATETIME, createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
   'CREATE TABLE IF NOT EXISTS Admin (id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, password TEXT NOT NULL, name TEXT NOT NULL DEFAULT "Admin", createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
   'CREATE TABLE IF NOT EXISTS Student (id TEXT PRIMARY KEY, name TEXT NOT NULL, phone TEXT NOT NULL UNIQUE, password TEXT NOT NULL DEFAULT "", grade TEXT NOT NULL, status TEXT NOT NULL DEFAULT "pending", parentName TEXT NOT NULL DEFAULT "", parentPhone TEXT NOT NULL DEFAULT "", loginCount INTEGER NOT NULL DEFAULT 0, lastLogin DATETIME, isPaidAccess INTEGER NOT NULL DEFAULT 0, deviceId TEXT NOT NULL DEFAULT "", deviceFp TEXT NOT NULL DEFAULT "", deviceTraits TEXT NOT NULL DEFAULT "", creationDeviceId TEXT NOT NULL DEFAULT "", creationDeviceFp TEXT NOT NULL DEFAULT "", deviceType TEXT NOT NULL DEFAULT "", allowAllDevices INTEGER NOT NULL DEFAULT 0, createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
   'CREATE TABLE IF NOT EXISTS StudentActivity (id TEXT PRIMARY KEY, studentId TEXT NOT NULL, action TEXT NOT NULL, details TEXT DEFAULT "", createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (studentId) REFERENCES Student(id) ON DELETE CASCADE)',
@@ -88,6 +90,10 @@ var SCHEMA_COLUMNS = [
   ['Payment', 'note', 'TEXT', "DEFAULT ''"],
   ['Payment', 'reviewedAt', 'DATETIME', ''],
   ['Payment', 'reviewedBy', 'TEXT', "DEFAULT ''"],
+  // (2026-و29) نظام المجموعات — عمود مجموعة الطالب + استهداف المجموعات للامتحانات والواجبات
+  ['Student', 'groupId', 'TEXT', "DEFAULT ''"],
+  ['Exam', 'targetGroupIds', 'TEXT', "DEFAULT ''"],
+  ['Homework', 'targetGroupIds', 'TEXT', "DEFAULT ''"],
 ]
 
 var SCHEMA_FIXES = [
@@ -136,6 +142,9 @@ export var SCHEMA_INDEXES = [
   'CREATE INDEX IF NOT EXISTS idx_video_progress_student ON VideoProgress(studentId)',
   'CREATE INDEX IF NOT EXISTS idx_student_created ON Student(createdAt)',
   'CREATE INDEX IF NOT EXISTS idx_activity_created ON StudentActivity(createdAt)',
+  'CREATE INDEX IF NOT EXISTS idx_student_group ON Student(groupId)',
+  'CREATE INDEX IF NOT EXISTS idx_vgs_video ON VideoGroupSchedule(videoId)',
+  'CREATE INDEX IF NOT EXISTS idx_vgs_group ON VideoGroupSchedule(groupId)',
 ]
 
 export var CORE_TABLES = ['Admin', 'Student', 'StudentActivity', 'Video', 'Homework', 'Exam', 'ExamResult', 'Announcement', 'Discussion', 'SiteConfig', 'Media', 'VideoProgress', 'GalleryImage', 'Payment', 'VideoAccess', 'Complaint']
