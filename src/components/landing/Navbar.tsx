@@ -56,9 +56,10 @@ export function Navbar() {
   } = useAppStore()
 
   const cfg = siteConfig
-  /* البروفايل: صورة المستر الافتراضية (sherif-profile.jpg) — والأدمن يقدر يغيرها من لوحة التحكم (profile_photo)
-     مستقلة تمامًا عن صورة الهيرو (instructor_photo) عشان الصورة الأصلية تفضل زي ما هي */
-  const instructorPhoto = cfg.profile_photo || '/images/sherif-profile.jpg'
+  /* (2026-و33) البروفايل: الفولباك = نفس صورة المعلم الأساسية بالظبط (instructor.png نسخة مطابقة
+     لصورة الداتابيز) — طلب المستر: «الصورة البديلة تبقى هي نفس الصورة الأساسية لكل منصة»
+     والأدمن يقدر يغيرها من لوحة التحكم (profile_photo) */
+  const instructorPhoto = cfg.profile_photo || '/images/instructor.png'
   const youtubeLink = cfg.social_youtube || ''
   const navBrand = cfg.navbar_brand || 'Mr. Sherif ElSayed'
   const navSubtitle = cfg.navbar_subtitle || 'الرياضيات بقت أسهل'
