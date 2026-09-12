@@ -1105,12 +1105,17 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
             <p className="text-sm font-semibold text-foreground">مراجعة الأسئلة:</p>
             {sDisplayQuestions.map(function(q: any, di: number) {
               var qType = q.type === 'writing' || q.type === 'essay' || (!q.options || q.options.length === 0) || (Array.isArray(q.options) && q.options.length > 0 && q.options.every(function(o: string) { return !o || o === 'N/A' || o === 'لا يوجد' || o.trim() === '' })) ? 'writing' : 'mcq'
-              var isWrong = sWrong.some(function(w: any) { return w.question === (q.question || q.q) })
-              var wrongQ = sWrong.find(function(w: any) { return w.question === (q.question || q.q) })
+              /* (2026-و32) المطابقة بالفهرس الأصلي بدل نص السؤال — نقلًا من جينيوس:
+                 نصين متطابقين كانوا بيخليوا السؤال اللي اتحل صح ياخد حكم السؤال الغلط
+                 («بحل صح وبيظهرلي غلط»). النص فضل احتياط للنتايج القديمة */
+              var sDisplayMap = hwDisplayMap[submittedHwId] || []
+              var origIdxForDi = sDisplayMap[di] !== undefined ? sDisplayMap[di] : di
+              var isWrong = sWrong.some(function(w: any) { return (typeof w.origIdx === 'number' ? w.origIdx === origIdxForDi : false) || (w.origIdx === undefined && w.question === (q.question || q.q)) })
+              var wrongQ = sWrong.find(function(w: any) { return (typeof w.origIdx === 'number' ? w.origIdx === origIdxForDi : false) || (w.origIdx === undefined && w.question === (q.question || q.q)) })
               var correctIdx = typeof q.correct === 'number' ? q.correct : 0
               var correctAnswer = qType === 'mcq' && Array.isArray(q.options) ? (String.fromCharCode(65 + correctIdx) + ') ' + q.options[correctIdx]) : ''
-              // For writing: find matching writing answer
-              var writingAns = sWritingAnswers.find(function(wa: any) { return wa.question === (q.question || q.q) })
+              // For writing: find matching writing answer (بالـ origIdx — و32)
+              var writingAns = sWritingAnswers.find(function(wa: any) { return (typeof wa.origIdx === 'number' ? wa.origIdx === origIdxForDi : false) || (wa.origIdx === undefined && wa.question === (q.question || q.q)) })
               var writingIsCorrect = writingAns && writingAns.isCorrect === true
               var writingIsWrong = writingAns && writingAns.isCorrect === false && writingAns.answer && writingAns.answer.trim()
               return (
