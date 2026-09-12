@@ -72,6 +72,32 @@ async function ensureTable() {
 /* ===== اختيار النموذج الحتمي — بقى مشترك من lib/exam-models (2026-و22)
    عشان كل مكان (تسليم/عرض/إعادة تصحيح) يحسب نفس أسئلة الطالب بالظبط ===== */
 
+
+/* (2026-و32) تطبيع مفتاح الإجابة — مهما كانت الصيغة المخزنة:
+   رقم / نص رقمي في حدود الخيارات "2" / حرف "B" أو "b" / نص الخيار نفسه "32" —
+   عشان أي صيغة غريبة ما ترجعش لمفتاح غلط وتحكم على إجابة صح إنها غلط
+   (ده كان سبب شكاوى «بحل صح وبيظهرلي غلط» في الواجب والامتحانات) */
+function normalizeCorrectKey(q: any, opts: any[]): number {
+  var correctIdx = -1
+  if (typeof q.correct === 'number') correctIdx = q.correct
+  else if (typeof q.correct === 'string') {
+    var cTrim = q.correct.trim()
+    if (/^[0-9]+$/.test(cTrim)) {
+      var n = parseInt(cTrim, 10)
+      if (n >= 0 && n < opts.length) correctIdx = n
+      else if (opts.length > 0) {
+        var tn = opts.indexOf(q.correct)
+        if (tn >= 0) correctIdx = tn
+      }
+    } else if (/^[A-Za-z]$/.test(cTrim)) correctIdx = cTrim.toUpperCase().charCodeAt(0) - 65
+    else if (opts.length > 0) {
+      var t = opts.indexOf(q.correct)
+      if (t >= 0) correctIdx = t
+    }
+  }
+  return correctIdx
+}
+
 export async function POST(request) {
   try {
     var body = await request.json()
@@ -197,7 +223,8 @@ export async function POST(request) {
       var pts = (typeof q.points === 'number' && q.points > 0) ? q.points : 1
       maxScore += pts
       var opts = Array.isArray(q.options) ? q.options : []
-      var correctIdx = typeof q.correct === 'number' ? q.correct : -1
+      /* (2026-و32) تطبيع مفتاح الإجابة (normalizeCorrectKey تحت) — أي صيغة مخزنة غريبة ما تخلّيش السؤال keyless واللي حل صح ياخد صفر */
+      var correctIdx = normalizeCorrectKey(q, opts)
       if (correctIdx < 0 || correctIdx >= opts.length) {
         keylessMcq.push({
           index: origIdx,
@@ -580,7 +607,8 @@ export async function POST(request) {
         var origIdx = item.origIdx
         var pts = (typeof q.points === 'number' && q.points > 0) ? q.points : 1
         var opts = Array.isArray(q.options) ? q.options : []
-        var correctIdx = typeof q.correct === 'number' ? q.correct : -1
+        /* (2026-و32) نفس التطبيع بتاع مرحلة الدرجات (normalizeCorrectKey فوق) — عرض نتيجة متطابق */
+        var correctIdx = normalizeCorrectKey(q, opts)
         var keyless = correctIdx < 0 || correctIdx >= opts.length
         var raw = lookupAnswer(answers, origIdx)
         var isNum = raw !== undefined && raw !== null && raw !== '' && !isNaN(Number(raw))
