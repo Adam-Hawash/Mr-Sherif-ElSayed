@@ -13,6 +13,8 @@
 import { NextResponse, after } from 'next/server'
 import { db } from '@/lib/db'
 import { gradeImageAnswer, gradeTextAnswer, extractImageMediaIds, finalAnswerCandidates } from '@/lib/ai-image-grader'
+/* (2026-و33) مصدر واحد لمفتاح الإجابة — نفس الدالة اللي شاشة المراجعة بتستخدمها على العميل */
+import { normalizeCorrectKey } from '@/lib/correct-key'
 import { gradeFallbackDecisive, quickSmartMatch } from '@/lib/smart-grader'
 import { checkHwSequential } from '@/lib/sequential-guard'
 
@@ -98,30 +100,9 @@ function quickTextMatch(answerText: string, modelAnswer: string, acceptedAnswers
 }
 
 
-/* (2026-و32) تطبيع مفتاح الإجابة — مهما كانت الصيغة المخزنة:
-   رقم / نص رقمي في حدود الخيارات "2" / حرف "B" أو "b" / نص الخيار نفسه "32" —
-   عشان أي صيغة غريبة ما ترجعش لمفتاح غلط وتحكم على إجابة صح إنها غلط
-   (ده كان سبب شكاوى «بحل صح وبيظهرلي غلط» في الواجب والامتحانات) */
-function normalizeCorrectKey(q: any, opts: any[]): number {
-  var correctIdx = -1
-  if (typeof q.correct === 'number') correctIdx = q.correct
-  else if (typeof q.correct === 'string') {
-    var cTrim = q.correct.trim()
-    if (/^[0-9]+$/.test(cTrim)) {
-      var n = parseInt(cTrim, 10)
-      if (n >= 0 && n < opts.length) correctIdx = n
-      else if (opts.length > 0) {
-        var tn = opts.indexOf(q.correct)
-        if (tn >= 0) correctIdx = tn
-      }
-    } else if (/^[A-Za-z]$/.test(cTrim)) correctIdx = cTrim.toUpperCase().charCodeAt(0) - 65
-    else if (opts.length > 0) {
-      var t = opts.indexOf(q.correct)
-      if (t >= 0) correctIdx = t
-    }
-  }
-  return correctIdx
-}
+/* (2026-و33) دالة تطبيع مفتاح الإجابة اتنقلت للمكتبة المشتركة src/lib/correct-key.ts
+   عشان السيرفر وشاشة المراجعة على العميل يحسبوا نفس المفتاح بالظبط
+   (و33 أصلحت شاشة المراجعة اللي كانت لسه بتحسب بالمفتاح الخام وبتورّي حرف غلط) */
 
 export async function POST(request) {
   try {

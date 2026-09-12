@@ -12,6 +12,9 @@
 
 import { callGemini as callGeminiCentral, hasGeminiKey } from '@/lib/gemini'
 import { repairModelJson, repairCorruptMath } from '@/lib/math-text'
+/* (2026-و33) طلب المستر: التصحيح يوصف بذكاء وببرموز المنصة (كسور رأسية وأُس) —
+   قواعد الرموز بتتحط في البرومبت والرد بيتنقّى من أي $ أو ** خام */
+import { sanitizeMathText, NOTATION_RULES } from '@/lib/math-sanitize'
 import { exactEquivalent, finalAnswerCandidates, isBareVariable, modelFinalCandidates, verifyFinalAnswerEqual } from './ai-image-grader'
 
 export interface WritingAnswer {
@@ -151,6 +154,9 @@ function buildAiPrompt(needAI: WritingAnswer[]): string {
   lines.push('- Correct: praise + say WHAT he did right (the rule/method he used + the final value). e.g. «برافو عليك! وزعت الأس صح على الحدين ووصلت للناتج بالظبط — الإجابة a^4 b^6 صح.»')
   lines.push('- Wrong: say (1) WHERE exactly the mistake happened (which step / which rule), (2) what the CORRECT approach is, (3) the correct final answer. e.g. «بص يا بطل، اللي حصل إنك في الخطوة التانية ضربت الأس غلط — الضرب بيجمّع الأسس a^6 × a^2 = a^8 مش a^4. خلي بالك المرة الجاية وطبّق القاعدة تاني، الصح a^4 b^6.»')
   lines.push('- NEVER be generic. No «إجابة غلط» alone — always the reason + the fix. And NEVER write in فصحى (مثلاً «حدث خطأ في الخطوة الثانية» ممنوعة — قول «اللي حصل إنك غلطت في الخطوة التانية»).')
+  lines.push('')
+  lines.push('MATH NOTATION IN FEEDBACK (2026-و33 — mandatory, the platform renders these as real symbols for the student):')
+  lines.push(NOTATION_RULES)
   lines.push('')
   lines.push('Return ONE valid JSON array ONLY — no markdown fences, no text before or after:')
   lines.push('[{"index":0,"awardedPoints":5,"isCorrect":true,"feedback":"..."}]')
@@ -309,7 +315,7 @@ export async function gradeWritingSmart(writingAnswers: WritingAnswer[]): Promis
       var awarded = Math.min(Math.max(Math.round(Number(aiRes.awardedPoints) || 0), 0), wa2.points || 1)
       graded[idx].awardedPoints = awarded
       graded[idx].isCorrect = awarded >= Math.ceil((wa2.points || 1) * 0.5) && awarded > 0
-      graded[idx].feedback = String(aiRes.feedback || (awarded > 0 ? 'صحيح' : 'غير صحيح')).slice(0, 300)
+      graded[idx].feedback = sanitizeMathText(String(aiRes.feedback || (awarded > 0 ? 'صحيح' : 'غير صحيح'))).slice(0, 300)
       graded[idx].gradingStatus = 'graded'
       aiVerdictPairs.push({ n: n, idx: idx })
     }

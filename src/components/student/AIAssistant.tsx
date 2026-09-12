@@ -3,6 +3,9 @@
 import { useState, useRef, useEffect } from 'react'
 import { Send, X, Sparkles, Loader2, ImagePlus } from 'lucide-react'
 import { toast } from 'sonner'
+/* (2026-و33) طلب المستر: المساعد يكتب برموز المنصة اللي بتظهر للطلاب —
+   نفس العارض بتاع الأسئلة (كسور رأسية + أُس حقيقي + جذر) بدل LaTeX خام */
+import { FractionText } from '@/components/FractionText'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -335,7 +338,9 @@ export function AIAssistant() {
                         })}
                       </div>
                     )}
-                    {msg.content}
+                    {/* (2026-و33) ردود المساعد بتترسم بعارض رياضيات المنصة نفسه —
+                        \frac بيبقى كسر رأسي و^ أُس و\sqrt جذر — وإيدي رسايل الطالب عادية */}
+                    {isUser ? msg.content : <FractionText text={msg.content} />}
                     {showCursor && <span className="inline-block w-2 h-3.5 bg-muted-foreground/50 animate-pulse rounded-sm align-middle" aria-hidden="true" />}
                   </div>
                 </div>
