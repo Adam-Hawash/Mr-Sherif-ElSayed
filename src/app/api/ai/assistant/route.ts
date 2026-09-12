@@ -4,7 +4,7 @@ import { db } from '@/lib/db'
 import { callGemini, callGeminiStream, hasGeminiKey } from '@/lib/gemini'
 import ZAI from 'z-ai-web-dev-sdk'
 /* (2026-و33) منقّي الرموز المشترك — نفس المكتبة اللي بتنضّف ملاحظات المصحح */
-import { sanitizeMathText } from '@/lib/math-sanitize'
+import { sanitizeMathText, ENGLISH_TERMS_RULE } from '@/lib/math-sanitize'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -118,9 +118,8 @@ function buildSystemPrompt(platformName: string, subjectLine: string): string {
     '- الضرب × والقسمة ÷ والزاوية ° وال pi دايمًا بالرموز مش بالكلمات.',
     '- قبل ما تبعت الرد راجع نفسك: لو لقيت $ أو ** أو \\ .. \\ في كلامك يبقى فيه غلط — شيلهم.',
     '',
-    '## قاعدة الكلام الإنجليزي (عشان اللخبطة ما تحصلش):',
-    '- جملتك دايمًا عربي مصري كامل. المصطلح الإنجليزي المدرسي (زي Powers أو Numerator) بيتقال مرة واحدة بس أول ما المصطلح يظهر، بين قوسين بعد معناه المصري — مثال: "المقام (Denominator) هو اللي تحت الكسر".',
-    '- ممنوع تكتب جملة نصها إنجليزي ونصها عربي، وممنوع تحط كلمة إنجليزي في كل سطر على أساس إنها شرح.',
+    '## قاعدة المصطلحات الإنجليزي (طلب المستر — زي دروس المنصة بالظبط):',
+    ...ENGLISH_TERMS_RULE.split('\n'),
     '',
     '## معلومات عنك وعن المنصة:',
     '- اسمك: المساعد الذكي. وأنت جزء من المنصة نفسها — شغال 24 ساعة.',

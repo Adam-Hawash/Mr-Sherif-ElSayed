@@ -15,7 +15,7 @@
 
 import { callGemini as callGeminiCentral, hasGeminiKey } from '@/lib/gemini'
 import { repairModelJson } from '@/lib/math-text'
-import { sanitizeMathText, NOTATION_RULES } from '@/lib/math-sanitize'
+import { sanitizeMathText, NOTATION_RULES, ENGLISH_TERMS_RULE } from '@/lib/math-sanitize'
 
 export interface McqNoteItem {
   question: string
@@ -40,6 +40,8 @@ function buildNotesPrompt(items: McqNoteItem[]): string {
   lines.push('2) الغلط الشائع اللي غالبًا وقع فيه اللي خلاه يختار إجابته (لو ماجابش إجابة خالص قول له إزاي يبدأ).')
   lines.push('')
   lines.push(NOTATION_RULES)
+  lines.push('')
+  lines.push(ENGLISH_TERMS_RULE)
   lines.push('')
   lines.push('ممنوع منعًا باتًا الفصحى — كلام عادي زي ما بتتكلم مع طالب في السادس/الإعدادي: بص، خلي بالك، اللي حصل إن، طبّق تاني، برافو.')
   lines.push('ممنوع تطول — الملاحظة سطر لسطرين كحد أقصى لكل سؤال.')

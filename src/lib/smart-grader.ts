@@ -14,7 +14,7 @@ import { callGemini as callGeminiCentral, hasGeminiKey } from '@/lib/gemini'
 import { repairModelJson, repairCorruptMath } from '@/lib/math-text'
 /* (2026-و33) طلب المستر: التصحيح يوصف بذكاء وببرموز المنصة (كسور رأسية وأُس) —
    قواعد الرموز بتتحط في البرومبت والرد بيتنقّى من أي $ أو ** خام */
-import { sanitizeMathText, NOTATION_RULES } from '@/lib/math-sanitize'
+import { sanitizeMathText, NOTATION_RULES, ENGLISH_TERMS_RULE } from '@/lib/math-sanitize'
 import { exactEquivalent, finalAnswerCandidates, isBareVariable, modelFinalCandidates, verifyFinalAnswerEqual } from './ai-image-grader'
 
 export interface WritingAnswer {
@@ -157,6 +157,9 @@ function buildAiPrompt(needAI: WritingAnswer[]): string {
   lines.push('')
   lines.push('MATH NOTATION IN FEEDBACK (2026-و33 — mandatory, the platform renders these as real symbols for the student):')
   lines.push(NOTATION_RULES)
+  lines.push('')
+  lines.push('ENGLISH MATH TERMS IN FEEDBACK (2026-و34 — mandatory, the teacher wants the platform lesson terms):')
+  lines.push(ENGLISH_TERMS_RULE)
   lines.push('')
   lines.push('Return ONE valid JSON array ONLY — no markdown fences, no text before or after:')
   lines.push('[{"index":0,"awardedPoints":5,"isCorrect":true,"feedback":"..."}]')
