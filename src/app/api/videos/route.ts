@@ -61,14 +61,54 @@ export async function GET(request: NextRequest) {
       db.video.count({ where }),
     ])
 
-    const safeVideos = admin ? videos : videos.map(stripVideo)
+    let visibleVideos = videos as any[]
+    /* (2026-و29) جدولة المجموعات — على السيرفر خالص:
+       فيديو له خطط مجموعات → يشوفه بس أعضاء المجموعات دي، وكل مجموعة
+       يشوفه من موعدها. قبل الميعاد الفيديو **مختفي تمامًا** عن طلاب
+       المجموعة (بدون عداد — طلب المستر صريح)، وغير أعضاء المجموعات
+       المستهدفة ما يشوفوه أصلًا. الفيديو من غير خطط = ظاهر للكل زي ما هو. */
+    if (!admin && student) {
+      try {
+        var schedRows = await db.$queryRawUnsafe('SELECT videoId, groupId, unlockAt FROM VideoGroupSchedule') as any[]
+        if (schedRows && schedRows.length > 0) {
+          var plansByVideo: Record<string, { groupId: string; unlockAt: string | null }[]> = {}
+          for (var ri = 0; ri < schedRows.length; ri++) {
+            var row = schedRows[ri]
+            var vid = String(row.videoId || '')
+            if (!plansByVideo[vid]) plansByVideo[vid] = []
+            plansByVideo[vid].push({ groupId: String(row.groupId || ''), unlockAt: row.unlockAt || null })
+          }
+          var myGroup = String((student as any).groupId || '')
+          var nowMs = Date.now()
+          visibleVideos = visibleVideos.filter(function (v: any) {
+            var plans = plansByVideo[v.id]
+            if (!plans || plans.length === 0) return true // من غير جدولة مجموعات = للكل
+            if (!myGroup) return false // الفيديو موجه لمجموعات والطالب مش في مجموعة
+            for (var pi = 0; pi < plans.length; pi++) {
+              if (plans[pi].groupId !== myGroup) continue
+              if (!plans[pi].unlockAt) return true // مجموعته من غير ميعاد → ظاهر فورًا
+              var t = new Date(plans[pi].unlockAt as string).getTime()
+              if (isNaN(t)) return true
+              if (nowMs >= t) return true // جه ميعاد مجموعته → ظاهر
+              return false // لسه قبل الميعاد → مخفي تمامًا (بدون عداد)
+            }
+            return false // مجموعته مش مستهدفة في الفيديو ده
+          })
+        }
+      } catch (gErr) {
+        console.error('Videos group-schedule filter error:', gErr)
+        // فشل الجدولة ما يمنعش عرض الفيديوهات العادية
+      }
+    }
+
+    const safeVideos = admin ? visibleVideos : visibleVideos.map(stripVideo)
 
     return NextResponse.json({
       videos: safeVideos,
-      total,
+      total: admin ? total : visibleVideos.length,
       page,
       pageSize,
-      totalPages: Math.ceil(total / pageSize),
+      totalPages: Math.ceil((admin ? total : visibleVideos.length) / pageSize),
     })
   } catch (error: any) {
     console.error('Videos fetch error:', error)

@@ -29,6 +29,9 @@ function ensureStudentSchema(): Promise<void> {
           try { await ensureSchema(client) } finally { try { await client.close() } catch (e2) {} }
         }
       } catch (e) {}
+      /* (2026-و29) عمود مجموعة الطالب — لوحة الأدمن بتقرأه في findMany
+         فلازم يتضاف قبل أول استعلام (نفس نمط defensive ALTERs في المشروع) */
+      try { await db.$executeRawUnsafe("ALTER TABLE Student ADD COLUMN groupId TEXT DEFAULT ''") } catch (e) {}
       // ============================================================
       // **فك ربط كل الأجهزة الموجودة — لمرة واحدة (طلب المستر 2026-ح)**
       // ============================================================
@@ -171,7 +174,15 @@ export async function GET(request: NextRequest) {
           return NextResponse.json({ students: [], total: 0, page: 1, pageSize: 1, totalPages: 0 })
         }
         // الباسورد الأول — لو غلط مفيش أي حاجة اسمها جهاز
-        if (!password || student.password !== password) {
+        // (2026-و29) المقارنة بعد تطبيع الأرقام العربية/الفارسية + شيل المسافات
+        // — الطالب اللي بيكتب باسورده بأرقام عربية (١٢٣٤٥٦) كان بيضل «غلط» رغم صحته
+        var normPwd = function (v: string): string {
+          var t = String(v || '')
+          t = t.replace(/[٠-٩]/g, function (d) { return String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)) })
+          t = t.replace(/[۰-۹]/g, function (d) { return String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)) })
+          return t.replace(/\s+/g, '').trim()
+        }
+        if (!password || normPwd(student.password) !== normPwd(password)) {
           return NextResponse.json({ students: [], total: 0, page: 1, pageSize: 1, totalPages: 0 })
         }
         // الحسابات المرفوضة ممنوع تدخل خالص

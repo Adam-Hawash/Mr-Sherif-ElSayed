@@ -9,7 +9,11 @@ import { db } from '@/lib/db'
 export const runtime = 'nodejs'
 export const maxDuration = 30
 
+/* (2026-و29) كاش على مستوى الموديول: كل ALTER = نداء شبكة لقاعدة البيانات — تنفيذها في كل ريكوست كان بيدفع نداءات ضاية في كل تحميل (من أكبر أسباب بطء المنصة) — دلوقتي مرة واحدة لكل instance */
+var _vScheduleReady: Promise<void> | null = null
 async function ensureTable() {
+  if (!_vScheduleReady) {
+    _vScheduleReady = (async function () {
   try {
     await db.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS VideoSchedule (
@@ -25,6 +29,9 @@ async function ensureTable() {
   } catch (e) {
     console.error('Ensure VideoSchedule table error:', e)
   }
+})()
+  }
+  await _vScheduleReady
 }
 
 // GET /api/video-schedule?videoId=xxx - get schedules for a video

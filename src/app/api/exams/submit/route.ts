@@ -18,15 +18,22 @@
 import { NextResponse } from 'next/server'
 import { after } from 'next/server'
 import { db } from '@/lib/db'
-import { gradeImageAnswer, extractImageMediaIds } from '@/lib/ai-image-grader'
-import { gradeWritingSmart, gradeFallbackDecisive } from '@/lib/smart-grader'
+import { gradeImageAnswer, gradeTextAnswer, extractImageMediaIds, finalAnswerCandidates } from '@/lib/ai-image-grader'
+import { quickSmartMatch, gradeFallbackDecisive } from '@/lib/smart-grader'
+/* (2026-و29) مسار gradeWritingSmart الجماعي اتشال من التسليم — كان نداء AI واحد
+   لكل الأسئلة المقالية: أي 429/timeout/JSON مقطوع = فولباك للدفعة كلها = «كله غلط».
+   دلوقتي تصحيح متسلسل سؤال-بسؤال (نفس إصلاح الواجب و25) — فشل سؤال ما يأثرش على غيره. */
 import { checkExamSequential } from '@/lib/sequential-guard'
 import { parseQuestions, resolveQuestionsForStudent } from '@/lib/exam-models'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
 
+/* (2026-و29) كاش على مستوى الموديول: كل ALTER = نداء شبكة لقاعدة البيانات — تنفيذها في كل ريكوست كان بيدفع نداءات ضاية في كل تحميل (من أكبر أسباب بطء المنصة) — دلوقتي مرة واحدة لكل instance */
+var _examResultReady: Promise<void> | null = null
 async function ensureTable() {
+  if (!_examResultReady) {
+    _examResultReady = (async function () {
   try {
     await db.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS ExamResult (
@@ -51,9 +58,15 @@ async function ensureTable() {
     try { await db.$executeRawUnsafe('ALTER TABLE Exam ADD COLUMN timeLimitMin INTEGER DEFAULT 0') } catch(e) {}
     try { await db.$executeRawUnsafe('ALTER TABLE Exam ADD COLUMN scheduledAt DATETIME') } catch(e) {}
     try { await db.$executeRawUnsafe('ALTER TABLE Homework ADD COLUMN scheduledAt DATETIME') } catch(e) {}
+    try { await db.$executeRawUnsafe("ALTER TABLE Exam ADD COLUMN targetStudentIds TEXT DEFAULT ''") } catch(e) {}
+    /* (2026-و29) استهداف المجموعات */
+    try { await db.$executeRawUnsafe("ALTER TABLE Exam ADD COLUMN targetGroupIds TEXT DEFAULT ''") } catch(e) {}
   } catch (e) {
     console.error('Ensure ExamResult table error:', e)
   }
+})()
+  }
+  await _examResultReady
 }
 
 /* ===== اختيار النموذج الحتمي — بقى مشترك من lib/exam-models (2026-و22)
@@ -99,7 +112,7 @@ export async function POST(request) {
       /* (25-ب1) showResult مضاف للـ SELECT — بنقرأه بس للرد النهائي
          (إظهار نتيجة الاختياري للطالب أو رسالة الانتظار) */
       var examRows = await db.$queryRawUnsafe(
-        'SELECT id, title, questions, passScore, models, modelMode, fixedModel, showResult, targetStudentIds FROM Exam WHERE id = ? LIMIT 1',
+        'SELECT id, title, questions, passScore, models, modelMode, fixedModel, showResult, targetStudentIds, targetGroupIds FROM Exam WHERE id = ? LIMIT 1',
         examId
       )
       exam = examRows && examRows.length > 0 ? examRows[0] : null
@@ -112,10 +125,26 @@ export async function POST(request) {
     }
 
     /* (2026-و26) حارس الاستهداف: الامتحان الموجه لطلاب محددين — التسليم
-       مسموح للي اسمه في القايمة بس (حتى لو طلبه بنفسه بالـ API) */
+       مسموح للي اسمه في القايمة بس (حتى لو طلبه بنفسه بالـ API)
+       (2026-و29) + استهداف المجموعات: عضو المجموعة المستهدفة مسموح برضه */
     try {
       var tParsed = JSON.parse(String((exam as any).targetStudentIds || '[]'))
-      if (Array.isArray(tParsed) && tParsed.length > 0 && tParsed.indexOf(String(studentId)) === -1) {
+      var gParsed: string[] = []
+      try { var gpX = JSON.parse(String((exam as any).targetGroupIds || '[]')); if (Array.isArray(gpX)) gParsed = gpX } catch (e) {}
+      var allowedHere = true
+      var studentGroupHere = ''
+      if ((Array.isArray(tParsed) && tParsed.length > 0) || gParsed.length > 0) {
+        allowedHere = false
+        if (Array.isArray(tParsed) && tParsed.indexOf(String(studentId)) !== -1) allowedHere = true
+        if (!allowedHere && gParsed.length > 0) {
+          try {
+            var sgRowsHere = await db.$queryRawUnsafe('SELECT groupId FROM Student WHERE id = ? LIMIT 1', studentId) as any[]
+            if (sgRowsHere && sgRowsHere.length > 0) studentGroupHere = String(sgRowsHere[0].groupId || '')
+            if (studentGroupHere && gParsed.indexOf(studentGroupHere) !== -1) allowedHere = true
+          } catch (sgErr) {}
+        }
+      }
+      if (!allowedHere) {
         return NextResponse.json({ error: 'الامتحان ده مش موجه ليك — كلمني لو فيه غلط' }, { status: 403 })
       }
     } catch (e) {}
@@ -397,30 +426,77 @@ export async function POST(request) {
         }
       }
 
+      /* (2026-و29) تصحيح متسلسل سؤال-بسؤال — نفس نمط الواجب بالظبط:
+         1) مطابقة سريعة محلية (quickSmartMatch) → كاملة من غير AI
+         2) AI لكل سؤال لوحده (gradeTextAnswer — فيه تحقق قيم مدمج STRICT VERIFY)
+         3) فشل/عدم تأكد → فولباك حاسم للسؤال ده بس (مش الدفعة كلها)
+         + partial persist بعد كل سؤال — اللي اتصحح مش بيضيع لو اتقطعنا */
       try {
-        var textResult = await gradeWritingSmart(textWorkload.map(function(w) {
-          return {
-            question: w.question,
-            answer: w.studentText,
-            modelAnswer: w.modelAnswer,
-            acceptedAnswers: w.acceptedAnswers,
-            points: w.points,
+        for (var tw = 0; tw < textWorkload.length; tw++) {
+          var twItem = textWorkload[tw]
+          var twAnswer = twItem.studentText || ''
+          var graded1: any = null
+          if (!twAnswer.trim() || twAnswer.trim() === '[📷 صورة مرفقة]') {
+            graded1 = {
+              question: twItem.question, answer: twAnswer, modelAnswer: twItem.modelAnswer,
+              awardedPoints: 0, maxPoints: twItem.points, isCorrect: false,
+              feedback: 'لم يتم الإجابة', gradingStatus: 'graded',
+            }
+          } else if (quickSmartMatch(twAnswer, twItem.modelAnswer || '', twItem.acceptedAnswers || []) === true) {
+            /* (و24) ملاحظة شخصية زي معلم بيتكلم مع الطالب — حتى في المسار السريع */
+            var stNote = (finalAnswerCandidates(twAnswer)[0] || twAnswer.trim() || '').slice(0, 40)
+            graded1 = {
+              question: twItem.question, answer: twAnswer, modelAnswer: twItem.modelAnswer,
+              awardedPoints: twItem.points, maxPoints: twItem.points, isCorrect: true,
+              feedback: 'برافو عليك ✓ الإجابة النهائية (' + stNote + ') مطابقة للإجابة الصحيحة',
+              gradingStatus: 'graded',
+            }
+          } else {
+            var tGrade: any = null
+            try {
+              tGrade = await gradeTextAnswer({
+                question: twItem.question,
+                studentAnswer: twAnswer,
+                modelAnswer: twItem.modelAnswer || '',
+                acceptedAnswers: twItem.acceptedAnswers || [],
+                maxPoints: twItem.points,
+              })
+            } catch (tgErr) { console.error('[exam-submit] text grade error:', tgErr) }
+            if (tGrade && !tGrade.needsGrading) {
+              graded1 = {
+                question: twItem.question, answer: twAnswer, modelAnswer: twItem.modelAnswer,
+                awardedPoints: tGrade.awardedPoints || 0, maxPoints: twItem.points,
+                isCorrect: tGrade.isCorrect === true,
+                feedback: tGrade.feedback || (tGrade.isCorrect ? 'إجابة صحيحة' : 'إجابة مختلفة عن الإجابة الصحيحة'),
+                gradingStatus: 'graded',
+              }
+            } else {
+              /* AI فشل أو مش متأكد في السؤال ده بس → فولباك حاسم —
+                 تكافؤ القيم → كاملة، علاقة بالحل → نص درجة + مراجعة */
+              graded1 = gradeFallbackDecisive({
+                question: twItem.question, answer: twAnswer,
+                modelAnswer: twItem.modelAnswer || '',
+                acceptedAnswers: twItem.acceptedAnswers || [],
+                points: twItem.points,
+              })
+            }
           }
-        }))
-        textGraded = textResult.graded || []
+          textGraded[tw] = graded1
+          await persistExamGrades(false)
+        }
       } catch (grErr) {
-        console.error('Exam writing smart grade error:', grErr)
-        /* (2026-و25) كان هنا صفر صامت لكل سؤال («تعذر التصحيح») — دلوقتي
-           fallback حاسم: تكافؤ القيم → كاملة، علاقة بالحل → نص درجة + مراجعة */
-        textGraded = textWorkload.map(function(w) {
-          return gradeFallbackDecisive({
-            question: w.question,
-            answer: w.studentText,
-            modelAnswer: w.modelAnswer,
-            acceptedAnswers: w.acceptedAnswers || [],
-            points: w.points,
-          })
-        })
+        console.error('Exam writing grade error:', grErr)
+        for (var tw2 = 0; tw2 < textWorkload.length; tw2++) {
+          if (!textGraded[tw2]) {
+            textGraded[tw2] = gradeFallbackDecisive({
+              question: textWorkload[tw2].question,
+              answer: textWorkload[tw2].studentText,
+              modelAnswer: textWorkload[tw2].modelAnswer || '',
+              acceptedAnswers: textWorkload[tw2].acceptedAnswers || [],
+              points: textWorkload[tw2].points,
+            })
+          }
+        }
       }
       await persistExamGrades(false)
 
@@ -489,6 +565,14 @@ export async function POST(request) {
        كل سؤال اختياري) والمقالي بيفضل «بانتظار تصحيح المستر».
        بناء mcqResults من الاختياري المحسوب مسبقًا في المرحلة 1 (mcqQuestions)
        — نفس مقارنة الدرجة بالظبط، بدون أي إعادة تصحيح ولا لمس after() */
+    /* (2026-و29) الدرجة العظمى للاختياري لوحده — عشان هيدر النتيجة الفورية
+       «درجتك في الاختياري» يعرض mcqScore/mcqMaxScore صح بدل إجمالي شامل المقالي */
+    var mcqMaxScore = 0
+    mcqQuestions.forEach(function (item) {
+      var pts = (typeof item.q.points === 'number' && item.q.points > 0) ? item.q.points : 1
+      mcqMaxScore += pts
+    })
+
     var showResultOn = exam.showResult === 1 || exam.showResult === true
     if (showResultOn) {
       var mcqResults = mcqQuestions.map(function (item) {
@@ -532,6 +616,7 @@ export async function POST(request) {
         message: 'تم تسليم الامتحان بنجاح',
         mcqScore: score,
         maxScore: maxScore,
+        mcqMaxScore: mcqMaxScore,
         writingPending: writingQuestions.length > 0,
         mcqResults: mcqResults,
       })

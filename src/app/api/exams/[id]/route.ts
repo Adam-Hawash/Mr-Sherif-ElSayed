@@ -4,11 +4,20 @@ import { db, safeWrite } from '@/lib/db'
 import { isAdmin } from '@/lib/video-guard'
 
 /* (25-ب1) defensive ALTERs — نفس نمط المشروع: ممنوع db:push */
+/* (2026-و29) كاش على مستوى الموديول: كل ALTER = نداء شبكة لقاعدة البيانات — تنفيذها في كل ريكوست كان بيدفع نداءات ضاية في كل تحميل (من أكبر أسباب بطء المنصة) — دلوقتي مرة واحدة لكل instance */
+var _examColsReady: Promise<void> | null = null
 async function ensureExamFeatureColumns() {
+  if (!_examColsReady) {
+    _examColsReady = (async function () {
   try { await db.$executeRawUnsafe('ALTER TABLE Exam ADD COLUMN showResult INTEGER DEFAULT 0') } catch (e) {}
   try { await db.$executeRawUnsafe('ALTER TABLE Exam ADD COLUMN timeLimitMin INTEGER DEFAULT 0') } catch (e) {}
   try { await db.$executeRawUnsafe('ALTER TABLE Exam ADD COLUMN scheduledAt DATETIME') } catch (e) {}
   try { await db.$executeRawUnsafe("ALTER TABLE Exam ADD COLUMN targetStudentIds TEXT DEFAULT ''") } catch (e) {}
+  /* (2026-و29) استهداف المجموعات */
+  try { await db.$executeRawUnsafe("ALTER TABLE Exam ADD COLUMN targetGroupIds TEXT DEFAULT ''") } catch (e) {}
+})()
+  }
+  await _examColsReady
 }
 
 // GET /api/exams/[id] - جلب امتحان بالمعرف
@@ -93,6 +102,16 @@ export async function PATCH(
       var cleanIds = arr.map(function (x) { return String(x == null ? '' : x).trim() }).filter(Boolean)
       cleanIds = cleanIds.filter(function (x: string, i: number) { return cleanIds.indexOf(x) === i })
       data.targetStudentIds = JSON.stringify(cleanIds)
+    }
+
+    /* (2026-و29) استهداف المجموعات — نفس المنطق بالظبط */
+    if (body.targetGroupIds !== undefined) {
+      var garr: unknown[] = []
+      if (Array.isArray(body.targetGroupIds)) garr = body.targetGroupIds
+      else { try { var gp = JSON.parse(String(body.targetGroupIds)); if (Array.isArray(gp)) garr = gp } catch (e) {} }
+      var cleanGids = garr.map(function (x) { return String(x == null ? '' : x).trim() }).filter(Boolean)
+      cleanGids = cleanGids.filter(function (x: string, i: number) { return cleanGids.indexOf(x) === i })
+      data.targetGroupIds = JSON.stringify(cleanGids)
     }
 
     if (Object.keys(data).length === 0) {
