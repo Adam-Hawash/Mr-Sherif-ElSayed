@@ -930,28 +930,31 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                             </span>
                             <p className="text-sm font-medium flex-1 whitespace-pre-wrap break-words" dir="auto">{wi + 1}. <FractionText text={wa.question} /></p>
                           </div>
+                          {/* (2026-و30) طلب المستر: «الملاحظات بتاعة الـ AI تبقى هي التانية» —
+                              الملاحظة بعد السؤال مباشرة قبل إجابتك والإجابة الصحيحة */}
+                          {!waPending && (wa.aiFeedback || wa.feedback) && (
+                            <div className={'p-3 rounded-xl border-2 ' + (wa.isCorrect ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-400 dark:border-emerald-700' : 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-800')}>
+                              <p className={'text-xs font-bold mb-1 flex items-center gap-1.5 ' + (wa.isCorrect ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400')}>
+                                <span>📝</span> ملاحظة المصحح الذكي:
+                              </p>
+                              <p className="text-xs leading-relaxed text-foreground whitespace-pre-wrap break-words" style={{ textAlign: 'right' }}>{wa.aiFeedback || wa.feedback}</p>
+                            </div>
+                          )}
                           <div className="space-y-1">
                             <p className="text-xs text-foreground whitespace-pre-wrap break-words" dir="auto">إجابتك: <FractionText text={wa.answer || '(فارغ)'} /></p>
                             {wa.modelAnswer && (
                               <p className="text-xs text-emerald-600 whitespace-pre-wrap break-words" dir="auto">الإجابة الصحيحة: <FractionText text={wa.modelAnswer} /></p>
                             )}
-                            {!waPending && wa.awardedPoints !== undefined && (
-                              <p className="text-[10px] font-semibold text-muted-foreground">الدرجة: {wa.awardedPoints}/{wa.maxPoints || wa.points}</p>
+                            {!waPending && (
+                              <div className="mt-2 text-[10px] font-semibold text-muted-foreground">الدرجة: {wa.awardedPoints}/{wa.maxPoints || wa.points}</div>
                             )}
                             {waPending && (
                               <div className="mt-2 p-2 rounded bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 flex items-center gap-2">
                                 <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-600 shrink-0" />
-                                <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">بيتصحح دلوقتي…</p>
+                                <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">بيتصحح دلوقتي… النتيجة هتظهر هنا تلقائيًا</p>
                               </div>
                             )}
-                            {!waPending && (wa.aiFeedback || wa.feedback) && (
-                              <div className={'mt-2.5 p-3 rounded-xl border-2 ' + (wa.isCorrect ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-400 dark:border-emerald-700' : 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-800')}>
-                                <p className={'text-xs font-bold mb-1 flex items-center gap-1.5 ' + (wa.isCorrect ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400')}>
-                                  <span>📝</span> ملاحظة المصحح الذكي:
-                                </p>
-                                <p className="text-xs leading-relaxed text-foreground whitespace-pre-wrap break-words" style={{ textAlign: 'right' }}>{wa.aiFeedback || wa.feedback}</p>
-                              </div>
-                            )}
+                            {/* (2026-و30) الملاحظة اتنقلت لفوق — بقت تاني عنصر في الكارت بعد السؤال */}
                           </div>
                         </CardContent>
                       </Card>
@@ -1125,6 +1128,19 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                       </span>
                       <p className="text-sm font-medium flex-1 whitespace-pre-wrap break-words" style={{ textAlign: 'left' }}>{di + 1}. <FractionText text={q.question || q.q} /></p>
                     </div>
+                    {/* (2026-و30) طلب المستر: «الملاحظات بتاعة الـ AI تبقى هي التانية» —
+                        الملاحظة بقت **تاني عنصر في الكارت** بعد السؤال مباشرة (كانت آخر حاجة)،
+                        وبتتكتب بالمصري العامي من برومبت المصحح نفسه */}
+                    {qType !== 'mcq' && writingAns && (writingAns.aiFeedback || writingAns.feedback) && writingAns.gradingStatus !== 'pending' && (
+                      <div className="pl-8">
+                        <div className={'p-3 rounded-xl border-2 ' + (writingAns.isCorrect === true ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-400 dark:border-emerald-700' : writingAns.isCorrect === false ? 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-800' : 'bg-muted/40 border-border')}>
+                          <p className={'text-xs font-bold mb-1 flex items-center gap-1.5 ' + (writingAns.isCorrect === true ? 'text-emerald-700 dark:text-emerald-400' : writingAns.isCorrect === false ? 'text-red-700 dark:text-red-400' : 'text-foreground')}>
+                            <span>📝</span> ملاحظة المصحح الذكي:
+                          </p>
+                          <p className="text-xs leading-relaxed text-foreground whitespace-pre-wrap break-words" style={{ textAlign: 'right' }}>{writingAns.aiFeedback || writingAns.feedback}</p>
+                        </div>
+                      </div>
+                    )}
                     {qType === 'mcq' ? (
                       <div className="space-y-1 pl-8" dir="ltr">
                         {wrongQ && wrongQ.studentAnswer === 'لم يتم الإجابة' && (
@@ -1190,17 +1206,7 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                             {writingAns.awardedPoints !== undefined && (
                               <p className="text-[10px] font-semibold text-muted-foreground">Score: {writingAns.awardedPoints}/{writingAns.maxPoints || writingAns.points}</p>
                             )}
-                            {/* 2026-و23 — ملاحظة المصحح الذكي في آخر السؤال (طلب المستر الحرفي:
-                                «يديني ملاحظة في آخر السؤال ليه السؤال ده غلط أو ليه السؤال ده صح —
-                                زي ما نحن بنتكلم شات») — صندوق واضح بلون الحكم */}
-                            {(writingAns.aiFeedback || writingAns.feedback) && writingAns.gradingStatus !== 'pending' && (
-                              <div className={'mt-2.5 p-3 rounded-xl border-2 ' + (writingAns.isCorrect === true ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-400 dark:border-emerald-700' : writingAns.isCorrect === false ? 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-800' : 'bg-muted/40 border-border')}>
-                                <p className={'text-xs font-bold mb-1 flex items-center gap-1.5 ' + (writingAns.isCorrect === true ? 'text-emerald-700 dark:text-emerald-400' : writingAns.isCorrect === false ? 'text-red-700 dark:text-red-400' : 'text-foreground')}>
-                                  <span>📝</span> ملاحظة المصحح الذكي:
-                                </p>
-                                <p className="text-xs leading-relaxed text-foreground whitespace-pre-wrap break-words" style={{ textAlign: 'right' }}>{writingAns.aiFeedback || writingAns.feedback}</p>
-                              </div>
-                            )}
+                            {/* (2026-و30) الملاحظة اتنقلت لفوق — بقت تاني عنصر في الكارت بعد السؤال */}
                           </div>
                         )}
                         {!writingAns && (
@@ -2087,6 +2093,15 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
                           </span>
                           <p className="text-sm font-medium flex-1 whitespace-pre-wrap break-words" dir="auto">{wi + 1}. <FractionText text={w.question} /></p>
                         </div>
+                        {/* (2026-و30) طلب المستر: «الملاحظات بتاعة الـ AI تبقى هي التانية» — بعد السؤال مباشرة */}
+                        {!w.pending && w.feedback && (
+                          <div className={'p-3 rounded-xl border-2 ' + (w.isCorrect ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-400 dark:border-emerald-700' : 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-800')}>
+                            <p className={'text-xs font-bold mb-1 flex items-center gap-1.5 ' + (w.isCorrect ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400')}>
+                              <span>📝</span> ملاحظة المصحح الذكي:
+                            </p>
+                            <p className="text-xs leading-relaxed text-foreground whitespace-pre-wrap break-words" style={{ textAlign: 'right' }}>{w.feedback}</p>
+                          </div>
+                        )}
                         <p className="text-xs text-foreground whitespace-pre-wrap break-words" dir="auto">إجابتك: <FractionText text={w.answer || '(فارغ)'} /></p>
                         {w.modelAnswer && <p className="text-xs text-emerald-600 whitespace-pre-wrap break-words" dir="auto">الإجابة الصحيحة: <FractionText text={w.modelAnswer} /></p>}
                         {!w.pending && w.awardedPoints !== undefined && <p className="text-[10px] font-semibold text-muted-foreground">الدرجة: {w.awardedPoints}/{w.maxPoints}</p>}
@@ -2096,14 +2111,7 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
                             <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">بيتصحح دلوقتي…</p>
                           </div>
                         )}
-                        {!w.pending && w.feedback && (
-                          <div className={'mt-2.5 p-3 rounded-xl border-2 ' + (w.isCorrect ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-400 dark:border-emerald-700' : 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-800')}>
-                            <p className={'text-xs font-bold mb-1 flex items-center gap-1.5 ' + (w.isCorrect ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400')}>
-                              <span>📝</span> ملاحظة المصحح الذكي:
-                            </p>
-                            <p className="text-xs leading-relaxed text-foreground whitespace-pre-wrap break-words" style={{ textAlign: 'right' }}>{w.feedback}</p>
-                          </div>
-                        )}
+                        {/* (2026-و30) الملاحظة اتنقلت لفوق — بقت تاني عنصر في الكارت بعد السؤال */}
                       </CardContent>
                     </Card>
                   )
