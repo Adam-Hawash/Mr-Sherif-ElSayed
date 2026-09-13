@@ -27,6 +27,7 @@ import {
   Youtube,
   Trophy,
   Shapes,
+  CalendarClock,
 } from 'lucide-react'
 import { toast } from 'sonner'
 /* (2026-و29) «أوائل الطلبة» في النافبار — طلب المستر: زرار جنب Geometry
@@ -142,6 +143,15 @@ export function Navbar() {
             >
               <Shapes className="h-4 w-4" />
               Geometry Laws
+            </a>
+            {/* (و35) رابط مواعيد السنتر — صفحة مستقلة /schedule (زي منصة القائد) */}
+            <a
+              href="/schedule"
+              title="مواعيد السنتر — جدول الحصص الأسبوعي"
+              className="inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-xl text-sm font-bold text-foreground/80 hover:bg-accent hover:text-foreground transition-colors"
+            >
+              <CalendarClock className="h-4 w-4" />
+              مواعيد السنتر
             </a>
             {currentStudent ? (
               <div className="flex items-center gap-3">
@@ -293,6 +303,15 @@ export function Navbar() {
             >
               <Shapes className="h-4 w-4" />
               Geometry Laws — قوانين الهندسة
+            </a>
+            {/* (و35) مواعيد السنتر في قايمة الموبايل */}
+            <a
+              href="/schedule"
+              onClick={() => setMobileMenu(false)}
+              className="flex items-center gap-2 min-h-[44px] px-3 rounded-xl border border-border bg-muted/40 text-foreground font-bold text-sm"
+            >
+              <CalendarClock className="h-4 w-4" />
+              مواعيد السنتر — جدول الحصص
             </a>
             {currentStudent ? (
               <>

@@ -72,6 +72,29 @@ import QRCode from 'qrcode'
 import { db } from '@/lib/db'
 import { getYouTubeId, mediaIdFromPath, signVideoToken, ensurePlayTicketTable } from '@/lib/video-guard'
 
+/* ===== (و35) أي لينك فيديو بيتشغل — مش شرط يوتيوب أو امتداد مباشر =====
+   طلب المستر: «لو رفعت أي لينك فيديو مش شرط من يوتيوب من أي موقع تاني
+   لازم يتعرض» — الدوال دي بتحول روابط الاستضافة المشهورة للينك مباشر
+   قابل للتشغيل، وأي لينك تاني بيتقابل زي ما هو للمشغل العادي (HTML5). */
+export function convertUniversalVideoUrl(raw: string): string {
+  const u = String(raw || '').trim()
+  if (!u) return ''
+  // Google Drive: /file/d/<ID>/view أو open?id=<ID> أو uc?id=<ID> → تحميل مباشر
+  const dm = u.match(/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?(?:[^#]*&)?id=)([A-Za-z0-9_-]{10,})/)
+  if (dm) return 'https://drive.google.com/uc?export=download&id=' + dm[1]
+  // Dropbox: raw=1 بيشغّل مباشر بدل صفحة التحميل
+  if (/dropbox\.com\//i.test(u)) {
+    if (/([?&])dl=0/i.test(u)) return u.replace(/([?&])dl=0/gi, '$1raw=1')
+    if (u.indexOf('raw=') === -1) return u + (u.indexOf('?') === -1 ? '?' : '&') + 'raw=1'
+    return u
+  }
+  return u
+}
+/* Cloudinary؟ بنعلم المشغل عشان يبني قايمة جودات حقيقية (c_scale,h_X,q_auto) */
+export function isCloudinaryVideoUrl(u: string): boolean {
+  return /^https:\/\/res\.cloudinary\.com\/[^\/]+\/video\/upload\//.test(String(u || '').trim())
+}
+
 export const dynamic = 'force-dynamic'
 
 function htmlEscape(s: string): string {
@@ -144,7 +167,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       try { g = await db.galleryImage.findUnique({ where: { id: galId } }) } catch (e) {}
       if (!g || !(g as any).videoUrl) return pageError('الفيديو غير موجود.', 404)
       const gYt = getYouTubeId(g.videoUrl || '')
-      if (!gYt && !isDirectMediaUrl(g.videoUrl || '')) return pageError('الفيديو ده مفيهوش مصدر تشغيل صالح.', 415)
+      // (و35) أي لينك بيتشغل — التحويل الشامل بدل رفض الامتدادات
+      const gUni = gYt ? '' : convertUniversalVideoUrl(String(g.videoUrl || ''))
+      if (!gYt && !gUni) return pageError('الفيديو ده مفيهوش لينك تشغيل — ضيف رابط يوتيوب أو أي لينك فيديو من لوحة التحكم.', 415)
       var gCfg: Record<string, unknown> = {
         videoId: 'gal_' + galId,
         kind: gYt ? 'youtube' : 'file',
@@ -152,7 +177,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         wm: { enabled: false, opacity: 0, interval: 14, name: '', phone: '' },
       }
       if (gYt) { const gob = obfuscate(gYt); gCfg.blob = gob.b; gCfg.key = gob.k }
-      else gCfg.fileUrl = g.videoUrl
+      else {
+        gCfg.fileUrl = gUni
+        if (isCloudinaryVideoUrl(gUni)) gCfg.cloudinary = true
+      }
       const gJson = JSON.stringify(gCfg).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026')
       return new NextResponse(PLAYER_PAGE.replace('__CFG__', gJson).replace('__TITLE__', htmlEscape(g.title || 'فيديو')), {
         status: 200,
@@ -203,15 +231,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const ytId = getYouTubeId(video.url || '')
     const mediaId = mediaIdFromPath(video.filePath || '')
-    const directUrl = (!ytId && !mediaId && isDirectMediaUrl(video.url || '')) ? String(video.url).trim() : ''
+    // (و35) أي لينك بيتشغل — مش شرط يوتيوب أو ينتهي بامتداد فيديو:
+    // Drive وDropbox بيتحولوا لصيغة مباشرة تلقائيًا، وأي لينك تاني
+    // بيتقابل للمشغل العادي — ولو فشل التشغيل فيه رسالة واضحة جوه المشغل
+    const directUrl = (!ytId && !mediaId) ? convertUniversalVideoUrl(String(video.url || '')) : ''
     const videoIdEsc = htmlEscape(video.id)
     const titleEsc = htmlEscape(video.title || '')
 
-    // مفيش طريقة تشغيل معروفة → صفحة خطأ (بالشرح: اللينك المباشر لازم ينتهي
-    // بامتداد فيديو — MP4/M3U8/WebM — أو يرفع الملف من لوحة التحكم)
+    // مفيش أي لينك أصلاً → صفحة خطأ (الفيديو من غير مصدر تشغيل خالص)
     // (ملغاة 2026-و4: ميزة كود HTML embed اتنست بطلب المستر نفسه)
     if (!ytId && !mediaId && !directUrl) {
-      return pageError('الفيديو ده مفيهوش مصدر تشغيل صالح — اللينك المباشر لازم ينتهي بـ mp4 أو m3u8 أو webm، أو ارفع ملف الفيديو نفسه من لوحة التحكم.', 415)
+      return pageError('الفيديو ده مفيهوش لينك تشغيل — ضيف رابط يوتيوب أو أي لينك فيديو، أو ارفع ملف الفيديو نفسه من لوحة التحكم.', 415)
     }
 
     // إعدادات المشغل كـ JSON آمن جوه script
@@ -237,9 +267,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       // توكن موقّع ساعتين مرتبط بالطالب — مكانش هيظهر غير جوه صفحة المشغل
       cfg.fileUrl = '/api/files/' + mediaId + '?token=' + signVideoToken(mediaId, row.studentId || 'anon') + '&req=' + encodeURIComponent(row.studentId || 'anon')
     } else if (directUrl) {
-      // (المشغل العادي) لينك فيديو مباشر من أي موقع — MP4/M3U8/WebM
+      // (المشغل العادي) لينك فيديو من أي موقع — يوتيوب/ملفات مباشرة/Drive/Dropbox/Cloudinary
       // بيتشغل في مشغلنا العادي من غير أي يوتيوب + إعدادات جودة ظاهرة
       cfg.fileUrl = directUrl
+      // (و35) لينكات Cloudinary بياخدوا قايمة جودات حقيقية (1080/720/480/360)
+      if (isCloudinaryVideoUrl(directUrl)) cfg.cloudinary = true
     }
     const cfgJson = JSON.stringify(cfg).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026')
 
@@ -1598,6 +1630,10 @@ function buildPlayer(){
    • كل الحمايات شغالة: ووترمارك + دروع + منع كليك يمين/مفاتيح + تذاكر */
 var fileApi = null, hlsApi = null, hlsLevels = [], hlsAuto = true, hlsCurIdx = -1;
 var fileQualityLabel = '';
+/* (و35) جودات Cloudinary — لينكات Cloudinary بياخدوا قايمة جودات حقيقية:
+   بنبدّل transformations الرابط (c_scale,h_X,q_auto) وسيرفرهم بيقلل الجودة
+   فعليًا — 1080 تبقى 720/480/360 من غير ما نلمس الملف الأصلي */
+var cloudBase = '', cloudLevels = [], cloudCur = -1;
 function fmtTime(s){
   s = Math.max(0, Math.floor(Number(s) || 0));
   var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60;
@@ -1608,6 +1644,45 @@ function hLabel(h){
   h = Number(h) || 0;
   var names = {2160:'4K', 1440:'1440p', 1080:'1080p', 720:'720p', 480:'480p', 360:'360p', 240:'240p', 144:'144p'};
   return names[h] || (h ? (h + 'p') : 'أصلية');
+}
+/* (و35) استخراج لينك Cloudinary النضيف — بنلاقي نسخة v123 من الآخر
+   وناخد كل اللي بعدها (الفولدرات + اسم الملف) وبنشيل أي transformations قديمة */
+function cloudVariants(src){
+  try{
+    var idx = src.indexOf('/video/upload/');
+    if(idx < 0) return 0;
+    var head = src.slice(0, idx + 14);
+    var tail = src.slice(idx + 14);
+    var parts = tail.split('/');
+    var vi = -1;
+    for(var i = parts.length - 1; i >= 0; i--){
+      if(/^v[0-9]+$/.test(parts[i])){ vi = i; break; }
+    }
+    cloudBase = (vi >= 0) ? (head + parts.slice(vi).join('/')) : (head + tail);
+    return 1;
+  }catch(e){ return 0 }
+}
+function cloudUrlFor(h){
+  if(!cloudBase) return '';
+  if(!h || h < 0) return cloudBase;
+  return cloudBase.replace('/video/upload/', '/video/upload/c_scale,h_' + h + ',q_auto/');
+}
+/* (و35) تبديل الجودة في نفس المكان — نفس الثانية ونفس حالة التشغيل */
+function switchCloudQuality(h){
+  try{
+    var v = fileApi; if(!v || !cloudBase) return;
+    var cur = v.currentTime, wasPlaying = !v.paused;
+    cloudCur = h;
+    v.src = cloudUrlFor(h);
+    v.load();
+    var once = function(){
+      try{ v.removeEventListener('loadedmetadata', once); }catch(e2){}
+      try{ if(cur > 0 && v.duration && cur < v.duration - 1) v.currentTime = cur; }catch(e2){}
+      if(wasPlaying){ try{ var pp = v.play(); if(pp && pp.catch) pp.catch(function(){}); }catch(e2){} }
+    };
+    v.addEventListener('loadedmetadata', once);
+    updateQLabel(); renderQMenu();
+  }catch(e){}
 }
 /* رسايل أخطاء المشغل العادي — شاشة واضحة + زرار إعادة */
 function fileError(msg){
@@ -1635,6 +1710,8 @@ function updateQLabel(){
     } else {
       el.textContent = hLabel((hlsLevels[hlsCurIdx] || {}).h);
     }
+  } else if(CFG.cloudinary && cloudBase){
+    el.textContent = (cloudCur === -1) ? (fileQualityLabel || 'أصلية') : hLabel(cloudCur);
   } else {
     el.textContent = fileQualityLabel || 'أصلية';
   }
@@ -1649,9 +1726,16 @@ function renderQMenu(){
       var L = sorted[i];
       html += '<div class="qi' + (!hlsAuto && hlsCurIdx === L.i ? ' on' : '') + '" data-lv="' + L.i + '"><span>' + hLabel(L.h) + '</span><span class="ck">' + ((!hlsAuto && hlsCurIdx === L.i) ? '✓' : '') + '</span></div>';
     }
+  } else if(CFG.cloudinary && cloudBase){
+    /* (و35) جودات Cloudinary الحقيقية — الأصلية + تصغير لحد ما */
+    html += '<div class="qi' + (cloudCur === -1 ? ' on' : '') + '" data-cq="-1"><span>' + esc(fileQualityLabel || 'الجودة الأصلية') + '</span><span class="ck">' + (cloudCur === -1 ? '✓' : '') + '</span></div>';
+    for(var k = cloudLevels.length - 1; k >= 0; k--){
+      var H = cloudLevels[k];
+      html += '<div class="qi' + (cloudCur === H ? ' on' : '') + '" data-cq="' + H + '"><span>' + hLabel(H) + '</span><span class="ck">' + (cloudCur === H ? '✓' : '') + '</span></div>';
+    }
   } else {
     html += '<div class="qi on"><span>' + esc(fileQualityLabel || 'الجودة الأصلية') + '</span><span class="ck">✓</span></div>';
-    html += '<div class="qNote">الملف بيتشغّل بجودته الأصلية ثابت — مفيش تقليل تلقائي خالص</div>';
+    html += '<div class="qNote">الملف بيتشغّل بجودته الأصلية</div>';
   }
   m.innerHTML = html;
   var items = m.getElementsByClassName('qi');
@@ -1659,6 +1743,9 @@ function renderQMenu(){
     (function(item){
       item.addEventListener('click', function(ev){
         ev.preventDefault(); ev.stopPropagation();
+        /* (و35) جودات Cloudinary */
+        var cq = item.getAttribute('data-cq');
+        if(cq !== null){ switchCloudQuality(parseInt(cq, 10)); closeQMenu(); return; }
         var lv = parseInt(item.getAttribute('data-lv'), 10);
         if(hlsApi && hlsLevels.length && !isNaN(lv)){
           hlsAuto = (lv === -1);
@@ -1791,6 +1878,12 @@ function onFileMeta(){
   try{
     var v = fileApi; if(!v) return;
     if(!fileQualityLabel){ fileQualityLabel = hLabel(v.videoHeight); }
+    /* (و35) بناء جودات Cloudinary من مقاس الفيديو الأصلي — الأصغر بس (مفيش تكبير) */
+    if(CFG.cloudinary && cloudBase && !cloudLevels.length){
+      var oh = Number(v.videoHeight) || 0;
+      var caps = [2160, 1440, 1080, 720, 480, 360];
+      for(var ci = 0; ci < caps.length; ci++){ if(oh && caps[ci] < oh) cloudLevels.push(caps[ci]); }
+    }
     renderQMenu(); updateQLabel(); fileUpdateProgress();
   }catch(e){}
 }
@@ -1810,6 +1903,11 @@ function mountFile(){
   }
   v.addEventListener('loadedmetadata', killTracks);
   try{ if(v.textTracks && v.textTracks.addEventListener) v.textTracks.addEventListener('addtrack', killTracks); }catch(e){}
+  /* (و35) رسالة واضحة لو اللينك فشل — بدل شاشة سودة صامتة */
+  v.addEventListener('error', function(){
+    if(hlsApi) return;
+    fileError('مقدرناش نشغّل الفيديو من اللينك ده — اللينك لازم يكون فيديو مباشر شغال. لو المشكلة مستمرة بلغ الإدارة في قسم الشكاوى');
+  });
   if(CFG.resume > 5) v.addEventListener('loadedmetadata', function(){ try{ if(v.duration && CFG.resume < v.duration - 5) v.currentTime = CFG.resume; }catch(e){} });
   v.addEventListener('loadedmetadata', onFileMeta);
   v.addEventListener('timeupdate', function(){
@@ -1836,8 +1934,9 @@ function mountFile(){
   tap.addEventListener('click', function(){ if(!tapOk()) return; try{ if(v.paused){ v.play(); } else { v.pause(); } }catch(e){} });
   wrap.appendChild(tap);
   buildFileBar();
-  /* المصدر: بث HLS له قايمة جودات حقيقية — الملف المباشر بجودته الأصلية */
+  /* المصدر: بث HLS له قايمة جودات حقيقية — Cloudinary ليه جودات حقيقية من الرابط — الملف المباشر بجودته الأصلية */
   var src = String(CFG.fileUrl || '');
+  if(CFG.cloudinary) cloudVariants(src);
   if(/\\.m3u8(\\?|$)/i.test(src)) setupHls(src);
   else v.src = src;
 }
