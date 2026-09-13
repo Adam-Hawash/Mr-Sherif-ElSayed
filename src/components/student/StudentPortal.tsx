@@ -347,26 +347,22 @@ function ytIdOf(url: string) {
   return match ? match[1] : null
 }
 
-// اللينك المباشر لملف فيديو (MP4/WebM/M3U8/…) بيتشغل في المشغل العادي
-// (من غير أي يوتيوب + إعدادات جودة ظاهرة) — فبيتصنف file مش link خارجي
-function isDirectMediaUrl(url: string): boolean {
-  if (!url) return false
-  const s = String(url).trim()
-  if (!/^https?:\/\//i.test(s) && !s.startsWith('/')) return false
-  return /\.(mp4|webm|m3u8|mov|ogg|ogv)(\?.*)?$/i.test(s)
-}
+// (و35) أي لينك فيديو من أي موقع بيتشغل في المشغل الآمن — الدالة القديمة
+// اللي كانت بترفض اللينكات من غير امتداد (.mp4/.m3u8) اتنست لأن المشغل
+// بقى بيشغل أي لينك (يوتيوب/Cloudinary/Drive/Dropbox/أي موقع)
 
 function videoKindOf(v: any): 'youtube' | 'file' | 'link' | 'none' {
   if (v.kind) {
     // (2026-و3) فيديو مضاف من كود HTML embed — بيتشغل في المشغل الآمن
     // بتقدمة زي يوتيوب بالظبط (كنترولز الموقع الأصلي بجودة حقيقية جواه)
     if (v.kind === 'embed') return 'youtube'
-    return v.kind === 'link' && isDirectMediaUrl(v.url || '') ? 'file' : v.kind
+    // (و35) أي لينك بيتشغل في المشغل الآمن — مش شرط امتداد مباشر
+    return v.kind === 'link' && (v.url || '').trim() ? 'file' : v.kind
   }
   if (ytIdOf(v.url || '')) return 'youtube'
   if (v.filePath && /\.(mp4|webm|mov|avi)$/i.test(v.filePath)) return 'file'
-  if (v.url && isDirectMediaUrl(v.url)) return 'file'
-  if (v.url) return 'link'
+  // (و35) أي لينك فيديو من أي موقع بيتشغل في المشغل العادي — يتعامل كملف
+  if (v.url && String(v.url).trim()) return 'file'
   return 'none'
 }
 
