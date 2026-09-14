@@ -168,7 +168,7 @@ export function LoginView() {
          «استنى شوية» على طول من غير دخول؛ بعد المهلة رسالة واضحة والزرار يرجع */
       var loginController = new AbortController()
       var loginTimeout = setTimeout(function () { loginController.abort() }, 25000)
-      var res = await fetch('/api/students?phone=' + encodeURIComponent(studentPhone.trim()) + '&password=' + encodeURIComponent(normPasswordInput(studentPassword)) + '&deviceId=' + encodeURIComponent(getDeviceId()) + '&deviceIds=' + encodeURIComponent(JSON.stringify(getDeviceCandidates())) + '&deviceTraits=' + encodeURIComponent(JSON.stringify(getDeviceTraits())) + '&deviceType=' + encodeURIComponent(getDeviceType()), { signal: loginController.signal })
+      var res = await fetch('/api/students?phone=' + encodeURIComponent(studentPhone.trim()) + '&password=' + encodeURIComponent(normPasswordInput(studentPassword)) + '&deviceId=' + encodeURIComponent(getDeviceId()) + '&deviceIds=' + encodeURIComponent(JSON.stringify(getDeviceCandidates())) + '&deviceTraits=' + encodeURIComponent(JSON.stringify(getDeviceTraits())) + '&deviceType=' + encodeURIComponent(getDeviceType()), { signal: loginController.signal, cache: 'no-store' })
       clearTimeout(loginTimeout)
       var data = await res.json()
       // ربط الجهاز: الحساب مربوط بجهاز تاني → رسالة حمراء واضحة جوه الكارت
@@ -185,12 +185,30 @@ export function LoginView() {
         return
       }
       var students = data.students || []
+      /* (2026-و37) مطابقة الرقم بعد التطبيع — السيرفر ممكن يرجّع الحساب
+         بالصيغة المخزنة (010…) والطالب كتب بصيغة تانية (+20…) فكانت المطابقة
+         الحرفية بتقع رغم نجاح الدخول فعليًا */
+      var normPhoneClient = function (v: string): string {
+        var digits = String(v || '').replace(/[^0-9]/g, '')
+        if (digits.length === 12 && digits.indexOf('20') === 0) digits = '0' + digits.slice(2)
+        else if (digits.length > 11) digits = digits.slice(digits.length - 11)
+        return digits
+      }
+      var typedPhone = normPhoneClient(studentPhone.trim())
       var student: any = null
       for (var i = 0; i < students.length; i++) {
-        if (students[i].phone === studentPhone.trim()) { student = students[i]; break }
+        if (normPhoneClient(students[i].phone) === typedPhone) { student = students[i]; break }
       }
       if (!student) {
-        toast.error('الباسورد أو الرقم بتاعك غلط')
+        /* (2026-و37) رسالة مفصولة حسب السبب الحقيقي — بدل «الباسورد أو الرقم غلط»
+           الموحّدة اللي كانت بتلخبط الطالب الصح: مين فيهم الغلط؟ */
+        if (data && data.reason === 'not_found') {
+          toast.error('الرقم ده مش مسجل عندنا — اتأكد إنك كاتبه صح، ولو لسه مش عامل حساب اعمل حساب جديد', { duration: 8000 })
+        } else if (data && data.reason === 'wrong_password') {
+          toast.error('الباسورد غلط — لو نسيت اسأل المستر أو اكتب في قسم الشكاوي', { duration: 8000 })
+        } else {
+          toast.error('الباسورد أو الرقم بتاعك غلط')
+        }
       } else if (student.status === 'pending') {
         setCurrentStudent(student); setView('student-pending')
         toast.info('حسابك لسه في المراجعة — جرب تعمل تسجيل دخول تاني بعدين وشوف اتمقبلت ولا لسه')
@@ -251,6 +269,9 @@ export function LoginView() {
                   {studentLoading ? (<><Loader2 className="h-4 w-4 ml-2 animate-spin" />استنى شوية...</>) : 'ادخل لحسابك'}
                 </button>
                 <p className="text-center text-sm text-muted-foreground">عندك حساب؟ <button onClick={function () { setView('auth-register') }} className="text-primary font-medium hover:underline cursor-pointer">اعمل حساب جديد</button></p>
+                <div className="border-t border-border pt-3">
+                  <p className="text-center text-sm text-muted-foreground">انت <span className="font-bold">ولي أمر</span> وعايز تتابع ابنك؟ <button onClick={function () { setView('parent-login') }} className="text-primary font-bold hover:underline cursor-pointer">ادخل من هنا</button></p>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -324,6 +345,11 @@ export function RegisterView() {
           <Card className="rounded-2xl border-0 shadow-lg">
             <CardContent className="p-5">
               <div className="space-y-4">
+                {/* (2026-و37) نوع الحساب: طالب أو ولي أمر — طلب المستر */}
+                <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-muted">
+                  <button type="button" className="min-h-[40px] rounded-lg bg-primary text-primary-foreground text-sm font-bold cursor-pointer" aria-current="true">حساب طالب</button>
+                  <button type="button" onClick={function () { setView('parent-register') }} className="min-h-[40px] rounded-lg text-sm font-bold text-muted-foreground hover:text-foreground transition-colors cursor-pointer">حساب ولي أمر</button>
+                </div>
                 <div>
                   <p className="text-sm font-semibold text-foreground mb-2">اسم الطالب الرباعي</p>
                   <div className="grid grid-cols-2 gap-2">

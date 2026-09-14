@@ -19,7 +19,7 @@ import { gradeFallbackDecisive, quickSmartMatch } from '@/lib/smart-grader'
 import { checkHwSequential } from '@/lib/sequential-guard'
 
 export const runtime = 'nodejs'
-export const maxDuration = 120
+export const maxDuration = 300
 
 // Ensure table exists (+ writingResults column for background-graded verdicts)
 async function ensureTable() {
@@ -247,7 +247,23 @@ export async function POST(request) {
       var opts = Array.isArray(q.options) ? q.options : []
       /* (2026-و32) تطبيع مفتاح الإجابة (normalizeCorrectKey تحت) — رقم/نص رقمي/حرف/نص الخيار بدل ما أي صيغة غريبة ترجع لمفتاح غلط */
       var correctIdx = normalizeCorrectKey(q, opts)
-      if (correctIdx < 0 || correctIdx >= opts.length) { correctIdx = 0 }
+      /* (2026-و37) نفس قاعدة الامتحانات (و11) حرفيًا: سؤال اختيارات من غير
+         مفتاح مؤكد مبيتصححش على (A) بالتخمين — ده كان سبب «الواجب بيتصحح
+         غلط» الحقيقي (كل الطلاب كانوا بيغلطوا في نفس السؤال)
+         → صفر درجة + مراجعة المستر برسالة واضحة للطالب */
+      if (correctIdx < 0 || correctIdx >= opts.length) {
+        var saRaw = lookupAnswer(answers, origIdx)
+        wrongQuestions.push({
+          origIdx: origIdx,
+          question: qText,
+          studentAnswer: (typeof saRaw === 'number' && opts[saRaw])
+            ? String.fromCharCode(65 + saRaw) + ') ' + opts[saRaw]
+            : (saRaw !== undefined && saRaw !== null ? String(saRaw) : 'لم يتم الإجابة'),
+          correctAnswer: '⚠ السؤال ده محتاج مراجعة المستر — إجابته مش مؤكدة في مفتاح الدرجات',
+          needsManualKey: true,
+        })
+        return
+      }
 
       var studentAnswer = lookupAnswer(answers, origIdx)
 

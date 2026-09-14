@@ -128,6 +128,9 @@ function buildAiPrompt(needAI: WritingAnswer[]): string {
   lines.push('The student answer is CORRECT (full points) whenever its final value is mathematically EQUAL to the model answer final value, even if written differently:')
   lines.push('- The model answer may list MULTIPLE acceptable final answers separated by "أو" / "او" / "or" (like "x = 2 أو x = 1/4") — the student answer is CORRECT if it matches ANY ONE of those alternatives')
   lines.push('- Different order: y^4x^6 = x^6y^4')
+  /* (2026-و37) نفس قاعدة gradeTextAnswer (برومبت الامتحان) — صيغة المعكوس:
+     "1/4 = x" === "x = 1/4" — عشان إعادة التصحيح تبقى مطابقة للتسليم الأول */
+  lines.push('- REVERSED equation forms are the SAME answer: "1/4 = x" === "x = 1/4" — the variable name and its side/position NEVER matter')
   lines.push('- Different notation: a^7 = aaaaaaa (a multiplied 7 times), 2^10 = 1024, 1/2 = 0.5 = ½ = 50%, x^(1/2) = √x, √50 = 5√2, 2^{n+2} = 2^n·4, 3:4 = 3/4, 3,5 = 3.5')
   lines.push('- Arabic digits ٤٢ = 42; units and labels are IGNORED (12 سم = 12 cm = 12; x = 5 = 5); with or without × * · spaces units or steps')
   lines.push('- The final value may be CONTAINED in the model answer (the model shows full steps, the student wrote only the final result) → still CORRECT')

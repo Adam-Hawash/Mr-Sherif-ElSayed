@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { db, safeWrite } from '@/lib/db'
 import { makeLibsqlClient, ensureSchema } from '@/lib/ensure-schema'
 
 // ============================================================
@@ -156,34 +156,79 @@ export async function GET(request: NextRequest) {
       var deviceIdParam = searchParams.get('deviceId') || ''
       if (deviceIdParam && candidates.indexOf(deviceIdParam) === -1) candidates.unshift(deviceIdParam)
       var current = pickDeviceIds(candidates)
+      /* ===== (2026-و37) علاج «الباسورد غلط» العشوائية رغم صحة البيانات =====
+         التشخيص كان 3 أسباب مجتمعة:
+         (أ) قراءة الطالب من Turso من غير إعادة محاولة — أي CONNRESET/BUSY لحظي
+             كان بيرجّع فشل والدخول بيقع على «غلط» بعد إعادة المحاولة اليدوية
+         (ب) الرقم بيتقارن حرفيًا — طالب كتب رقمه بمسافة أو +20 أو أرقام عربية
+             كان بياخد «مش لاقيينك» رغم إن حسابه موجود
+         (ج) الباسورد بيتقارن حساس لحالة الحروف — الكيبورد بيكتب أول حرف
+             كابيتال لوحده (Auto-Capitalization) وكان بيكسر الدخول الصح
+         الحل: تطبيع الرقم (مسافات/+20/أرقام عربية) + مقارنة باسورد غير حساسة
+         لحالة الحروف + إعادة محاولة القراءة مع withRetry + سبب واضح في الرد */
+      var normLoginPhone = function (v: string): string {
+        var t = String(v || '')
+        t = t.replace(/[٠-٩]/g, function (d) { return String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)) })
+        t = t.replace(/[۰-۹]/g, function (d) { return String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)) })
+        var digits = t.replace(/[^0-9]/g, '')
+        // +20 1XXXXXXXXX (12+ رقم بيبدأ بـ 20) → 0 + آخر 11 رقم
+        if (digits.length === 12 && digits.indexOf('20') === 0) digits = '0' + digits.slice(2)
+        else if (digits.length > 11) digits = digits.slice(digits.length - 11)
+        else if (digits.length === 10 && digits.indexOf('1') === 0) digits = '0' + digits
+        return digits
+      }
+      var phoneVariants: string[] = [phone]
+      var phoneNorm = normLoginPhone(phone)
+      if (phoneNorm && phoneVariants.indexOf(phoneNorm) === -1) phoneVariants.push(phoneNorm)
+      if (phoneNorm.length === 11 && phoneNorm.indexOf('0') === 0) {
+        var phoneIntl = '20' + phoneNorm.slice(1)
+        if (phoneVariants.indexOf(phoneIntl) === -1) phoneVariants.push(phoneIntl)
+      }
+      var noStore = { 'Cache-Control': 'no-store' }
       try {
         var student = null as any
-        try {
-          student = await db.student.findFirst({
-            where: { phone },
-            include: { _count: { select: { activities: true } } },
-          })
-        } catch (qErr: any) {
-          await ensureStudentSchema()
-          student = await db.student.findFirst({
-            where: { phone },
-            include: { _count: { select: { activities: true } } },
+        var findByPhone = function (p: string) {
+          return safeWrite(function () {
+            return db.student.findFirst({
+              where: { phone: p },
+              include: { _count: { select: { activities: true } } },
+            })
           })
         }
+        try {
+          student = await findByPhone(phoneVariants[0])
+          if (!student) {
+            for (var pvi = 1; pvi < phoneVariants.length; pvi++) {
+              student = await findByPhone(phoneVariants[pvi])
+              if (student) break
+            }
+          }
+        } catch (qErr: any) {
+          await ensureStudentSchema()
+          student = await findByPhone(phoneVariants[0])
+          if (!student) {
+            for (var pvj = 1; pvj < phoneVariants.length; pvj++) {
+              student = await findByPhone(phoneVariants[pvj])
+              if (student) break
+            }
+          }
+        }
         if (!student) {
-          return NextResponse.json({ students: [], total: 0, page: 1, pageSize: 1, totalPages: 0 })
+          /* سبب واضح للواجهة: الرقم نفسه مش مسجل — بدل رسالة «الباسورد غلط» المضللة */
+          return NextResponse.json({ students: [], total: 0, page: 1, pageSize: 1, totalPages: 0, reason: 'not_found' }, { headers: noStore })
         }
         // الباسورد الأول — لو غلط مفيش أي حاجة اسمها جهاز
         // (2026-و29) المقارنة بعد تطبيع الأرقام العربية/الفارسية + شيل المسافات
         // — الطالب اللي بيكتب باسورده بأرقام عربية (١٢٣٤٥٦) كان بيضل «غلط» رغم صحته
+        // (2026-و37) + المقارنة بقت مش حساسة لحالة الحروف (كابيتال لوج الكيبورد)
         var normPwd = function (v: string): string {
           var t = String(v || '')
           t = t.replace(/[٠-٩]/g, function (d) { return String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)) })
           t = t.replace(/[۰-۹]/g, function (d) { return String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)) })
-          return t.replace(/\s+/g, '').trim()
+          return t.replace(/\s+/g, '').trim().toLowerCase()
         }
         if (!password || normPwd(student.password) !== normPwd(password)) {
-          return NextResponse.json({ students: [], total: 0, page: 1, pageSize: 1, totalPages: 0 })
+          return NextResponse.json({ students: [], total: 0, page: 1, pageSize: 1, totalPages: 0, reason: 'wrong_password' }, { headers: noStore })
         }
         // الحسابات المرفوضة ممنوع تدخل خالص
         var st = (student as any).status
@@ -311,12 +356,12 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        return NextResponse.json({ students: [{ ...student, watchedVideoCount: 0 }], total: 1, page: 1, pageSize: 1, totalPages: 1 })
+        return NextResponse.json({ students: [{ ...student, watchedVideoCount: 0 }], total: 1, page: 1, pageSize: 1, totalPages: 1 }, { headers: noStore })
       } catch (loginErr: any) {
         console.error('Student login error:', loginErr)
         return NextResponse.json(
           { students: [], total: 0, page: 1, pageSize: 1, totalPages: 0, error: 'حدث خطأ مؤقت في السيرفر — جرب تاني بعد لحظات' },
-          { status: 500 }
+          { status: 500, headers: noStore }
         )
       }
     }

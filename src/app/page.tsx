@@ -46,6 +46,15 @@ const VideoProtection = dynamic(() => import('@/components/landing/VideoProtecti
 const StudentPortal = dynamic(() => import('@/components/student/StudentPortal').then(m => ({ default: (m as any).default || m.StudentPortal })), {
   loading: () => <div className="flex items-center justify-center py-20"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>,
 })
+const ParentPortal = dynamic(() => import('@/components/parent/ParentPortal').then(m => ({ default: (m as any).ParentPortal })), {
+  loading: () => <div className="flex items-center justify-center py-20"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>,
+})
+const ParentLoginView = dynamic(() => import('@/components/parent/ParentAuthPages').then(m => ({ default: m.ParentLoginView })), {
+  loading: () => <div className="flex items-center justify-center py-20"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>,
+})
+const ParentRegisterView = dynamic(() => import('@/components/parent/ParentAuthPages').then(m => ({ default: m.ParentRegisterView })), {
+  loading: () => <div className="flex items-center justify-center py-20"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>,
+})
 const AdminDashboard = dynamic(() => import('@/components/admin/AdminDashboard').then(m => ({ default: (m as any).default || m.AdminDashboard })), {
   loading: () => <div className="flex items-center justify-center py-20"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>,
 })
@@ -68,9 +77,53 @@ export default function HomePage() {
   var setSiteConfig = store.setSiteConfig
   var setConfigLoaded = store.setConfigLoaded
   var setStats = store.setStats
+  var setCurrentStudent = store.setCurrentStudent
+  var setCurrentParent = store.setCurrentParent
 
   const [appReady, setAppReady] = useState(false)
   const startTimeRef = useRef(Date.now())
+
+  /* ===== (2026-و37) استرجاع الجلسة بعد أي reload =====
+     ده كان سبب شكوى «الورقة عقبال ما تتحمل بخرجني من الصفحة وبيعمل تسجيل دخول
+     من الأول»: الموبايل بيرمي التاب من الميموري أثناء الرفع الطويل والمتصفح
+     بيعمل reload — والصفحة كانت تنسي الطالب خالص رغم إن الجلسة محفوظة
+     في localStorage (mg_student). دلوقتي الجلسة بترجع لوحدها فورًا.
+     نفس الحاجة لجلسة ولي الأمر (mg_parent) */
+  useEffect(function() {
+    try {
+      var rawStudent = localStorage.getItem('mg_student')
+      if (rawStudent) {
+        var s = JSON.parse(rawStudent)
+        if (s && s.id && s.phone) {
+          var st = String(s.status || '')
+          if (st === 'pending') {
+            setCurrentStudent(s)
+            store.setView('student-pending')
+          } else if (st === 'approved' || st === 'paid') {
+            setCurrentStudent(s)
+            store.setView('student-portal')
+          } else {
+            localStorage.removeItem('mg_student')
+          }
+        }
+      }
+    } catch (eS) {
+      try { localStorage.removeItem('mg_student') } catch (eS2) {}
+    }
+    try {
+      var rawParent = localStorage.getItem('mg_parent')
+      if (rawParent) {
+        var p = JSON.parse(rawParent)
+        if (p && p.id && p.phone && p.studentId) {
+          setCurrentParent(p)
+          store.setView('parent-portal')
+        }
+      }
+    } catch (eP) {
+      try { localStorage.removeItem('mg_parent') } catch (eP2) {}
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Load config + gallery + stats on mount
   useEffect(function() {
@@ -182,6 +235,19 @@ export default function HomePage() {
       {currentView === 'student-portal' && <StudentPortal />}
       {currentView === 'student-payment' && <StudentPaymentView />}
       {currentView === 'admin-dashboard' && <AdminDashboard />}
+
+      {/* (2026-و37) شاشات ولي الأمر */}
+      {currentView === 'parent-login' && (
+        <main className="flex-1">
+          <ParentLoginView />
+        </main>
+      )}
+      {currentView === 'parent-register' && (
+        <main className="flex-1">
+          <ParentRegisterView />
+        </main>
+      )}
+      {currentView === 'parent-portal' && <ParentPortal />}
 
       {showFooter && <Footer />}
       {showWhatsApp && <WhatsAppButton />}

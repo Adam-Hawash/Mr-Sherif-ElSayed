@@ -334,6 +334,50 @@ export function MathKeyboard({ value, onChange, placeholder = 'Type your answer 
     setShowFraction(false)
   }
 
+  /* ===== (2026-و37) ضغط صورة الورقة قبل الرفع =====
+     صور الموبايل بتيجي 5-10MB وبتترفع بالدقايق على النت الضعيف —
+     وده كان بيخلي التاب يتقفل من الميموري وأثناءها الطالب بيتخرج من الامتحان.
+     الضغط: أكبر ضلع 1600px + JPEG 75% — كفاية جدًا لقراية خط اليد
+     والمصحح الذكي، والحجم النهائي عادة أقل من 300KB (يرفع في ثواني).
+     لو الضغط فشل لأي سبب بنرفع الأصل زي ما هو — مفيش خسارة */
+  const compressImageFile = async (file: File): Promise<File> => {
+    try {
+      if (!file.type || file.type.indexOf('image/') !== 0 || file.type === 'image/gif') return file
+      if (file.size <= 400 * 1024) return file
+      var imgUrl = URL.createObjectURL(file)
+      try {
+        var img = await new Promise<HTMLImageElement>(function (resolve, reject) {
+          var image = new Image()
+          image.onload = function () { resolve(image) }
+          image.onerror = function () { reject(new Error('decode failed')) }
+          image.src = imgUrl
+        })
+        var maxSide = 1600
+        var w = img.naturalWidth || img.width
+        var h = img.naturalHeight || img.height
+        if (!w || !h) return file
+        var scale = Math.min(1, maxSide / Math.max(w, h))
+        if (scale >= 1 && file.size <= 1.5 * 1024 * 1024) return file
+        var canvas = document.createElement('canvas')
+        canvas.width = Math.max(1, Math.round(w * scale))
+        canvas.height = Math.max(1, Math.round(h * scale))
+        var ctx = canvas.getContext('2d')
+        if (!ctx) return file
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+        var blob = await new Promise<Blob | null>(function (resolve) { canvas.toBlob(resolve, 'image/jpeg', 0.75) })
+        if (!blob || blob.size <= 0) return file
+        // لو الضغط طلع أكبر من الأصل (نادر) نرجّع للأصل
+        if (blob.size >= file.size) return file
+        var baseName = String(file.name || 'paper.jpg').replace(/\.[^.]+$/, '')
+        return new File([blob], baseName + '.jpg', { type: 'image/jpeg' })
+      } finally {
+        try { URL.revokeObjectURL(imgUrl) } catch (e2) {}
+      }
+    } catch (e) {
+      return file
+    }
+  }
+
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     // Allow multiple files to be selected
     const files = e.target.files
@@ -359,9 +403,12 @@ export function MathKeyboard({ value, onChange, placeholder = 'Type your answer 
           continue
         }
         try {
+          /* (2026-و37) الضغط الأول عشان الرفع يخلص في ثواني بدل دقايق
+           * — ده كان سبب «الورقة عقبال ما تتحمل» وخراج الطالب من الصفحة */
+          var fileToUpload = await compressImageFile(file)
           /* الورقة بترفع فورًا هنا (مش عند التسليم) وبنعرض النسبة —
            * والـ chunkedUpload نفسه بيتأكد إن الحجم المخزن = الملف كامل */
-          const data = await chunkedUpload(file, 'homework-answers', function (pct: number) {
+          const data = await chunkedUpload(fileToUpload, 'homework-answers', function (pct: number) {
             const overall = Math.max(1, Math.min(99, Math.round(((i + pct / 100) / files.length) * 100)))
             setUploadPct(overall)
             if (onUploadStateChange) onUploadStateChange(true, overall)

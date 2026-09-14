@@ -32,6 +32,8 @@ export var SCHEMA_TABLES = [
   'CREATE TABLE IF NOT EXISTS VideoAccess (id TEXT PRIMARY KEY, videoId TEXT NOT NULL, studentId TEXT NOT NULL, grantedBy TEXT NOT NULL DEFAULT "admin", createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(videoId, studentId))',
   'CREATE TABLE IF NOT EXISTS PlayTicket (id TEXT PRIMARY KEY, videoId TEXT NOT NULL, studentId TEXT DEFAULT "", createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, expiresAt DATETIME NOT NULL, consumed INTEGER NOT NULL DEFAULT 0)',
   'CREATE TABLE IF NOT EXISTS Complaint (id TEXT PRIMARY KEY, studentId TEXT DEFAULT "", studentName TEXT DEFAULT "", phone TEXT DEFAULT "", grade TEXT DEFAULT "", message TEXT NOT NULL, summary TEXT DEFAULT "", source TEXT NOT NULL DEFAULT "student", status TEXT NOT NULL DEFAULT "new", reply TEXT DEFAULT "", reviewedAt DATETIME, createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
+  // (2026-و37) حساب ولي الأمر — مربوط بحساب ابنه بـ studentId (زي ما هو في Student.parentPhone)
+  'CREATE TABLE IF NOT EXISTS Parent (id TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT "", phone TEXT NOT NULL UNIQUE, password TEXT NOT NULL DEFAULT "", studentId TEXT NOT NULL, createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
 ]
 
 var SCHEMA_COLUMNS = [
@@ -145,6 +147,7 @@ export var SCHEMA_INDEXES = [
   'CREATE INDEX IF NOT EXISTS idx_student_group ON Student(groupId)',
   'CREATE INDEX IF NOT EXISTS idx_vgs_video ON VideoGroupSchedule(videoId)',
   'CREATE INDEX IF NOT EXISTS idx_vgs_group ON VideoGroupSchedule(groupId)',
+  'CREATE INDEX IF NOT EXISTS idx_parent_student ON Parent(studentId)',
 ]
 
 export var CORE_TABLES = ['Admin', 'Student', 'StudentActivity', 'Video', 'Homework', 'Exam', 'ExamResult', 'Announcement', 'Discussion', 'SiteConfig', 'Media', 'VideoProgress', 'GalleryImage', 'Payment', 'VideoAccess', 'Complaint']

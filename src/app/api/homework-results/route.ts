@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 // (2026-و16) self-heal خلفي: تسليمات الواجب القديمة الناقصة التصحيح بتتصحح
 // تلقائيًا بنفس مسار الذكاء الاصطناعي الحاسم — البادج مش بيفضل معلق للأبد
 import { regradeHomeworkResult, gradesLookPending, questionsHaveWriting } from '@/lib/regrade-core'
+import { normalizeCorrectKey } from '@/lib/correct-key'
 
 /* (2026-و22) قراءة إجابة الطالب **بالفهرس الأصلي** — نفس helper التسليم */
 function lookupByOrigIdx(ans: any, idx: number): any {
@@ -173,18 +174,21 @@ export async function GET(request: NextRequest) {
           var q = item.q
           var qText = q.question || q.q || ''
           var opts = Array.isArray(q.options) ? q.options : []
-          var correctIdx = typeof q.correct === 'number' ? q.correct : 0
-          if (correctIdx < 0 || correctIdx >= opts.length) correctIdx = 0
+          /* (2026-و37) نفس قاعدة التسليم: مفتاح ناقص = مراجعة مستر — مش تخمين (A) */
+          var correctIdx = normalizeCorrectKey(q, opts)
+          var keylessMcq = correctIdx < 0 || correctIdx >= opts.length
 
           var ans = lookupByOrigIdx(studentAns, item.origIdx)
 
-          var isCorrect = ans !== undefined && ans !== null && Number(ans) === correctIdx
+          var isCorrect = !keylessMcq && ans !== undefined && ans !== null && Number(ans) === correctIdx
           var studentAnswerText = (typeof ans === 'number' && opts[ans] && opts[ans] !== 'N/A')
             ? String.fromCharCode(65 + ans) + ') ' + opts[ans]
             : 'Not answered'
-          var correctAnswerText = (opts[correctIdx] && opts[correctIdx] !== 'N/A')
-            ? String.fromCharCode(65 + correctIdx) + ') ' + opts[correctIdx]
-            : (q.modelAnswer || 'No correct answer stored')
+          var correctAnswerText = keylessMcq
+            ? '⚠ محتاج مراجعة المستر — الإجابة مش مؤكدة في المفتاح'
+            : ((opts[correctIdx] && opts[correctIdx] !== 'N/A')
+              ? String.fromCharCode(65 + correctIdx) + ') ' + opts[correctIdx]
+              : (q.modelAnswer || 'No correct answer stored'))
 
           allQuestions.push({
             type: 'mcq',
