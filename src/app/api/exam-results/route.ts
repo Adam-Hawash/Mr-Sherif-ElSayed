@@ -5,6 +5,8 @@ import { gradeImageAnswer, gradeTextAnswer, extractImageMediaIds } from '@/lib/a
 import { regradeExamResult, gradesLookPending, questionsHaveWriting } from '@/lib/regrade-core'
 import { resolveQuestionsForStudent, splitForDisplay } from '@/lib/exam-models'
 import { gradeFallbackDecisive, quickSmartMatch } from '@/lib/smart-grader'
+/* (2026-و39) نفس تطبيع submit — مفتاح "B"/"2"/نص الخيار بيرجع للفهرس الصح بدل ما يتحسب ناقص */
+import { normalizeCorrectKey } from '@/lib/correct-key'
 
 // GET /api/exam-results?studentId=xxx&examId=yyy - Student pre-submit check (raw SQL)
 // GET /api/exam-results?studentId=xxx - Student: all exam results
@@ -265,7 +267,8 @@ export async function GET(request: NextRequest) {
         var qText = q.question || q.q || ''
         var opts = Array.isArray(q.options) ? q.options : []
         /* 2026-و11 — سؤال من غير مفتاح مؤكد: عرض صادق — مش إجابة (A) وهمية */
-        var correctIdx = typeof q.correct === 'number' ? q.correct : -1
+        /* (2026-و39) نفس تطبيع submit بالظبط بدل قراءة الرقم الخام */
+        var correctIdx = normalizeCorrectKey(q, opts)
         var keyless = correctIdx < 0 || correctIdx >= opts.length
 
         var ans = lookupAnswer(studentAns, origIdx)

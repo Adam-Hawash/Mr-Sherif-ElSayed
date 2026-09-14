@@ -5,6 +5,9 @@ import { db } from '@/lib/db'
 // الذكاء الاصطناعي الحاسم — بدل ما يفضل بادج «محتاج تصحيح» معلق للأبد
 import { regradeExamResult, regradeHomeworkResult, gradesLookPending, questionsHaveWriting } from '@/lib/regrade-core'
 import { resolveQuestionsForStudent } from '@/lib/exam-models'
+/* (2026-و39) توحيد قراءة مفتاح الإجابة على المُطبّع المشترك — نفس دالة submit —
+ * مفتاح "B"/"2"/نص الخيار بيرجع للفهرس الصح بدل ما يقـع على 0 (A) ويحكم إجابة صح إنها غلط */
+import { normalizeCorrectKey } from '@/lib/correct-key'
 
 /* Parse a JSON column that may be a string or already-parsed */
 function parseJsonCol(col: any): any {
@@ -242,7 +245,7 @@ export async function GET(
             mcq.forEach(function(q, qi) {
               var qText = q.question || q.q || ''
               var opts = Array.isArray(q.options) ? q.options : []
-              var correctIdx = typeof q.correct === 'number' ? q.correct : 0
+              var correctIdx = normalizeCorrectKey(q, opts)
               if (correctIdx < 0 || correctIdx >= opts.length) correctIdx = 0
 
               var ans = lookupExamAnswer(studentAnswers, qi)
@@ -321,7 +324,7 @@ export async function GET(
             var qText = q.question || q.q || ''
             var opts = Array.isArray(q.options) ? q.options : []
             var realOpts = opts.filter(function(o) { return o && o !== 'N/A' && o !== 'لا يوجد' && String(o).trim() !== '' })
-            var correctIdx = typeof q.correct === 'number' ? q.correct : 0
+            var correctIdx = normalizeCorrectKey(q, opts)
             if (correctIdx < 0 || correctIdx >= opts.length) correctIdx = 0
             var ans = lookupExamAns(studentAnsAll, origIdx)
             var isCorrect = ans !== undefined && ans !== null && Number(ans) === correctIdx
@@ -533,7 +536,7 @@ export async function GET(
             var q = item.q
             var qText = q.question || q.q || ''
             var opts = Array.isArray(q.options) ? q.options : []
-            var correctIdx = typeof q.correct === 'number' ? q.correct : 0
+            var correctIdx = normalizeCorrectKey(q, opts)
             if (correctIdx < 0 || correctIdx >= opts.length) correctIdx = 0
 
             var ans = lookupByOrigIdx(studentAnswers, item.origIdx)
@@ -689,7 +692,7 @@ export async function GET(
           mcqAll2.forEach(function(q) {
             var qText = q.question || q.q || ''
             var opts = Array.isArray(q.options) ? q.options : []
-            var correctIdx = typeof q.correct === 'number' ? q.correct : 0
+            var correctIdx = normalizeCorrectKey(q, opts)
             if (correctIdx < 0 || correctIdx >= opts.length) correctIdx = 0
             /* (2026-و22) بالفهرس الأصلي مش بمكان السؤال في قايمة الاختياري */
             var mcqOrig = typeof q.__origIdx === 'number' ? q.__origIdx : 0
@@ -818,7 +821,7 @@ export async function GET(
                   simpleAllQs.push(sWrItem)
                 } else {
                   var opts2 = Array.isArray(q.options) ? q.options : []
-                  var correctIdx2 = typeof q.correct === 'number' ? q.correct : 0
+                  var correctIdx2 = normalizeCorrectKey(q, opts2)
                   if (correctIdx2 < 0 || correctIdx2 >= opts2.length) correctIdx2 = 0
                   var ans2 = undefined
                   try {

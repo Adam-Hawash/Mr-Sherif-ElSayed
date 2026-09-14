@@ -46,10 +46,30 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         parent: { id: parent.id, name: parent.name, phone: parent.phone },
         student: null,
+        videos: null,
         homeworks: [],
         exams: [],
       })
     }
+
+    /* ===== (2026-و39) نسبة متابعة الفيديوهات لولي الأمر =====
+       مجموع الثواني المتشاهدة ÷ مجموع أطوال الفيديوهات — واللي خلصه (completed)
+       بيتحسب كأنه اتشاهد لآخره. لو الفيديو بيتفشل التجيبها بنُل برضه عشان
+       الصفحة ماتبوظش — الفيديوهات بيانات ثانوية مش النتايج نفسها */
+    var videos: any = null
+    try {
+      var vp: any[] = await db.videoProgress.findMany({ where: { studentId: student.id } })
+      var sumW = 0, sumT = 0, done = 0
+      for (var vi = 0; vi < vp.length; vi++) {
+        var row = vp[vi]
+        var t = Math.max(Number(row.totalSeconds) || 0, 0)
+        var w = Math.max(Number(row.watchedSeconds) || 0, 0)
+        if (t > 0 && w > t) w = t
+        if (row.completed === true) { done++; if (t > 0) w = t }
+        sumW += w; sumT += t
+      }
+      videos = { count: vp.length, completed: done, percent: sumT > 0 ? Math.round((sumW / sumT) * 100) : (done > 0 ? 100 : 0) }
+    } catch (vErr) { videos = null }
 
     // ===== واجبات ابنك =====
     var hwResults: any[] = []
@@ -119,6 +139,7 @@ export async function GET(request: NextRequest) {
       },
       homeworks: homeworks,
       exams: exams,
+      videos: videos,
     })
   } catch (err: any) {
     console.error('Parent results error:', err)

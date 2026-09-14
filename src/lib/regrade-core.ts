@@ -14,6 +14,9 @@ import { db } from '@/lib/db'
 import { gradeWritingSmart, gradeFallbackDecisive } from '@/lib/smart-grader'
 import { gradeImageAnswer, extractImageMediaIds } from '@/lib/ai-image-grader'
 import { resolveQuestionsForStudent } from '@/lib/exam-models'
+/* (2026-و39) توحيد قراءة مفتاح الإجابة على المُطبّع المشترك — أي مفتاح مخزن "B"/"2"/نص الخيار
+ * بيترجع للفهرس الصح بدل ما يتحسب ناقص ويصفّر سؤال اتحل صح في إعادة التصحيح */
+import { normalizeCorrectKey } from '@/lib/correct-key'
 
 export type QItem = { q: any; origIdx: number }
 
@@ -309,7 +312,8 @@ function mcqContrib(mcq: QItem[], answers: any): { contrib: Record<string, numbe
     maxFromMcq += pts
     var opts = Array.isArray(q.options) ? q.options : []
     /* 2026-و11 — مفتاح ناقص = صفر صادق مش (A) بالحر — لحد ما المستر يثبت المفتاح */
-    var correctIdx = typeof q.correct === 'number' ? q.correct : -1
+    /* (2026-و39) نفس تطبيع submit بالظبط — كان بيقري الرقم الخام بس فمفتاح "B"/"2" بيتحسب ناقص */
+    var correctIdx = normalizeCorrectKey(q, opts)
     if (correctIdx < 0 || correctIdx >= opts.length) {
       contrib[String(item.origIdx)] = 0
       return
