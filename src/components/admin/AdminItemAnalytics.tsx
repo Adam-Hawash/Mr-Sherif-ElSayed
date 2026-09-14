@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input'
 import { Loader2, BarChart3, FileText, ClipboardList, ArrowRight, ChevronDown, Users, AlertTriangle, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAppStore } from '@/stores/app-store'
+import FractionText, { hasMathMarkup } from '@/components/FractionText'
 
 type ItemRow = { id: string; title: string; grade: string; createdAt?: string; submissions: number }
 type WrongStudent = { name: string; phone: string; answerText: string }
@@ -47,7 +48,7 @@ function QuestionRow({ q, top }: { q: QStat; top: boolean }) {
         <div className="flex items-start gap-2 min-w-0 flex-1">
           {top && <AlertTriangle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />}
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-foreground leading-relaxed break-words">{q.text || '(سؤال من غير نص)'}</p>
+            <p className="text-sm font-semibold text-foreground leading-relaxed break-words">{hasMathMarkup(q.text) ? <FractionText text={q.text} /> : (q.text || '(سؤال من غير نص)')}</p>
             <div className="flex items-center gap-1.5 flex-wrap mt-1">
               <Badge variant="secondary" className="text-[10px]">{q.kind === 'mcq' ? 'اختيارات' : 'مقالي'}</Badge>
               {q.keyless && <Badge className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">مفتاح ناقص — محتاج مراجعة</Badge>}
@@ -70,12 +71,13 @@ function QuestionRow({ q, top }: { q: QStat; top: boolean }) {
       {q.kind === 'mcq' && q.options.length > 0 && (
         <div className="text-[11px] text-muted-foreground space-y-0.5 pr-1">
           {q.options.map(function (o: string, oi: number) {
-            return <div key={oi} className={(!q.keyless && q.correctText.indexOf(String.fromCharCode(65 + oi) + ')') === 0) ? 'text-emerald-700 dark:text-emerald-400 font-semibold' : ''}>{String.fromCharCode(65 + oi)}) {o}</div>
+            var optContent = hasMathMarkup(o) ? <FractionText text={o} /> : o
+            return <div key={oi} className={(!q.keyless && q.correctText.indexOf(String.fromCharCode(65 + oi) + ')') === 0) ? 'text-emerald-700 dark:text-emerald-400 font-semibold' : ''}>{String.fromCharCode(65 + oi)}) {optContent}</div>
           })}
         </div>
       )}
       {(q.kind === 'writing' || q.correctText) && (
-        <p className="text-[11px] text-emerald-700 dark:text-emerald-400 pr-1"><span className="font-semibold">الإجابة الصحيحة:</span> {q.correctText || '—'}</p>
+        <p className="text-[11px] text-emerald-700 dark:text-emerald-400 pr-1"><span className="font-semibold">الإجابة الصحيحة:</span> {q.correctText ? (hasMathMarkup(q.correctText) ? <FractionText text={q.correctText} /> : q.correctText) : '—'}</p>
       )}
       {open && q.wrongStudents.length > 0 && (
         <div className="border-t pt-2 space-y-1 max-h-52 overflow-y-auto custom-scrollbar">
@@ -201,8 +203,8 @@ export function AdminItemAnalytics() {
             {topWrong && (
               <div className="rounded-xl border border-red-300 bg-red-50/60 dark:border-red-900 dark:bg-red-950/20 p-3">
                 <p className="text-xs font-bold text-red-700 dark:text-red-400 mb-1">🔴 أكتر سؤال الطلاب غلطت فيه — {topWrong.wrong} طالب غلط من {topWrong.attempts} ({topWrong.attempts > 0 ? Math.round((topWrong.wrong / topWrong.attempts) * 100) : 0}%)</p>
-                <p className="text-sm font-semibold text-foreground leading-relaxed">{topWrong.text}</p>
-                {topWrong.correctText && <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-1">الإجابة الصحيحة: {topWrong.correctText}</p>}
+                <p className="text-sm font-semibold text-foreground leading-relaxed">{hasMathMarkup(topWrong.text) ? <FractionText text={topWrong.text} /> : topWrong.text}</p>
+                {topWrong.correctText && <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-1">الإجابة الصحيحة: {hasMathMarkup(topWrong.correctText) ? <FractionText text={topWrong.correctText} /> : topWrong.correctText}</p>}
                 <p className="text-[11px] text-muted-foreground mt-1.5">اضغط «اللي غلطوا ({topWrong.wrong})» تحت عشان تشوف أسامي الطلاب اللي غلطت في السؤال ده</p>
               </div>
             )}
