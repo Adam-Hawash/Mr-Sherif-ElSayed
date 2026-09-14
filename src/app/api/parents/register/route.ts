@@ -1,6 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db, safeWrite } from '@/lib/db'
 
+/* (2026-و38) شفاء ذاتي لجدول Parent — درس من الإنتاج: الجدول كان نازل
+ * في SCHEMA_TABLES بس مش في CORE_TABLES فالترميم التلقائي اتخطاه
+ * و«حصلت مشكلة في إنشاء الحساب» كانت النتيجة. هنا بنضمن وجود الجدول
+ * والفهرس قبل أي استعلام (idempotent — CREATE IF NOT EXISTS). */
+var parentDdlDone: Promise<void> | null = null
+function ensureParentTable(): Promise<void> {
+  if (!parentDdlDone) {
+    parentDdlDone = (async function () {
+      try {
+        await db.$executeRawUnsafe("CREATE TABLE IF NOT EXISTS Parent (id TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL UNIQUE, password TEXT NOT NULL DEFAULT '', studentId TEXT NOT NULL, createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+        try { await db.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS idx_parent_student ON Parent(studentId)') } catch (e) {}
+      } catch (e) {
+        /* فشل مؤقت (شبكة/اتصال) → نصفّي الميموري عشان الطلب الجاي يحاول تاني */
+        parentDdlDone = null
+      }
+    })()
+  }
+  return parentDdlDone
+}
+
 // ============================================================
 // (2026-و37) تسجيل حساب ولي أمر — طلب المستر الحرفي:
 //   «لولي الأمر لما يجي يعمل حساب أول حاجة يكتب اسم الطالب ابنه لو موجود
@@ -74,6 +94,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ===== 1) جيب حساب ابنك =====
+    try { await ensureParentTable() } catch (eDdl) {}
     var student = null as any
     try {
       student = await safeWrite(function () { return db.student.findFirst({ where: { phone: studentPhoneNorm } }) })
@@ -140,6 +161,12 @@ export async function POST(request: NextRequest) {
     }
 
     // ===== إنشاء الحساب =====
+    // (و38) لو الجدول لسه مش موجود لأي سبب — محاولة أخيرة قبل الإنشاء
+    try {
+      await db.$executeRawUnsafe("SELECT 1 FROM Parent LIMIT 1")
+    } catch (eTbl: any) {
+      try { parentDdlDone = null; await ensureParentTable() } catch (eDdl2) {}
+    }
     var parentNameDefault = String(student.parentName || '').trim() || ('ولي أمر ' + String(student.name || '').split(' ')[0])
     var created = null as any
     try {

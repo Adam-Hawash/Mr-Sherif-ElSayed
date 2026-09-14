@@ -39,6 +39,20 @@ export function StudentPortal() {
   const [showFullPortal, setShowFullPortal] = useState(false)
   const [showGuide, setShowGuide] = useState(false)
   const [activeTab, setActiveTab] = useState('videos')
+  /* (2026-و38) الرجوع التلقائي لشاشة الحل بعد أي reload — تكملة علاج
+     «الورقة بتترفع والتات بيتقفل»: الجلسة بترجع (و37) + الإجابات محفوظة
+     في مسودة (و37) + دلوقتي التاب نفسه بيرجع لشاشة الحل اللي الطالب كان فيها
+     (المسMarker في sessionStorage — بيفضل مع التات لو حتى اتخفي ورجع) */
+  useEffect(function() {
+    try {
+      var rawM = sessionStorage.getItem('mg_active_solve')
+      if (!rawM) return
+      var mM = JSON.parse(rawM)
+      if (mM && mM.kind === 'hw' && mM.id) { setActiveTab('homework'); setShowFullPortal(true) }
+      else if (mM && mM.kind === 'exam' && mM.id) { setActiveTab('exams'); setShowFullPortal(true) }
+    } catch (eM) {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [completedExamIds, setCompletedExamIds] = useState<Set<string>>(new Set())
   const [completedHwIds, setCompletedHwIds] = useState<Set<string>>(new Set())
 
@@ -740,6 +754,48 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
   const clearHwDraft = function (hwId: string) {
     try { localStorage.removeItem(hwDraftKey(hwId)) } catch (e) {}
   }
+  /* ===== (2026-و38) تتبع شاشة حل الواجب النشطة + الرجوع التلقائي ليها =====
+     الطالب كان بيخرج من شاشة الحل نفسها بعد الـ reload (بيرجع لقايمة
+     الواجبات يدور على الواجب بنفسه) — دلوقتي بيرجع للشاشة والإجابات
+     أوتوماتيك من غير ما يلمس حاجة. المسح بس عند الخروج العمدي. */
+  const hwMarkerInit = useRef(false)
+  useEffect(function () {
+    if (!hwMarkerInit.current) { hwMarkerInit.current = true; return }
+    try {
+      if (expandedHw) {
+        sessionStorage.setItem('mg_active_solve', JSON.stringify({ kind: 'hw', id: expandedHw, savedAt: Date.now() }))
+      } else {
+        var rawW = sessionStorage.getItem('mg_active_solve')
+        if (rawW) { var mW = JSON.parse(rawW); if (mW && mW.kind === 'hw') sessionStorage.removeItem('mg_active_solve') }
+      }
+    } catch (e) {}
+  }, [expandedHw])
+  const hwAutoRestoreDone = useRef(false)
+  useEffect(function () {
+    if (hwAutoRestoreDone.current) return
+    if (!homework.length) return
+    hwAutoRestoreDone.current = true
+    try {
+      var rawA = sessionStorage.getItem('mg_active_solve')
+      if (!rawA) return
+      var mA = JSON.parse(rawA)
+      if (!mA || mA.kind !== 'hw' || !mA.id) return
+      var hwA: any = null
+      for (var iA = 0; iA < homework.length; iA++) { if (homework[iA].id === mA.id) { hwA = homework[iA]; break } }
+      if (!hwA || completedHwIds.has(hwA.id)) return
+      var dA: any = null
+      try { var rA = localStorage.getItem(hwDraftKey(hwA.id)); if (rA) dA = JSON.parse(rA) } catch (eA) {}
+      if (dA && dA.answers && Object.keys(dA.answers).length > 0) {
+        ;(hwShuffleMaps.current as Record<string, number[]>)[hwA.id] = Array.isArray(dA.shuffleMap) && dA.shuffleMap.length > 0 ? dA.shuffleMap : []
+        setHwAnswers(function (prev) { var n = { ...prev }; n[hwA.id] = dA.answers || {}; return n })
+        setExpandedHw(hwA.id)
+        toast.success('رجّعناك لشاشة الحل وإجاباتك كلها معاك — كمّل من نفس النقطة')
+      } else {
+        setExpandedHw(hwA.id)
+      }
+    } catch (e) {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [homework, completedHwIds])
   // الحفظ الفوري مع كل تعديل إجابة (بيشيل المسودة لو الواجب اتسلم)
   useEffect(function () {
     try {
@@ -1904,6 +1960,44 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
     } catch (e) {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [takingExam, answers, writingAnswers, examShuffleMap, examQuestions, examSubmitted])
+
+  /* ===== (2026-و38) تتبع شاشة حل الامتحان النشطة + الرجوع التلقائي ليها =====
+   * أهم حالة: الطالب كان داخل امتحان والعداد بيعدّي — الـ reload كان يرجعه
+   * لقايمة الامتحانات والعداد بيفضل بيعدّي من بره. دلوقتي بيرجع لشاشة
+   * الامتحان أوتوماتيك بنفس الأسئلة والإجابات والعداد من نفس النقطة.
+   * (لو الامتحان اتسلم في الأثناء — handleStartExam بيفحص السيرفر وبيمنع). */
+  const examMarkerInit = useRef(false)
+  useEffect(function () {
+    if (!examMarkerInit.current) { examMarkerInit.current = true; return }
+    try {
+      if (takingExam) {
+        sessionStorage.setItem('mg_active_solve', JSON.stringify({ kind: 'exam', id: takingExam, savedAt: Date.now() }))
+      } else {
+        var rawE = sessionStorage.getItem('mg_active_solve')
+        if (rawE) { var mE = JSON.parse(rawE); if (mE && mE.kind === 'exam') sessionStorage.removeItem('mg_active_solve') }
+      }
+    } catch (e) {}
+  }, [takingExam])
+  const examAutoRestoreDone = useRef(false)
+  useEffect(function () {
+    if (examAutoRestoreDone.current) return
+    if (!exams.length) return
+    examAutoRestoreDone.current = true
+    try {
+      var rawX = sessionStorage.getItem('mg_active_solve')
+      if (!rawX) return
+      var mX = JSON.parse(rawX)
+      if (!mX || mX.kind !== 'exam' || !mX.id) return
+      var exX: any = null
+      for (var iX = 0; iX < exams.length; iX++) { if (exams[iX].id === mX.id) { exX = exams[iX]; break } }
+      if (!exX || completedExamIds.has(exX.id)) return
+      if (takingExam || examSubmitted) return
+      var drX: any = null
+      try { var rX = localStorage.getItem(examDraftKey(exX.id)); if (rX) drX = JSON.parse(rX) } catch (eX) {}
+      handleStartExam(exX, [], drX || undefined)
+    } catch (e) {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exams, completedExamIds])
 
   /* ===== (2026-و33) نفس الملاحظات في كارت نتيجة الامتحان (مراجعة الاختياري) ===== */
   useEffect(function() {

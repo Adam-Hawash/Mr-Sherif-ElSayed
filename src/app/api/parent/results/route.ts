@@ -1,6 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
+/* (2026-و38) شفاء ذاتي لجدول Parent — نفس حماية مسارَي التسجيل والدخول */
+var parentDdlDone: Promise<void> | null = null
+function ensureParentTable(): Promise<void> {
+  if (!parentDdlDone) {
+    parentDdlDone = (async function () {
+      try {
+        await db.$executeRawUnsafe("CREATE TABLE IF NOT EXISTS Parent (id TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL UNIQUE, password TEXT NOT NULL DEFAULT '', studentId TEXT NOT NULL, createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+        try { await db.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS idx_parent_student ON Parent(studentId)') } catch (e) {}
+      } catch (e) {
+        parentDdlDone = null
+      }
+    })()
+  }
+  return parentDdlDone
+}
+
 // ============================================================
 // (2026-و37) متابعة ولي الأمر — نتايج ابنه:
 //   - الواجبات: الدرجة/النهاية + وقت التسليم
@@ -18,6 +34,7 @@ export async function GET(request: NextRequest) {
     }
 
     var parent = null as any
+    try { await ensureParentTable() } catch (eDdl) {}
     try { parent = await db.parent.findUnique({ where: { id: parentId } }) } catch (pErr) {}
     if (!parent) {
       return NextResponse.json({ error: 'جلسة ولي الأمر منتهية — سجل دخول تاني' }, { status: 401 })

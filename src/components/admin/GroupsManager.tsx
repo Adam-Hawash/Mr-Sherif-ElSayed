@@ -12,12 +12,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Loader2, Plus, Pencil, Trash2, Users, UserPlus, X, Search } from 'lucide-react'
+import { Loader2, Plus, Pencil, Trash2, Users, UserPlus, X, Search, Clock, Star } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAppStore } from '@/stores/app-store'
 
 type Member = { id: string; name: string; phone: string; grade: string; status: string }
-type Group = { id: string; name: string; createdAt?: string; members: Member[] }
+type Group = { id: string; name: string; meetingTime?: string; createdAt?: string; members: Member[] }
 type Unassigned = { id: string; name: string; phone: string; grade: string; status: string }
 
 export function GroupsManager() {
@@ -26,9 +26,16 @@ export function GroupsManager() {
   const [unassigned, setUnassigned] = useState<Unassigned[]>([])
   const [loading, setLoading] = useState(true)
   const [newName, setNewName] = useState('')
+  const [newTime, setNewTime] = useState('')
   const [creating, setCreating] = useState(false)
   const [renamingId, setRenamingId] = useState('')
   const [renameVal, setRenameVal] = useState('')
+  const [timeEditingId, setTimeEditingId] = useState('')
+  const [timeVal, setTimeVal] = useState('')
+  /* (2026-و38) ميعاد المجموعة الرئيسية (كل الطلاب) */
+  const [mainTime, setMainTime] = useState('')
+  const [mainTimeEditing, setMainTimeEditing] = useState(false)
+  const [mainTimeVal, setMainTimeVal] = useState('')
   const [managingId, setManagingId] = useState('')
   const [memberQuery, setMemberQuery] = useState('')
 
@@ -41,6 +48,7 @@ export function GroupsManager() {
       if (res.ok) {
         setGroups(Array.isArray(data.groups) ? data.groups : [])
         setUnassigned(Array.isArray(data.unassigned) ? data.unassigned : [])
+        setMainTime(String(data.mainGroupTime || ''))
       } else {
         toast.error(data.error || 'خطأ في تحميل المجموعات')
       }
@@ -52,17 +60,20 @@ export function GroupsManager() {
 
   var createGroup = async function () {
     var name = newName.trim()
+    var time = newTime.trim()
     if (!name) { toast.error('اكتب اسم المجموعة'); return }
+    /* (2026-و38) طلب المستر: «كل مجموعة لازم أحدد لها وقت» */
+    if (!time) { toast.error('لازم تحدد وقت المجموعة — زي: السبت 4 عصرًا'); return }
     if (!adminId) { toast.error('مفيش جلسة أدمن'); return }
     setCreating(true)
     try {
       var res = await fetch('/api/groups', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adminId: adminId, name: name }),
+        body: JSON.stringify({ adminId: adminId, name: name, meetingTime: time }),
       })
       var data = await res.json()
-      if (res.ok) { toast.success(data.message || 'تم إنشاء المجموعة'); setNewName(''); load() }
+      if (res.ok) { toast.success(data.message || 'تم إنشاء المجموعة'); setNewName(''); setNewTime(''); load() }
       else toast.error(data.error || 'خطأ في الإنشاء')
     } catch (e) { toast.error('خطأ في الاتصال') }
     setCreating(false)
@@ -79,6 +90,22 @@ export function GroupsManager() {
       })
       var data = await res.json()
       if (res.ok) { toast.success('تم تحديث الاسم'); setRenamingId(''); load() }
+      else toast.error(data.error || 'خطأ')
+    } catch (e) { toast.error('خطأ في الاتصال') }
+  }
+
+  /* (2026-و38) تحديد/تعديل ميعاد مجموعة */
+  var saveTime = async function (id: string, time: string, isMain?: boolean) {
+    var t = (time || '').trim()
+    if (!t) { toast.error('اكتب وقت المجموعة — زي: السبت 4 عصرًا'); return }
+    try {
+      var res = await fetch('/api/groups', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminId: adminId, id: id, meetingTime: t }),
+      })
+      var data = await res.json()
+      if (res.ok) { toast.success(data.message || 'تم تحديد الوقت'); setTimeEditingId(''); setMainTimeEditing(false); load() }
       else toast.error(data.error || 'خطأ')
     } catch (e) { toast.error('خطأ في الاتصال') }
   }
@@ -126,7 +153,10 @@ export function GroupsManager() {
             <p className="text-xs text-muted-foreground mt-1">قسّم طلابك مجموعات (زي مجموعة السبت ومجموعة التلات) — وبعدين وجّه الفيديوهات والامتحانات والواجبات لمجموعة معينة بميعادها</p>
           </div>
           <div className="flex gap-1.5 w-full sm:w-auto">
-            <Input value={newName} onChange={function (e) { setNewName(e.target.value) }} placeholder='اسم المجموعة — زي «مجموعة السبت»' className="h-9 text-sm flex-1 sm:w-56"
+            <Input value={newName} onChange={function (e) { setNewName(e.target.value) }} placeholder='اسم المجموعة — زي «مجموعة السبت»' className="h-9 text-sm flex-1 sm:w-44"
+              onKeyDown={function (e) { if (e.key === 'Enter') createGroup() }} />
+            {/* (2026-و38) الميعاد إلزامي — طلب المستر: كل مجموعة لازم ليها وقت */}
+            <Input value={newTime} onChange={function (e) { setNewTime(e.target.value) }} placeholder='وقت المجموعة — زي: السبت 4 عصرًا' className="h-9 text-sm flex-1 sm:w-48"
               onKeyDown={function (e) { if (e.key === 'Enter') createGroup() }} />
             <Button size="sm" className="h-9 text-xs" disabled={creating} onClick={createGroup}>
               {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}مجموعة جديدة
@@ -137,14 +167,46 @@ export function GroupsManager() {
       <CardContent>
         {loading ? (
           <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
-        ) : groups.length === 0 ? (
-          <div className="text-center py-10 space-y-2">
-            <Users className="h-8 w-8 text-muted-foreground mx-auto" />
-            <p className="text-muted-foreground text-sm">مفيش مجموعات لسه — اكتب اسم المجموعة فوق واضغط «مجموعة جديدة»</p>
-          </div>
         ) : (
-          <div className="space-y-3 max-h-[520px] overflow-y-auto custom-scrollbar">
-            {groups.map(function (g) {
+          <div className="space-y-3">
+            {/* (2026-و38) المجموعة الرئيسية — كل الطلاب — ليها ميعاد برضه طلب المستر */}
+            <div className="p-3 rounded-lg border-2 border-primary/40 bg-primary/5 space-y-2">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <Star className="h-4 w-4 text-primary" />
+                  <span className="font-semibold text-sm">المجموعة الرئيسية</span>
+                  <Badge variant="secondary" className="text-[10px]">كل الطلاب</Badge>
+                </div>
+                {mainTimeEditing ? (
+                  <div className="flex gap-1">
+                    <Input value={mainTimeVal} onChange={function (e) { setMainTimeVal(e.target.value) }} placeholder="زي: السبت 4 عصرًا" className="h-8 w-44 text-sm" autoFocus
+                      onKeyDown={function (e) { if (e.key === 'Enter') saveTime('__main__', mainTimeVal, true) }} />
+                    <Button size="sm" className="h-8 text-xs" onClick={function () { saveTime('__main__', mainTimeVal, true) }}>حفظ</Button>
+                    <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={function () { setMainTimeEditing(false) }}>إلغاء</Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    {mainTime ? (
+                      <Badge className="text-[11px] gap-1 bg-primary/10 text-primary border-primary/30"><Clock className="h-3 w-3" />{mainTime}</Badge>
+                    ) : (
+                      <Badge className="text-[11px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">محتاجة تحديد وقت</Badge>
+                    )}
+                    <Button size="sm" variant="outline" className="h-8 text-xs gap-1" onClick={function () { setMainTimeEditing(true); setMainTimeVal(mainTime || '') }}>
+                      <Clock className="h-3 w-3" />{mainTime ? 'تعديل الوقت' : 'حدد الوقت'}
+                    </Button>
+                  </div>
+                )}
+              </div>
+              <p className="text-[11px] text-muted-foreground">دي مجموعة كل الطلاب الافتراضية — أي محتوى من غير استهداف مجموعات بيظهر لكل الطلاب</p>
+            </div>
+            {groups.length === 0 ? (
+              <div className="text-center py-10 space-y-2">
+                <Users className="h-8 w-8 text-muted-foreground mx-auto" />
+                <p className="text-muted-foreground text-sm">مفيش مجموعات لسه — اكتب اسم المجموعة وميعادها فوق واضغط «مجموعة جديدة»</p>
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-[520px] overflow-y-auto custom-scrollbar">
+                {groups.map(function (g) {
               return (
                 <div key={g.id} className="p-3 rounded-lg border bg-card space-y-2">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -160,6 +222,11 @@ export function GroupsManager() {
                         <>
                           <span className="font-semibold text-sm">{g.name}</span>
                           <Badge variant="secondary" className="text-[10px]">{g.members.length} طالب</Badge>
+                          {g.meetingTime ? (
+                            <Badge className="text-[10px] gap-1 bg-primary/10 text-primary border-primary/30"><Clock className="h-3 w-3" />{g.meetingTime}</Badge>
+                          ) : (
+                            <Badge className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">من غير وقت</Badge>
+                          )}
                         </>
                       )}
                     </div>
@@ -167,10 +234,20 @@ export function GroupsManager() {
                       <Button size="sm" variant="outline" className="h-8 text-xs" onClick={function () { setManagingId(managingId === g.id ? '' : g.id); setMemberQuery('') }}>
                         <UserPlus className="h-3 w-3" />إدارة الطلاب
                       </Button>
+                      <Button size="icon" variant="ghost" className="h-8 w-8 text-primary" title="تحديد/تعديل وقت المجموعة" onClick={function () { setTimeEditingId(timeEditingId === g.id ? '' : g.id); setTimeVal(g.meetingTime || '') }}><Clock className="h-3.5 w-3.5" /></Button>
                       <Button size="icon" variant="ghost" className="h-8 w-8 text-blue-600" title="تسمية" onClick={function () { setRenamingId(g.id); setRenameVal(g.name) }}><Pencil className="h-3.5 w-3.5" /></Button>
                       <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" title="حذف المجموعة" onClick={function () { deleteGroup(g) }}><Trash2 className="h-3.5 w-3.5" /></Button>
                     </div>
                   </div>
+                  {timeEditingId === g.id && (
+                    <div className="flex gap-1 items-center border-t pt-2">
+                      <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <Input value={timeVal} onChange={function (e) { setTimeVal(e.target.value) }} placeholder="اكتب ميعاد المجموعة — زي: السبت 4 عصرًا" className="h-8 flex-1 text-sm" autoFocus
+                        onKeyDown={function (e) { if (e.key === 'Enter') saveTime(g.id, timeVal) }} />
+                      <Button size="sm" className="h-8 text-xs" onClick={function () { saveTime(g.id, timeVal) }}>حفظ الوقت</Button>
+                      <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={function () { setTimeEditingId('') }}>إلغاء</Button>
+                    </div>
+                  )}
                   {managingId === g.id && (
                     <div className="border-t pt-2 space-y-2">
                       <div className="relative">
@@ -213,7 +290,9 @@ export function GroupsManager() {
                   )}
                 </div>
               )
-            })}
+                })}
+              </div>
+            )}
           </div>
         )}
       </CardContent>
