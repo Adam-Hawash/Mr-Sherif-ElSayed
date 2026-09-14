@@ -15,6 +15,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { resolveQuestionsForStudent, parseQuestions } from '@/lib/exam-models'
+/* (2026-و39) نفس تطبيع submit — مفتاح "B"/"2"/نص الخيار بيرجع للفهرس الصح بدل ما يقـع على 0 (A) */
+import { normalizeCorrectKey } from '@/lib/correct-key'
 
 export const runtime = 'nodejs'
 
@@ -149,7 +151,8 @@ export async function POST(request: NextRequest) {
         var mpts = (typeof q.points === 'number' && q.points > 0) ? q.points : 1
         maxScore += mpts
         var opts = Array.isArray(q.options) ? q.options : []
-        var correctIdx = typeof q.correct === 'number' ? q.correct : 0
+        /* (2026-و39) نفس تطبيع submit بالظبط بدل قراءة الرقم الخام */
+        var correctIdx = normalizeCorrectKey(q, opts)
         if (correctIdx < 0 || correctIdx >= opts.length) correctIdx = 0
         var ansIdx = kind === 'exam' ? qi : mcqSeen
         var ans = lookupAnswer(answers, ansIdx)

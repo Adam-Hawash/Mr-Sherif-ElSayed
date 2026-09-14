@@ -77,53 +77,18 @@ export default function HomePage() {
   var setSiteConfig = store.setSiteConfig
   var setConfigLoaded = store.setConfigLoaded
   var setStats = store.setStats
-  var setCurrentStudent = store.setCurrentStudent
-  var setCurrentParent = store.setCurrentParent
 
   const [appReady, setAppReady] = useState(false)
   const startTimeRef = useRef(Date.now())
 
-  /* ===== (2026-و37) استرجاع الجلسة بعد أي reload =====
-     ده كان سبب شكوى «الورقة عقبال ما تتحمل بخرجني من الصفحة وبيعمل تسجيل دخول
-     من الأول»: الموبايل بيرمي التاب من الميموري أثناء الرفع الطويل والمتصفح
-     بيعمل reload — والصفحة كانت تنسي الطالب خالص رغم إن الجلسة محفوظة
-     في localStorage (mg_student). دلوقتي الجلسة بترجع لوحدها فورًا.
-     نفس الحاجة لجلسة ولي الأمر (mg_parent) */
-  useEffect(function() {
-    try {
-      var rawStudent = localStorage.getItem('mg_student')
-      if (rawStudent) {
-        var s = JSON.parse(rawStudent)
-        if (s && s.id && s.phone) {
-          var st = String(s.status || '')
-          if (st === 'pending') {
-            setCurrentStudent(s)
-            store.setView('student-pending')
-          } else if (st === 'approved' || st === 'paid') {
-            setCurrentStudent(s)
-            store.setView('student-portal')
-          } else {
-            localStorage.removeItem('mg_student')
-          }
-        }
-      }
-    } catch (eS) {
-      try { localStorage.removeItem('mg_student') } catch (eS2) {}
-    }
-    try {
-      var rawParent = localStorage.getItem('mg_parent')
-      if (rawParent) {
-        var p = JSON.parse(rawParent)
-        if (p && p.id && p.phone && p.studentId) {
-          setCurrentParent(p)
-          store.setView('parent-portal')
-        }
-      }
-    } catch (eP) {
-      try { localStorage.removeItem('mg_parent') } catch (eP2) {}
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  /* ===== (2026-و39) مفيش استرجاع جلسة تلقائي — طلب المستر الحرفي:
+     «الطالب اللي يفتح منصة يفتح عليه على الصفحة الرئيسية اللي فيها صورة
+     المستر والحاجات دي وهو يعمل تسجيل دخول بنفسه — ونفس الكلام لولي الأمر».
+     الفتح دايمًا على الرئيسية (landing) والدخول يدوي كل مرة.
+     mg_student/mg_parent بتتكتب عند الدخول عشان باقي الواجهات تستخدمها
+     جوه الجلسة، بس مش بترجّع حد لأي بورتال لوحده.
+     حماية شاشة الحل (و38: mg_active_solve + المسودات) شغالة زي ما هي
+     وبتتفعل بعد الدخول اليدوي. */
 
   // Load config + gallery + stats on mount
   useEffect(function() {

@@ -3610,7 +3610,7 @@ function AIExtractionPanel({ onRefresh }: { onRefresh: () => void }) {
   var addWritingQuestion = function() { setExtractedQuestions([...extractedQuestions, { type: 'writing', question: '', options: [], correct: -1, points: 5, modelAnswer: '', acceptedAnswers: [] }]) }
 
   var handleSave = async function() {
-    if (extractedQuestions.length === 0) { toast.error('لا يوجد اسئلة للحفظ'); return }
+    if (extractedQuestions.length === 0) { toast.error('لا يوجد أسئلة للحفظ'); return }
     /* (استخراج أدق 2026-و10) ممنوع حفظ سؤال اختيارات من غير إجابة محددة —
        ده كان بيتحول لإجابة عشوائية (A) عند الطالب. المستر بيثبتها بإيده الأول */
     var unfixed = extractedQuestions.filter(function(q: any) {
@@ -3638,8 +3638,8 @@ function AIExtractionPanel({ onRefresh }: { onRefresh: () => void }) {
       var res = await fetch('/api/ai/extract-and-save', { method: 'POST', body: fd })
       var data = await res.json()
       if (res.ok && data.success) { toast.success(data.message || 'تم الحفظ بنجاح!'); onRefresh(); resetAll() }
-      else { toast.error(data.error || 'خطا في الحفظ') }
-    } catch (err: any) { toast.error('خطا في الاتصال: ' + (err.message || '')) }
+      else { toast.error(data.error || 'خطأ في الحفظ') }
+    } catch (err: any) { toast.error('خطأ في الاتصال: ' + (err.message || '')) }
     setSaving(false); setStatusMsg('')
   }
 
@@ -3654,7 +3654,7 @@ function AIExtractionPanel({ onRefresh }: { onRefresh: () => void }) {
         <div className="text-center py-4">
           <Sparkles className="h-10 w-10 text-purple-500 mx-auto mb-3" />
           <h3 className="text-lg font-bold">استخراج الذكاء الاصطناعي</h3>
-          <p className="text-sm text-muted-foreground mt-1">ارفع ملف او استخرج من فيديو يوتيوب واحفظ الاسئلة مباشرة</p>
+          <p className="text-sm text-muted-foreground mt-1">ارفع ملف أو استخرج من فيديو يوتيوب واحفظ الأسئلة مباشرة</p>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <button type="button" onClick={function() { setExtractType('exam') }} className={"p-4 rounded-xl border-2 text-center transition-all " + (extractType === 'exam' ? 'border-primary bg-primary/5 shadow-md' : 'border-muted hover:border-primary/30')}>
@@ -3756,7 +3756,7 @@ function AIExtractionPanel({ onRefresh }: { onRefresh: () => void }) {
             <div className="text-center">
               <PlayCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
               <p className="text-sm font-medium">استخراج من فيديو يوتيوب</p>
-              <p className="text-[10px] text-muted-foreground">الصق رابط فيديو يوتيوب وسيتم استخراج الاسئلة منه</p>
+              <p className="text-[10px] text-muted-foreground">الصق رابط فيديو يوتيوب وسيتم استخراج الأسئلة منه</p>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">رابط يوتيوب *</Label>
@@ -3771,7 +3771,7 @@ function AIExtractionPanel({ onRefresh }: { onRefresh: () => void }) {
               </div>
             )}
             <div className="space-y-1.5">
-              <Label className="text-xs">عدد الاسئلة المطلوبة</Label>
+              <Label className="text-xs">عدد الأسئلة المطلوبة</Label>
               <div className="flex items-center gap-3">
                 <input type="range" min={3} max={30} value={numQuestions} onChange={function(e) { setNumQuestions(parseInt(e.target.value)) }} className="flex-1" />
                 <span className="text-sm font-bold text-primary w-8 text-center">{numQuestions}</span>
@@ -3783,7 +3783,7 @@ function AIExtractionPanel({ onRefresh }: { onRefresh: () => void }) {
         {statusMsg && <div className="flex items-center gap-2 p-3 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400"><Loader2 className="h-4 w-4 animate-spin" /><p className="text-sm">{statusMsg}</p></div>}
         <Button className="w-full" size="lg" onClick={handleExtract} disabled={!canExtract || extracting}>
           {extracting ? <Loader2 className="h-5 w-5 ml-2 animate-spin" /> : <Sparkles className="h-5 w-5 ml-2" />}
-          {extracting ? 'جاري الاستخراج...' : (inputMode === 'youtube' ? 'استخراج من يوتيوب' : 'استخراج الاسئلة')}
+          {extracting ? 'جاري الاستخراج...' : (inputMode === 'youtube' ? 'استخراج من يوتيوب' : 'استخراج الأسئلة')}
         </Button>
       </div>
     )

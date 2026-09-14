@@ -27,6 +27,8 @@ type QStat = {
   options: string[]
   correctText: string
   keyless: boolean
+  /* (2026-و39) كل الطلاب غلطوا فيه — بيتخفى من التحليل (غالبًا المشكلة في السؤال نفسه أو التصحيح) */
+  allWrong: boolean
   attempts: number
   wrong: number
   wrongStudents: WrongStudent[]
@@ -52,7 +54,7 @@ function QuestionRow({ q, top }: { q: QStat; top: boolean }) {
             <div className="flex items-center gap-1.5 flex-wrap mt-1">
               <Badge variant="secondary" className="text-[10px]">{q.kind === 'mcq' ? 'اختيارات' : 'مقالي'}</Badge>
               {q.keyless && <Badge className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">مفتاح ناقص — محتاج مراجعة</Badge>}
-              <span className="text-[11px] text-muted-foreground">غلط: {q.wrong} من {q.attempts} ({pct}%)</span>
+              <span className="text-[11px] text-muted-foreground">{q.wrong} طلاب غلطوا من {q.attempts} ({pct}%)</span>
             </div>
           </div>
         </div>
@@ -162,14 +164,19 @@ export function AdminItemAnalytics() {
     )
   }
 
-  /* أكتر سؤال غلط = أول سؤال في القايمة (المرتبة) اللي فيه غلطات فعلية */
+  /* أكتر سؤال غلط = أول سؤال في القايمة (المرتبة) اللي فيه غلطات فعلية
+     (2026-و39) بيتخطى keyless + allWrong (كل الطلاب غلطوا — المشكلة غالبًا في السؤال نفسه أو التصحيح) + اللي صفر غلطات */
   var topWrong: QStat | null = null
   if (detail) {
     for (var ti = 0; ti < detail.questions.length; ti++) {
       var tq = detail.questions[ti]
-      if (!tq.keyless && tq.wrong > 0) { topWrong = tq; break }
+      if (!tq.keyless && !tq.allWrong && tq.wrong > 0) { topWrong = tq; break }
     }
   }
+
+  /* (2026-و39) أسئلة «كل الطلاب غلطوا فيها» بتتخفى من القايمة بملاحظة صريحة */
+  var visibleQs: QStat[] = detail ? detail.questions.filter(function (qq) { return !qq.allWrong }) : []
+  var hiddenAllWrong = detail ? detail.questions.length - visibleQs.length : 0
 
   return (
     <Card>
@@ -212,10 +219,14 @@ export function AdminItemAnalytics() {
               <p className="text-sm text-muted-foreground text-center py-8">مفيش أسئلة مسجلة للعنصر ده</p>
             ) : (
               <div className="space-y-2 max-h-[520px] overflow-y-auto custom-scrollbar pr-1">
-                {detail.questions.map(function (qq) {
+                {visibleQs.map(function (qq) {
                   return <QuestionRow key={qq.idx} q={qq} top={topWrong != null && qq.idx === topWrong.idx} />
                 })}
               </div>
+            )}
+            {/* (2026-و39) ملاحظة الأسئلة المخفية — كل الطلاب غلطوا فيها */}
+            {hiddenAllWrong > 0 && (
+              <p className="text-[11px] text-muted-foreground text-center">فيه {hiddenAllWrong} أسئلة غلط فيها كل الطلاب — اتخفيت من التحليل لأن غالبًا المشكلة في السؤال نفسه أو في التصحيح</p>
             )}
           </div>
         ) : (
