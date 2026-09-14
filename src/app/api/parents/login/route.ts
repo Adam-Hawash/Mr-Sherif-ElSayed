@@ -1,6 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db, safeWrite } from '@/lib/db'
 
+/* (2026-و38) شفاء ذاتي لجدول Parent — نفس حماية مسار التسجيل */
+var parentDdlDone: Promise<void> | null = null
+function ensureParentTable(): Promise<void> {
+  if (!parentDdlDone) {
+    parentDdlDone = (async function () {
+      try {
+        await db.$executeRawUnsafe("CREATE TABLE IF NOT EXISTS Parent (id TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL UNIQUE, password TEXT NOT NULL DEFAULT '', studentId TEXT NOT NULL, createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+        try { await db.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS idx_parent_student ON Parent(studentId)') } catch (e) {}
+      } catch (e) {
+        parentDdlDone = null
+      }
+    })()
+  }
+  return parentDdlDone
+}
+
 // ============================================================
 // (2026-و37) دخول ولي الأمر — برقم تليفونه الشخصي وباسورده هو
 // (مفيش ربط جهاز للأولياء — الربط دي للطلاب بس عشان منع مشاركة الحسابات)
@@ -34,6 +50,8 @@ export async function POST(request: NextRequest) {
     if (!phoneNorm || !password) {
       return NextResponse.json({ error: 'اكتب رقم تليفونك وباسوردك' }, { status: 400 })
     }
+
+    try { await ensureParentTable() } catch (eDdl) {}
 
     var parent = null as any
     try {

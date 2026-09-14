@@ -24,9 +24,13 @@ function ensureGroupsSchema(): Promise<void> {
           CREATE TABLE IF NOT EXISTS StudentGroup (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
+            meetingTime TEXT DEFAULT '',
             createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
           )
         `)
+        /* (2026-و38) ميعاد المجموعة — طلب المستر: «كل مجموعة لازم أحدد لها وقت
+           حتى المجموعة الرئيسية» — عمود نصي حر (زي: السبت 4 عصرًا) */
+        try { await db.$executeRawUnsafe("ALTER TABLE StudentGroup ADD COLUMN meetingTime TEXT DEFAULT ''") } catch (e) {}
         await db.$executeRawUnsafe(`
           CREATE TABLE IF NOT EXISTS VideoGroupSchedule (
             id TEXT PRIMARY KEY,
@@ -62,7 +66,7 @@ export async function GET(request: NextRequest) {
     var groupRows: any[] = []
     var studentRows: any[] = []
     try {
-      var r1 = await db.$queryRawUnsafe('SELECT id, name, createdAt FROM StudentGroup ORDER BY createdAt ASC')
+      var r1 = await db.$queryRawUnsafe('SELECT id, name, meetingTime, createdAt FROM StudentGroup ORDER BY createdAt ASC')
       groupRows = (r1 as any[]) || []
     } catch (e) {}
     try {
@@ -78,8 +82,15 @@ export async function GET(request: NextRequest) {
       membersByGroup[g].push({ id: st.id, name: st.name, phone: st.phone, grade: st.grade, status: st.status })
     }
 
+    /* (2026-و38) ميعاد المجموعة لكل مجموعة + ميعاد المجموعة الرئيسية (كل الطلاب) */
+    var mainTime = ''
+    try {
+      var mtRes: any[] = await db.$queryRawUnsafe("SELECT value FROM SiteConfig WHERE key = 'main_group_meeting_time' LIMIT 1")
+      if (mtRes && mtRes.length > 0) mainTime = String(mtRes[0].value || '')
+    } catch (e) {}
+
     var groups = groupRows.map(function (r: any) {
-      return { id: r.id, name: r.name, createdAt: r.createdAt, members: membersByGroup[r.id] || [] }
+      return { id: r.id, name: r.name, meetingTime: String(r.meetingTime || ''), createdAt: r.createdAt, members: membersByGroup[r.id] || [] }
     })
 
     // الطلاب غير المسندين — عشان الأدمن يضيفهم لمجموعة من نفس الشاشة
@@ -91,6 +102,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       groups: groups,
+      mainGroupTime: mainTime,
       unassigned: unassigned.map(function (r: any) { return { id: r.id, name: r.name, phone: r.phone, grade: r.grade, status: r.status } }),
     })
   } catch (error: any) {
@@ -99,7 +111,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/groups — { adminId, name } إنشاء مجموعة
+// POST /api/groups — { adminId, name, meetingTime } إنشاء مجموعة — الميعاد مطلوب
 export async function POST(request: NextRequest) {
   try {
     await ensureGroupsSchema()
@@ -107,7 +119,10 @@ export async function POST(request: NextRequest) {
     var admin = await isAdmin(body.adminId)
     if (!admin) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 })
     var name = String(body.name || '').trim()
+    var meetingTime = String(body.meetingTime || '').trim()
     if (!name) return NextResponse.json({ error: 'اكتب اسم المجموعة' }, { status: 400 })
+    /* (2026-و38) طلب المستر: «كل مجموعة لازم أحدد لها وقت» — الميعاد إلزامي */
+    if (!meetingTime) return NextResponse.json({ error: 'لازم تحدد وقت المجموعة — زي: السبت 4 عصرًا' }, { status: 400 })
 
     // منع الاسم المكرر
     var dup: any[] = []
@@ -119,15 +134,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'فيه مجموعة بنفس الاسم بالفعل' }, { status: 400 })
     }
     var id = 'grp_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)
-    await db.$executeRawUnsafe('INSERT INTO StudentGroup (id, name, createdAt) VALUES (?, ?, CURRENT_TIMESTAMP)', id, name)
-    return NextResponse.json({ message: 'تم إنشاء المجموعة', group: { id: id, name: name, members: [] } }, { status: 201 })
+    await db.$executeRawUnsafe('INSERT INTO StudentGroup (id, name, meetingTime, createdAt) VALUES (?, ?, ?, CURRENT_TIMESTAMP)', id, name, meetingTime)
+    return NextResponse.json({ message: 'تم إنشاء المجموعة', group: { id: id, name: name, meetingTime: meetingTime, members: [] } }, { status: 201 })
   } catch (error: any) {
     console.error('Groups POST error:', error)
     return NextResponse.json({ error: 'حدث خطأ أثناء إنشاء المجموعة' }, { status: 500 })
   }
 }
 
-// PATCH /api/groups — { adminId, id, name } إعادة تسمية
+// PATCH /api/groups — { adminId, id, name?, meetingTime? } تعديل — وفيه id خاص __main__ لميعاد المجموعة الرئيسية
 export async function PATCH(request: NextRequest) {
   try {
     await ensureGroupsSchema()
@@ -136,7 +151,31 @@ export async function PATCH(request: NextRequest) {
     if (!admin) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 })
     var id = String(body.id || '')
     var name = String(body.name || '').trim()
-    if (!id || !name) return NextResponse.json({ error: 'بيانات ناقصة' }, { status: 400 })
+    var meetingTime = String(body.meetingTime === undefined || body.meetingTime === null ? '' : body.meetingTime).trim()
+
+    /* (2026-و38) المجموعة الرئيسية (كل الطلاب) — ميعادها متخزن في SiteConfig */
+    if (id === '__main__') {
+      if (!meetingTime) return NextResponse.json({ error: 'اكتب وقت المجموعة الرئيسية' }, { status: 400 })
+      var exists: any[] = []
+      try { exists = await db.$queryRawUnsafe("SELECT id FROM SiteConfig WHERE key = 'main_group_meeting_time' LIMIT 1") } catch (e) {}
+      if (exists && exists.length > 0) {
+        await db.$executeRawUnsafe("UPDATE SiteConfig SET value = ?, updatedAt = CURRENT_TIMESTAMP WHERE key = 'main_group_meeting_time'", meetingTime)
+      } else {
+        await db.$executeRawUnsafe("INSERT INTO SiteConfig (id, key, value) VALUES (?, 'main_group_meeting_time', ?)", 'cfg_mgt_' + Date.now().toString(36), meetingTime)
+      }
+      return NextResponse.json({ message: 'تم تحديد وقت المجموعة الرئيسية' })
+    }
+
+    if (!id) return NextResponse.json({ error: 'بيانات ناقصة' }, { status: 400 })
+    if (name && meetingTime) {
+      await db.$executeRawUnsafe('UPDATE StudentGroup SET name = ?, meetingTime = ? WHERE id = ?', name, meetingTime, id)
+      return NextResponse.json({ message: 'تم تحديث المجموعة' })
+    }
+    if (meetingTime) {
+      await db.$executeRawUnsafe('UPDATE StudentGroup SET meetingTime = ? WHERE id = ?', meetingTime, id)
+      return NextResponse.json({ message: 'تم تحديد وقت المجموعة' })
+    }
+    if (!name) return NextResponse.json({ error: 'بيانات ناقصة' }, { status: 400 })
     await db.$executeRawUnsafe('UPDATE StudentGroup SET name = ? WHERE id = ?', name, id)
     return NextResponse.json({ message: 'تم تحديث اسم المجموعة' })
   } catch (error: any) {

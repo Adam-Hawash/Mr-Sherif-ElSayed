@@ -133,7 +133,7 @@ export function ParentRegisterView() {
               <div className="space-y-4">
                 <div className="rounded-xl border border-primary/30 bg-primary/5 px-4 py-3">
                   <p className="text-[13px] leading-relaxed text-foreground">
-                    <span className="font-bold">إزاي بيشتغل؟</span> بنربط حسابك بحساب ابنك الموجود في المنصة — فلازم بيانات ابنك تكون زي ما هي متسجة بالظبط، ورقم تليفونك الشخصي يكون هو المسجل على حسابه.
+                    <span className="font-bold">إزاي بيشتغل؟</span> بنربط حسابك بحساب ابنك الموجود في المنصة — فلازم بيانات ابنك تكون زي ما هي متسجلة بالظبط، ورقم تليفونك الشخصي يكون هو المسجل على حسابه.
                   </p>
                 </div>
                 <div>
