@@ -80,6 +80,34 @@ export async function POST(request) {
       }, { status: 422 })
     }
 
+    /* (2026-و40-w) حقول ورقة العمل — pass-through: sourcePage/srcName/table/
+       figure/optionFigures بتتحفظ جنب الحقول القانونية زي ما هي (كلها اختيارية
+       والأسئلة القديمة من غيرها بتشتغل عادي). figure.url لازم يكون مسار
+       ملفات المنصة (/api/files/<id>) — أي قيمة تانية بترمى (حماية من حشرات) */
+    function worksheetFields(q: any) {
+      var ws: any = {}
+      var spN = parseInt(String(q.sourcePage), 10)
+      if (isFinite(spN) && spN > 0) ws.sourcePage = spN
+      if (q.srcName && String(q.srcName).trim()) ws.srcName = String(q.srcName).trim()
+      if (q.table && Array.isArray(q.table.rows)) ws.table = q.table
+      if (q.figure && q.figure.bbox) {
+        var fig: any = { page: parseInt(String(q.figure.page || 1), 10) || 1, bbox: q.figure.bbox }
+        if (typeof q.figure.url === 'string' && /^\/api\/files\//.test(q.figure.url)) fig.url = q.figure.url
+        ws.figure = fig
+      }
+      if (Array.isArray(q.optionFigures)) {
+        var ofs: any[] = []
+        q.optionFigures.forEach(function (ofg: any) {
+          if (!ofg || !ofg.bbox) return
+          var o: any = { bbox: ofg.bbox }
+          if (typeof ofg.url === 'string' && /^\/api\/files\//.test(ofg.url)) o.url = ofg.url
+          ofs.push(o)
+        })
+        if (ofs.length > 0) ws.optionFigures = ofs
+      }
+      return ws
+    }
+
     // Convert to DB format - preserve ALL fields (type, modelAnswer, acceptedAnswers)
     var dbQuestions = questions.map(function(q) {
       var questionText = q.question || q.q || ''
@@ -92,8 +120,9 @@ export async function POST(request) {
         isWriting = true
       }
       var pts = (typeof q.points === 'number' && q.points > 0) ? q.points : (isWriting ? 5 : 1)
+      var ws = worksheetFields(q)
       if (isWriting) {
-        return {
+        return Object.assign({
           type: 'writing',
           question: questionText,
           options: [],
@@ -101,20 +130,20 @@ export async function POST(request) {
           points: pts,
           modelAnswer: q.modelAnswer || q.answer || '',
           acceptedAnswers: Array.isArray(q.acceptedAnswers) ? q.acceptedAnswers : [],
-        }
+        }, ws)
       }
       var opts = Array.isArray(q.options) ? q.options.slice(0, 4) : ['N/A', 'N/A', 'N/A', 'N/A']
       while (opts.length < 4) { opts.push('N/A') }
       var correctIdx = typeof q.correct === 'number' ? q.correct : 0
       if (correctIdx < 0 || correctIdx > 3) { correctIdx = 0 }
-      return {
+      return Object.assign({
         type: 'mcq',
         question: questionText,
         options: opts,
         correct: correctIdx,
         points: pts,
         modelAnswer: q.modelAnswer || '',
-      }
+      }, ws)
     })
 
     var questionsStr = JSON.stringify(dbQuestions)

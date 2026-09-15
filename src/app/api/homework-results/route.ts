@@ -1,10 +1,28 @@
 // @ts-nocheck
 import { NextRequest, NextResponse, after } from 'next/server'
-import { db } from '@/lib/db'
+import { db, withRetry } from '@/lib/db'
 // (2026-و16) self-heal خلفي: تسليمات الواجب القديمة الناقصة التصحيح بتتصحح
 // تلقائيًا بنفس مسار الذكاء الاصطناعي الحاسم — البادج مش بيفضل معلق للأبد
 import { regradeHomeworkResult, gradesLookPending, questionsHaveWriting } from '@/lib/regrade-core'
 import { normalizeCorrectKey } from '@/lib/correct-key'
+
+/* (2026-و40-w) حقول ورقة العمل في المراجعة — نفس نمط exam-results */
+function wsReviewFields(q: any, origIdx: number, studentAns: any): any {
+  var out: any = { origIdx: origIdx }
+  if (q) {
+    if (q.table) out.table = q.table
+    if (q.figure) out.figure = q.figure
+    if (q.srcName) out.srcName = q.srcName
+    if (q.sourcePage !== undefined) out.sourcePage = q.sourcePage
+  }
+  try {
+    if (studentAns && !Array.isArray(studentAns) && typeof studentAns === 'object' && studentAns.__tableAnswers && typeof studentAns.__tableAnswers === 'object') {
+      var ta = studentAns.__tableAnswers[String(origIdx)] !== undefined ? studentAns.__tableAnswers[String(origIdx)] : studentAns.__tableAnswers[origIdx]
+      if (ta) out.tableAnswers = ta
+    }
+  } catch (e) {}
+  return out
+}
 
 /* (2026-و22) قراءة إجابة الطالب **بالفهرس الأصلي** — نفس helper التسليم */
 function lookupByOrigIdx(ans: any, idx: number): any {
@@ -190,13 +208,13 @@ export async function GET(request: NextRequest) {
               ? String.fromCharCode(65 + correctIdx) + ') ' + opts[correctIdx]
               : (q.modelAnswer || 'No correct answer stored'))
 
-          allQuestions.push({
+          allQuestions.push(Object.assign({
             type: 'mcq',
             question: qText,
             studentAnswer: studentAnswerText,
             correctAnswer: correctAnswerText,
             isCorrect: isCorrect,
-          })
+          }, wsReviewFields(q, item.origIdx, studentAns)))
 
           if (!isCorrect) {
             wrongQuestions.push({
@@ -237,7 +255,7 @@ export async function GET(request: NextRequest) {
           var aiFeedback = stored ? (stored.aiFeedback || stored.feedback || '') : ''
           var awardedNow = stored ? (stored.awardedPoints || 0) : 0
 
-          allQuestions.push({
+          allQuestions.push(Object.assign({
             type: 'writing',
             question: qText,
             studentAnswer: studentText,
@@ -247,7 +265,7 @@ export async function GET(request: NextRequest) {
             aiIsCorrect: aiIsCorrect,
             aiFeedback: aiFeedback,
             imageGraded: isGradedNow && !!aiExtracted,
-          })
+          }, wsReviewFields(wq, wOrigIdx, studentAns)))
 
           writingAnswers.push({
             question: qText,
@@ -333,11 +351,34 @@ export async function GET(request: NextRequest) {
     // Student mode: own results
     if (!studentId) return NextResponse.json({ results: [] })
 
-    // Use raw SQL to avoid Prisma RETURN column mismatch
-    var rows = await db.$queryRawUnsafe(
-      'SELECT id, homeworkId, studentId, score, maxScore FROM HomeworkResult WHERE studentId = ?',
-      studentId
-    )
+    /* (2026-و40) نفس ضمانة فرع الأدمن: self-heal للجدول قبل القراءة —
+       قاعدة جديدة/مبادلة كانت بتخلي القراءة تفشل والرد الفاضي الناجح
+       يخلي حارس البورتال يفتكر إن الطالب ما سلّمش (أو العكس) من غير داتا حقيقية */
+    try {
+      await db.$executeRawUnsafe('CREATE TABLE IF NOT EXISTS HomeworkResult (id TEXT PRIMARY KEY, homeworkId TEXT NOT NULL, studentId TEXT NOT NULL, score REAL DEFAULT 0, maxScore REAL DEFAULT 100, answers TEXT DEFAULT "", submittedAt DATETIME DEFAULT CURRENT_TIMESTAMP)')
+    } catch (e) {}
+
+    /* (2026-و40) قراءة بمعاودة (محاولة + retry واحدة إضافية): الفشل الحقيقي
+       في الداتابيز **ممنوع** يرجع رد ناجح فاضي — بيرجع error:'retry'
+       والعميل بيعاملها كـ"مش عارفين" (كل حاجة مفتوحة — fail-open) بدل
+       ما يقفل واجبات على طالب سلّمها بسبب سباق/خطأ لحظي */
+    var rows: any[] | null = null
+    var lastReadErr: any = null
+    for (var readAttempt = 0; readAttempt < 2; readAttempt++) {
+      try {
+        rows = await withRetry(function() {
+          return db.$queryRawUnsafe(
+            'SELECT id, homeworkId, studentId, score, maxScore FROM HomeworkResult WHERE studentId = ?',
+            studentId
+          )
+        }) as any[]
+        break
+      } catch (eR) { lastReadErr = eR }
+    }
+    if (rows === null) {
+      console.error('Homework results (student) read failed after retry:', lastReadErr)
+      return NextResponse.json({ results: [], error: 'retry' })
+    }
 
     return NextResponse.json({ results: rows || [] })
   } catch (error) {

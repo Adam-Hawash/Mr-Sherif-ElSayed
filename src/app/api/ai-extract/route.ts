@@ -142,8 +142,13 @@ function mergeQuestionsAndAnswers(questions: any[], answers: any[]): any[] {
     var modelAnswer = (ans && (ans.modelAnswer || ans.answer || ans.solution)) || q.modelAnswer || ''
     var acceptedAnswers = (ans && Array.isArray(ans.acceptedAnswers) ? ans.acceptedAnswers : (Array.isArray(q.acceptedAnswers) ? q.acceptedAnswers : []))
 
+    /* (2026-و40-w) pass-through حقول ورقة العمل من أسئلة المصدر */
+    var wsFields: any = {}
+    ;['sourcePage', 'srcName', 'table', 'figure', 'optionFigures'].forEach(function (k: string) {
+      if (q[k] !== undefined && q[k] !== null) wsFields[k] = q[k]
+    })
     if (qType === 'writing') {
-      return {
+      return Object.assign({
         type: 'writing',
         question: q.question || '',
         options: [],
@@ -151,7 +156,7 @@ function mergeQuestionsAndAnswers(questions: any[], answers: any[]): any[] {
         points: q.points || 5,
         modelAnswer: modelAnswer,
         acceptedAnswers: acceptedAnswers,
-      }
+      }, wsFields)
     }
     // MCQ
     /* (استخراج أدق 2026-و10) ممنوع الافتراضي الصامت على A: لو ورقة الإجابات
@@ -171,14 +176,14 @@ function mergeQuestionsAndAnswers(questions: any[], answers: any[]): any[] {
       confidence = 'low'
     }
     if (correctIdx >= 0 && Array.isArray(q.options) && correctIdx >= q.options.length) { needsReview = true }
-    var outQ: any = {
+    var outQ: any = Object.assign({
       type: 'mcq',
       question: q.question || '',
       options: (q.options || ['N/A', 'N/A', 'N/A', 'N/A']).slice(0, 4),
       correct: correctIdx,
       points: q.points || 1,
       modelAnswer: modelAnswer,
-    }
+    }, wsFields)
     if (needsReview) outQ.needsReview = true
     if (keyQuote) outQ.keyQuote = keyQuote
     if (confidence) outQ.confidence = confidence
@@ -395,6 +400,16 @@ function buildSingleFilePrompt(grade: string, type: string): string {
   lines.push('- Preserve the order of questions as they appear in the document')
   lines.push('- Match each question with its correct answer/solution')
   lines.push('')
+  lines.push('')
+  lines.push('WORKSHEET STRUCTURE (very important — many worksheet questions contain TABLES and GRAPHS):')
+  lines.push('- For EVERY question include "sourcePage": the 1-based page number of the source document where the question appears (a single-page document → 1).')
+  lines.push('- If you are told the source file label, also include "srcName": that label (e.g. "الملف الأول"). Otherwise omit srcName.')
+  lines.push('- TABLES: if the question shows a table, return "table" reproducing it EXACTLY: {"headers":["x","f(x)","(x, f(x))"],"rows":[[{"t":"-2"},{"t":"","blank":true},{"t":"","blank":true}]]}.')
+  lines.push('  * Printed cells → {"t":"<exact printed text>"}. Cells the STUDENT must fill → {"t":"","blank":true}.')
+  lines.push('  * Do NOT blank printed cells, and do NOT fill the blank cells — the student writes inside them.')
+  lines.push('- GRAPHS/DIAGRAMS: if the question contains a graph, plot, or diagram, NEVER flatten it into text: return "figure":{"page":<page number>,"bbox":{"x":..,"y":..,"w":..,"h":..}} where bbox is the bounding rectangle of the figure as FRACTIONS of the WHOLE page image (each value 0..1, x/y = top-left corner, w/h = size).')
+  lines.push('- modelAnswer must include the expected table values when applicable (e.g. "f(-1)=5, f(0)=3 → points (-1,5), (0,3)").')
+  lines.push('')
   lines.push('SMART ANSWER RULE (very important — the teacher relies on this):')
   lines.push('* If the document CONTAINS the answer for a question → extract THAT exact answer as written in the document.')
   lines.push('* If a question has NO answer anywhere in the document → SOLVE it yourself completely: you are an expert math teacher, so produce a correct, clear, step-by-step solution that matches the grade curriculum level (Grade: ' + grade + ').')
@@ -403,7 +418,7 @@ function buildSingleFilePrompt(grade: string, type: string): string {
   lines.push('- Grade: ' + grade + ' | Type: ' + type)
   lines.push('')
   lines.push('Return ONE single valid JSON object — no text before or after, no markdown fences, no fields outside the object:')
-  lines.push('{"title":"...","content":"...","questions":[{"type":"mcq","question":"...","options":["A","B","C","D"],"correct":0,"points":1,"modelAnswer":"step by step solution"},{"type":"writing","question":"...","options":[],"correct":-1,"points":5,"modelAnswer":"full step by step solution","acceptedAnswers":["5","x=5"]}],"answerKey":""}')
+  lines.push('{"title":"...","content":"...","questions":[{"type":"mcq","question":"...","options":["A","B","C","D"],"correct":0,"points":1,"modelAnswer":"step by step solution","sourcePage":1},{"type":"writing","question":"...","options":[],"correct":-1,"points":5,"modelAnswer":"full step by step solution","acceptedAnswers":["5","x=5"],"sourcePage":1,"table":{"headers":["x","f(x)"],"rows":[[{"t":"-1"},{"t":"","blank":true}]]},"figure":{"page":1,"bbox":{"x":0.05,"y":0.3,"w":0.4,"h":0.35}}}],"answerKey":""}')
   return lines.join('\n')
 }
 
@@ -449,8 +464,15 @@ function buildQuestionsOnlyPrompt(grade: string, type: string): string {
   lines.push('- Preserve the order of questions as they appear in the document')
   lines.push('- Grade: ' + grade + ' | Type: ' + type)
   lines.push('')
+  lines.push('WORKSHEET STRUCTURE (very important — many worksheet questions contain TABLES and GRAPHS):')
+  lines.push('- For EVERY question include "sourcePage": the 1-based page number of the source document where the question appears (a single-page document → 1).')
+  lines.push('- TABLES: if the question shows a table, return "table" reproducing it EXACTLY: {"headers":["x","f(x)","(x, f(x))"],"rows":[[{"t":"-2"},{"t":"","blank":true},{"t":"","blank":true}]]}.')
+  lines.push('  * Printed cells → {"t":"<exact printed text>"}. Cells the STUDENT must fill → {"t":"","blank":true}.')
+  lines.push('  * Do NOT blank printed cells, and do NOT fill the blank cells — the student writes inside them.')
+  lines.push('- GRAPHS/DIAGRAMS: if the question contains a graph, plot, or diagram, NEVER flatten it into text: return "figure":{"page":<page number>,"bbox":{"x":..,"y":..,"w":..,"h":..}} where bbox is the bounding rectangle of the figure as FRACTIONS of the WHOLE page image (each value 0..1, x/y = top-left corner, w/h = size).')
+  lines.push('')
   lines.push('Return ONE single valid JSON object — no text before or after, no markdown fences, no fields outside the object:')
-  lines.push('{"title":"...","content":"...","questions":[{"type":"mcq","question":"...","options":["A","B","C","D"],"correct":0,"points":1,"modelAnswer":""},{"type":"writing","question":"...","options":[],"correct":-1,"points":5,"modelAnswer":"","acceptedAnswers":[]}]}')
+  lines.push('{"title":"...","content":"...","questions":[{"type":"mcq","question":"...","options":["A","B","C","D"],"correct":0,"points":1,"modelAnswer":"","sourcePage":1},{"type":"writing","question":"...","options":[],"correct":-1,"points":5,"modelAnswer":"","acceptedAnswers":[],"sourcePage":1,"table":{"headers":["x","f(x)"],"rows":[[{"t":"-1"},{"t":"","blank":true}]]},"figure":{"page":1,"bbox":{"x":0.05,"y":0.3,"w":0.4,"h":0.35}}}]}')
   return lines.join('\n')
 }
 
@@ -470,11 +492,30 @@ function buildAnswersOnlyPrompt(grade: string, type: string, questions: any[]): 
     } else {
       lines.push((i + 1) + '. [WRITING] ' + (q.question || ''))
     }
+    /* (2026-و40-w) بنية ورقة العمل: سؤال فيه جدول — نعرضه للنموذج عشان يطابق
+       إجابة المفتاح مع صفوفه ويكتب القيم المتوقعة في modelAnswer */
+    if (q.table && Array.isArray(q.table.rows) && q.table.rows.length > 0) {
+      var tHead = Array.isArray(q.table.headers) ? q.table.headers.join(' | ') : ''
+      var tRows = q.table.rows.map(function(row: any) {
+        if (!Array.isArray(row)) return ''
+        return row.map(function(cell: any) {
+          var isBlank = cell && typeof cell === 'object' && cell.blank === true
+          return isBlank ? '____' : String((cell && typeof cell === 'object' ? cell.t : cell) || '')
+        }).join(' | ')
+      }).join(' ; ')
+      lines.push('   Table: ' + (tHead ? tHead + ' :: ' : '') + tRows)
+    }
   })
   lines.push('')
   lines.push('For EACH question above, find its answer in the answer-key document and return:')
   lines.push('- For MCQ: the correct option index (0=A, 1=B, 2=C, 3=D) and a step-by-step modelAnswer')
   lines.push('- For WRITING: a complete step-by-step modelAnswer AND an array of acceptedAnswers (acceptable final answers)')
+  lines.push('')
+  /* (2026-و40-w) ورقة العمل: جداول قابلة للكتابة + رسومات — modelAnswer لازم
+     يشمل قيم الجدول المتوقعة، والرسومات ممنوع تتحول لنص */
+  lines.push('WORKSHEET STRUCTURE (2026-و40-w):')
+  lines.push('- Some questions have a fillable TABLE (shown above with ____ for the blank cells the student must fill). For those, the modelAnswer MUST include the expected table values row by row (e.g. "f(-1)=5, f(0)=3 → points (-1,5), (0,3)").')
+  lines.push('- If a question has a figure/graph, NEVER flatten it into text — only provide the numeric/verbal answer; the figure itself is kept as an image crop.')
   lines.push('')
   /* (استخراج أدق 2026-و10 — شكوى المستر: «تستخرج منه الإجابة… ما تكونش بالحر»):
      الإجابة لازم تتقرا من ورقة الإجابات حرفياً — ممنوع تخمين الحرف */
@@ -513,8 +554,19 @@ function finalizeExtracted(extracted: any, type: string, grade: string, twoFiles
 
   extracted.questions = extracted.questions.map(function(q) {
     var qType = q.type === 'writing' || q.type === 'essay' ? 'writing' : 'mcq'
+    /* (2026-و40-w) حقول ورقة العمل — pass-through (المصدر: البحث عن الجداول
+       والرسومات في ورقة المستر): sourcePage/srcName/table/figure/optionFigures
+       بتتحفظ زي ما هي جنب الحقول القانونية — مع تطبيع خفيف */
+    var worksheet: any = {}
+    var spN = parseInt(String(q.sourcePage), 10)
+    if (isFinite(spN) && spN > 0) worksheet.sourcePage = spN
+    if (q.srcName && String(q.srcName).trim()) worksheet.srcName = String(q.srcName).trim()
+    if (q.table && Array.isArray(q.table.rows)) worksheet.table = q.table
+    if (q.figure && q.figure.bbox) worksheet.figure = q.figure
+    if (Array.isArray(q.optionFigures)) worksheet.optionFigures = q.optionFigures
+    var withWs = function (obj: any) { return Object.assign({}, obj, worksheet) }
     if (qType === 'writing') {
-      return {
+      return withWs({
         type: 'writing',
         question: normalizeMath(q.question || ''),
         options: [],
@@ -522,16 +574,16 @@ function finalizeExtracted(extracted: any, type: string, grade: string, twoFiles
         points: q.points || 5,
         modelAnswer: normalizeMath(q.modelAnswer || q.answer || ''),
         acceptedAnswers: (Array.isArray(q.acceptedAnswers) ? q.acceptedAnswers : []).map(function(a: any) { return normalizeMath(String(a)) })
-      }
+      })
     }
-    return {
+    return withWs({
       type: 'mcq',
       question: normalizeMath(q.question || ''),
       options: (q.options || ['N/A', 'N/A', 'N/A', 'N/A']).slice(0, 4).map(function(o: any) { return normalizeMath(String(o)) }),
       correct: typeof q.correct === 'number' ? q.correct : 0,
       points: q.points || 1,
       modelAnswer: normalizeMath(q.modelAnswer || '')
-    }
+    })
   })
 
   var mcqCount = extracted.questions.filter(function(q) { return q.type === 'mcq' }).length

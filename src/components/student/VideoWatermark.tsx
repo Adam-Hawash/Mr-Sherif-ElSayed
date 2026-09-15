@@ -19,32 +19,36 @@
 import { useEffect, useRef, useState } from 'react'
 
 /* دورة الووترمارك الكبيرة: 30 ثانية = ظاهرة 10 ثواني (0→33%) + مخفية 20 ثانية (33%→100%)
-   مع انتقال ناعم بسيط عند الظهور والاختفاء */
+   مع انتقال ناعم بسيط عند الظهور والاختفاء
+   (2026-و40-w — الذروة .5 → .4: أشفّ شوية عشان الفيديو يبان واضح) */
 const WM_BLINK_CSS =
   '@keyframes wmBlink30 {' +
-  '0% { opacity: 0 } 1.5% { opacity: 0.5 } 31.5% { opacity: 0.5 } 33.5% { opacity: 0 } ' +
-  '98.5% { opacity: 0 } 100% { opacity: 0.5 } }'
+  '0% { opacity: 0 } 1.5% { opacity: 0.4 } 31.5% { opacity: 0.4 } 33.5% { opacity: 0 } ' +
+  '98.5% { opacity: 0 } 100% { opacity: 0.4 } }'
 
-/* الكارت المشترك (الاسم الكامل + الرقم) — نفس الشكل في المواضع الأربعة */
+/* الكارت المشترك (الاسم الكامل + الرقم) — نفس الشكل في المواضع الأربعة
+   (2026-و40-w — أصغر ~35% وأخف ~30% بطلب المستر: «بتشوش الطلاب» —
+   بس لسه ظاهرة ومقروءة للإثبات) */
 function WmCard({ nm, num }: { nm: string; num: string }) {
   return (
     <div
       style={{
         display: 'inline-block',
-        background: 'rgba(0,0,0,0.72)',
-        border: '1px solid rgba(255,255,255,0.28)',
+        background: 'rgba(0,0,0,0.5)',
+        border: '1px solid rgba(255,255,255,0.24)',
         color: '#fff',
-        borderRadius: 14,
-        padding: '7px 18px',
+        borderRadius: 10,
+        padding: '4px 11px',
         textAlign: 'center',
         direction: 'rtl',
-        boxShadow: '0 8px 26px rgba(0,0,0,0.55)',
+        opacity: 0.7,
+        boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
       }}
     >
       <span
         style={{
           display: 'block',
-          fontSize: 'clamp(11px, 1.5vw, 15px)',
+          fontSize: 'clamp(8px, 1vw, 10.5px)',
           fontWeight: 800,
           unicodeBidi: 'plaintext',
           letterSpacing: 0,
@@ -58,13 +62,13 @@ function WmCard({ nm, num }: { nm: string; num: string }) {
         <span
           style={{
             display: 'block',
-            fontSize: 'clamp(9.5px, 1.2vw, 12px)',
+            fontSize: 'clamp(7px, 0.8vw, 8.5px)',
             fontWeight: 700,
             direction: 'ltr',
             unicodeBidi: 'plaintext',
             letterSpacing: 0,
             opacity: 0.85,
-            marginTop: 2,
+            marginTop: 1,
           }}
         >
           {num}

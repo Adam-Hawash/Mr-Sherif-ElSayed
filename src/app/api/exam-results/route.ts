@@ -225,6 +225,26 @@ export async function GET(request: NextRequest) {
       return undefined
     }
 
+    /* (2026-و40-w) حقول ورقة العمل لكل سؤال في المراجعة: الجدول/الرسمة/المصدر
+       + قيم الجدول اللي كتبها الطالب (المفتاح المميز __tableAnswers جوه
+       إجابات التسليم — مش بيتخبط في أي مفتاح رقمي بيقراه التصحيح) */
+    function wsReviewFields(q: any, origIdx: number, studentAns: any): any {
+      var out: any = { origIdx: origIdx }
+      if (q) {
+        if (q.table) out.table = q.table
+        if (q.figure) out.figure = q.figure
+        if (q.srcName) out.srcName = q.srcName
+        if (q.sourcePage !== undefined) out.sourcePage = q.sourcePage
+      }
+      try {
+        if (studentAns && !Array.isArray(studentAns) && typeof studentAns === 'object' && studentAns.__tableAnswers && typeof studentAns.__tableAnswers === 'object') {
+          var ta = studentAns.__tableAnswers[String(origIdx)] !== undefined ? studentAns.__tableAnswers[String(origIdx)] : studentAns.__tableAnswers[origIdx]
+          if (ta) out.tableAnswers = ta
+        }
+      } catch (e) {}
+      return out
+    }
+
     // Build per-student results with all questions review
     var passScore = examInfo.passScore || 50
     var results: any[] = []
@@ -283,13 +303,13 @@ export async function GET(request: NextRequest) {
             ? String.fromCharCode(65 + correctIdx) + ') ' + opts[correctIdx]
             : (q.modelAnswer || 'No correct answer stored'))
 
-        allQuestions.push({
+        allQuestions.push(Object.assign({
           type: 'mcq',
           question: qText,
           studentAnswer: studentAnswerText,
           correctAnswer: correctAnswerText,
           isCorrect: isCorrect,
-        })
+        }, wsReviewFields(q, origIdx, studentAns)))
 
         if (!isCorrect) {
           wrongQuestions.push({
@@ -339,7 +359,7 @@ export async function GET(request: NextRequest) {
             : (stored.feedback || (storedIsCorrect ? 'صح' : 'غلط'))
           var storedAnsText = String(stored.answer || studentText || '')
 
-          allQuestions.push({
+          allQuestions.push(Object.assign({
             type: 'writing',
             question: qText,
             studentAnswer: storedAnsText,
@@ -354,7 +374,7 @@ export async function GET(request: NextRequest) {
             isGraded: !storedNeedsReview,
             awardedPoints: storedAwarded,
             maxPoints: stored.maxPoints || pts,
-          })
+          }, wsReviewFields(wq, wOrigIdx, studentAns)))
           writingAnswers.push({
             question: qText,
             answer: storedAnsText,
@@ -465,7 +485,7 @@ export async function GET(request: NextRequest) {
         // Otherwise mark as graded (imageGraded || textGraded)
         var isGraded = imageGraded || textGraded
 
-        allQuestions.push({
+        allQuestions.push(Object.assign({
           type: 'writing',
           question: qText,
           studentAnswer: studentText,
@@ -478,7 +498,7 @@ export async function GET(request: NextRequest) {
           textGraded: textGraded,
           needsGrading: needsGrading,
           isGraded: isGraded,
-        })
+        }, wsReviewFields(wq, wOrigIdx, studentAns)))
 
         writingAnswers.push({
           question: qText,

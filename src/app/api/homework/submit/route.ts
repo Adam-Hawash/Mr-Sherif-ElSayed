@@ -320,7 +320,18 @@ export async function POST(request) {
     var resultId = 'hwr_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)
     var answersJson = ''
     if (answers !== undefined && answers !== null) {
-      try { answersJson = JSON.stringify(answers) } catch(e) { answersJson = '' }
+      /* (2026-و40-w) قيم جداول ورقة العمل بتيجي في body.tableAnswers
+         (مفتاح: الفهرس الأصلي للسؤال → مصفوفة مصفوفات) — بتتخزن جوه
+         JSON الإجابات نفسه تحت مفتاح مميز __tableAnswers عشان شاشات
+         المراجعة تعرض الجدول معبى — مفيش أي تأثير على التصحيح
+         (التصحيح بيقرأ الفهارس الرقمية بس) */
+      var storedAnswers: any = answers
+      try {
+        if (body && body.tableAnswers && typeof body.tableAnswers === 'object' && !Array.isArray(body.tableAnswers) && Object.keys(body.tableAnswers).length > 0) {
+          storedAnswers = Object.assign({}, answers, { __tableAnswers: body.tableAnswers })
+        }
+      } catch (eTa) {}
+      try { answersJson = JSON.stringify(storedAnswers) } catch(e) { answersJson = '' }
     }
 
     var inserted = false

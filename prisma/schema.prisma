@@ -348,3 +348,22 @@ model VideoGroupSchedule {
   @@index([videoId])
   @@index([groupId])
 }
+
+// ============================================================
+// (2026-و40) الكتب والملازم — مكتبة PDF للطالب:
+//   الأدمن يرفع كتاب/ملزمة PDF (chunkedUpload → Media → /api/files/<id>)
+//   والطالب يفتحه أو يحمله من تاب «الكتب والملازم» في البورتال.
+//   filePath بتخزن مسار /api/files/<mediaId> زي باقي الجداول.
+// ============================================================
+model Book {
+  id          String   @id @default(cuid())
+  title       String
+  description String   @default("")
+  filePath    String   @default("")
+  fileName    String   @default("")
+  fileType    String   @default("application/pdf")
+  sizeBytes   Int      @default(0)
+  grade       String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
