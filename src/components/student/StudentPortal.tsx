@@ -1709,6 +1709,14 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
           hwShuffleMaps.current[hw.id] = shuffleMap
         }
         var hwTableMap = (isWorksheet && hwTableAnswers[hw.id]) || {}
+        /* (2026-و40-w2) عدّاد التسليم بيتحسب معاه أسئلة الجداول المعباية حتى لو
+           صندوق النص فاضي — الطالب يشوف (2/2) مش (1/2) وهو مالي الجدول */
+        var hwAnsweredSet = new Set(Object.keys(myAnswers))
+        if (isWorksheet) {
+          allQuestions.forEach(function(q: any, i: number) {
+            if (q && q.table && hwTableMap[i] && !tableValuesAreEmpty(hwTableMap[i])) hwAnsweredSet.add(String(i))
+          })
+        }
 
         return (
           <Card key={hw.id} className={isHwSeqLocked ? 'border-red-500/30 opacity-90' : isSubmitted ? 'border-emerald-500/30' : hasQuestions ? 'cursor-pointer' : ''}>
@@ -1949,9 +1957,12 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                         var vals = hwTableMapAll[i]
                         if (!vals || tableValuesAreEmpty(vals)) return
                         hwTablePayload[String(i)] = vals
-                        if (typeof mappedAnswers[i] === 'string') {
-                          mappedAnswers[i] = buildAnswerWithTable(String(mappedAnswers[i]), t, vals)
-                        }
+                        /* (2026-و40-w2) المقالي اللي إجابته جدول بس (الصندوق فاضي) —
+                           بنبني النص من قيم الجدول على أي حال عشان المصحح الذكي
+                           يقراه ويحسبه إجابة مش «لم يتم الإجابة» — واختيارات
+                           إجابتها رقم مفهرس فمش بنلمسها */
+                        if (typeof mappedAnswers[i] === 'number') return
+                        mappedAnswers[i] = buildAnswerWithTable(String(mappedAnswers[i] || ''), t, vals)
                       })
                       var res = await fetch('/api/homework/submit', {
                         method: 'POST',
@@ -1973,9 +1984,12 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                             setHwWrongQuestions(function(prev) { return { ...prev, [hw.id]: data.result.wrongQuestions } })
                           }
                           // Save all questions for review (in display order)
+                          /* (2026-و40-w2) ورقة العمل: بنحفظ الترتيب الأصلي مش
+                             «اختيارات-أولًا» — عشان شاشة المراجعة تخلي فهرس العرض
+                             مطابق للفهرس الأصلي اللي الجدول متخزن بيه */
                           setHwAllQuestions(function(prev) { return { ...prev, [hw.id]: allQuestions } })
                           // Save display order (what the student saw)
-                          setHwDisplayQuestions(function(prev) { return { ...prev, [hw.id]: displayQuestions } })
+                          setHwDisplayQuestions(function(prev) { return { ...prev, [hw.id]: isWorksheet ? allQuestions : displayQuestions } })
                           // Save shuffle map (display index → original index)
                           setHwDisplayMap(function(prev) { return { ...prev, [hw.id]: shuffleMap } })
                           // Save writing answers if graded
@@ -1994,7 +2008,7 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                       }
                     } catch { toast.error('خطأ في الاتصال') }
                     setHwSubmitting(null)
-                  }}>{hwPhotoBusy[hw.id] ? <span className="flex items-center gap-1.5"><Loader2 className="h-4 w-4 animate-spin" /> مستني صورة ورقة الحل تترفع كاملة...</span> : hwSubmitting === hw.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'تسليم الإجابات (' + Object.keys(myAnswers).length + '/' + allQuestions.length + ')'}</Button>
+                  }}>{hwPhotoBusy[hw.id] ? <span className="flex items-center gap-1.5"><Loader2 className="h-4 w-4 animate-spin" /> مستني صورة ورقة الحل تترفع كاملة...</span> : hwSubmitting === hw.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'تسليم الإجابات (' + (isWorksheet ? hwAnsweredSet.size : Object.keys(myAnswers).length) + '/' + allQuestions.length + ')'}</Button>
                 </div>
               )}
             </CardContent>
@@ -2358,9 +2372,10 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
         var origIdx = examShuffleMap.length > 0 ? examShuffleMap[displayIdx] : displayIdx
         if (origIdx === undefined) origIdx = displayIdx
         examTablePayload[String(origIdx)] = vals
-        if (typeof mappedAnswers[origIdx] === 'string') {
-          mappedAnswers[origIdx] = buildAnswerWithTable(String(mappedAnswers[origIdx]), q.table, vals)
-        }
+        /* (2026-و40-w2) نفس قاعدة الواجب: المقالي بيتبني له نص من الجدول
+           حتى لو الصندوق فاضي — والاختيارات الرقمية مش بتتلمس */
+        if (typeof mappedAnswers[origIdx] === 'number') return
+        mappedAnswers[origIdx] = buildAnswerWithTable(String(mappedAnswers[origIdx] || ''), q.table, vals)
       })
       // Add client-side timeout (120s — AI grades the writing questions during submit)
       var submitController = new AbortController()
