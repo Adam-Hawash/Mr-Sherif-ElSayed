@@ -347,6 +347,9 @@ export async function gradeImageAnswer(params: {
   modelAnswer?: string
   acceptedAnswers?: string[]
   maxPoints?: number
+  /* (و44) النص المكتوب اللي جاي مع الصورة (مثلا «الجدول: صف 1: 5، 3») —
+     السؤال بخطوتين: جدول على المنصة + رسمة مصورة — الاتنين بيحتسبوا */
+  studentText?: string
 }): Promise<{
   extractedAnswer: string
   finalAnswer?: string
@@ -420,6 +423,13 @@ export async function gradeImageAnswer(params: {
   if (modelAnswer) {
     prompt += 'MODEL SOLUTION:\n' + repairCorruptMath(modelAnswer) + '\n'
   }
+  /* (و44) الجزء المكتوب بالكيبورد جاي مع الصورة — سؤال بخطوتين (جدول + رسمة):
+     الطالب حل الجدول على المنصة وصوّر الرسمة — الاتنين بيحتسبوا في نفس الدرجة */
+  var typedPart = String((params as any).studentText || '').replace(/\[📷[^\]]*\]/g, '').trim()
+  if (typedPart) {
+    prompt += 'TYPED PART (the student also wrote this part ON THE PLATFORM with the keyboard, e.g. table values):\n' + repairCorruptMath(typedPart) + '\n'
+    prompt += 'IMPORTANT: the final verdict must evaluate BOTH the typed part AND the drawing/photo TOGETHER as one submission — typed values matching the model earn their share, the drawn/graphed part earns the rest. Do NOT fail a correct typed table just because the drawing is approximate, and do NOT ignore the typed part because a photo exists.\n\n'
+  }
   prompt += acceptedStr + '\n\n'
   prompt += 'The student attached a PHOTO that is supposed to show THEIR OWN handwritten or typed solution to the question above.\n\n'
   prompt += 'Follow these steps EXACTLY:\n'
@@ -435,10 +445,17 @@ export async function gradeImageAnswer(params: {
   prompt += 'STEP 6 — A correct final answer with wrong/missing/unreadable steps is still CORRECT (full points). A genuinely DIFFERENT final value is WRONG even if the steps look nice. Never mark an answer wrong just because the handwriting is hard to read or the steps are messy — judge the final value.\n'
   prompt += 'STEP 6.5 — UNDERSTAND the solution like a human teacher (as if the student is explaining it to you), NEVER literal matching: a small SLIP in a MIDDLE step (sign slip like writing "-4x = 1" instead of "-4x = -1", a small arithmetic slip, a crossed-out attempt, a step the student self-corrected right after) does NOT make the work wrong when the student ENDED at the correct final answer. Students stumble mid-way and fix themselves — judge where they ENDED. Only the FINAL value decides correct/wrong.\n'
   prompt += 'STEP 6.6 — READ HANDWRITING CAREFULLY (the worst failure is grading a CORRECT answer as wrong because you misread a digit): read every handwritten digit with FULL attention (4 vs 9, 1 vs 7, 5 vs 3, 0 vs 6, 2 vs 7). Re-read the final answer TWICE before deciding. If the final value you read equals the model value → it is CORRECT, full stop.\n'
+  /* (و44) طلب المستر الحرفي: الطالب بيرسم في كشكول من غير مربعات/خطوط —
+     التصحيح بيكون بالنقط القريبة وشكل الرسمة، مش بمطابقة ملّيمترية */
+  prompt += 'STEP 6.8 — HAND-DRAWN GRAPHS / FIGURES (2026-و44 — mandatory, judged like a human teacher): the student usually draws in a plain notebook WITHOUT grid lines, so the drawing will be approximate by nature. Grade the drawing by CLOSENESS, not by precision:\n'
+  prompt += '   • A plotted POINT is correct if it sits NEAR the expected location (roughly within one grid cell of where it should be — close enough that a teacher looking at it says "the point is right, just slightly off").\n'
+  prompt += '   • A curve/line/parabola is correct if the SHAPE is right (opens the same way, passes near the same points, axis of symmetry roughly in the right place) even if wobbly or not perfectly scaled.\n'
+  prompt += '   • A triangle/shape is correct if it matches the required type and labeled measurements approximately.\n'
+  prompt += '   • Missing grid lines, faint marks, uneven spacing, slight tilt or offset — NEVER make a correct drawing wrong. Only fail the drawing when a point/shape is CLEARLY in the wrong place or the figure is fundamentally different from what the question asked.\n\n'
   prompt += 'STEP 7 — ALWAYS give a definite verdict (isCorrect true or false). Only say onTopic=false when the photo truly contains NO student work at all.\n\n'
   prompt += 'awardedPoints: an integer from 0 to ' + maxPoints + '. HARD RULE — no partial credit: if isCorrect=true then awardedPoints MUST be exactly ' + maxPoints + ' (NEVER deduct for messy/hard-to-read/unfinished-looking steps when the final answer is right); if isCorrect=false then awardedPoints MUST be 0.\n\n'
   prompt += 'CHAT-LIKE ANSWER UNDERSTANDING (2026-و39 — mandatory): the student may write the answer like a CHAT MESSAGE: short, colloquial, incomplete, no formal math notation ("يعني 8", "الناتج ٢", "x تساوي 4", "هو 8 صح"). Judge the MEANING and the final VALUE, never the wording or format. Colloquial fillers (يعني/بص/تقريبا), missing punctuation or casual phrasing NEVER make a correct value wrong; if ambiguous, pick the most plausible mathematical reading that matches the model answer before deciding wrong.\n\n'
-  prompt += 'FEEDBACK STYLE (2026-و24 + 2026-و30 — the teacher wants STRONG teacher-style notes like a real chat with the student): LANGUAGE IS MANDATORY — write the feedback in عامية مصرية بسيطة (Egyptian COLLOQUIAL Arabic) — ممنوع منعًا باتًا الفصحى (لا «حدث/ثم/قمت ب/خطأ في») — use «بص، خلي بالك، اللي حصل إن، طبّق تاني، برافو، مش، عشان» talking DIRECTLY to the student (استخدم «إنت») — 2–3 short sentences. Correct → praise + say WHAT he did right (the method/rule + the final value): «برافو عليك! تبسيطك للأسس صح ووصلت للناتج بالظبط.» Wrong → (1) WHERE exactly the mistake happened (which step/rule), (2) the correct approach, (3) the correct final answer: «بص يا بطل، اللي حصل إنك في الخطوة التانية ضربت الأس غلط — الضرب بيجمّع الأسس a^6 × a^2 = a^8 مش a^4، خلي بالك وطبّق القاعدة تاني والصح a^4 b^6.» NEVER generic (ممنوع «إجابة غلط» لوحدها) وNEVER فصحى.\n\nMATH NOTATION IN FEEDBACK (2026-و33 — mandatory, the platform renders these as real symbols for the student):\n' + NOTATION_RULES + '\n\nENGLISH MATH TERMS IN FEEDBACK (2026-و34 — mandatory, the teacher wants the platform lesson terms):\n' + ENGLISH_TERMS_RULE + '\n\n'
+  prompt += 'FEEDBACK STYLE (2026-و24 + 2026-و30 — the teacher wants STRONG teacher-style notes like a real chat with the student): LANGUAGE IS MANDATORY — write the feedback in عامية مصرية بسيطة (Egyptian COLLOQUIAL Arabic) — ممنوع منعًا باتًا الفصحى (لا «حدث/ثم/قمت ب/خطأ في») — use «بص، خلي بالك، اللي حصل إن، طبّق تاني، برافو، مش، عشان» talking DIRECTLY to the student (استخدم «إنت») — 2–3 short sentences. Correct → praise + say WHAT he did right (the method/rule + the final value): «برافو عليك! تبسيطك للأسس صح ووصلت للناتج بالظبط.» Wrong → (1) WHERE exactly the mistake happened (which step/rule), (2) the correct approach, (3) the correct final answer: «بص يا بطل، اللي حصل إنك في الخطوة التانية ضربت الأس غلط — الضرب بيجمّع الأسس a^6 × a^2 = a^8 مش a^4، خلي بالك وطبّق القاعدة تاني والصح a^4 b^6.» NEVER generic (ممنوع «إجابة غلط» لوحدها) وNEVER فصحى. (و44) BIDI ORDER RULE — mandatory: اكتب كل ملاحظة كجمل عربية متصلة من اليمين للشمال، وكل مقطع إنجليزي أو معادلة حطه بين قوسين ( ) في نص الجملة (مثال: «المحور هو (x = -1) والقيمة (f(-1) = 4)») — ممنوع تبدأ الجملة بمقطع إنجليزي أو تخلي المعادلة تقطع الجملة العربية.\n\nMATH NOTATION IN FEEDBACK (2026-و33 — mandatory, the platform renders these as real symbols for the student):\n' + NOTATION_RULES + '\n\nENGLISH MATH TERMS IN FEEDBACK (2026-و34 — mandatory, the teacher wants the platform lesson terms):\n' + ENGLISH_TERMS_RULE + '\n\n'
   prompt += 'Respond with ONLY this JSON — no markdown, no extra text:\n'
   prompt += '{"onTopic": true, "extractedAnswer": "the student\'s own work, max 3 short lines", "finalAnswer": "only the final boxed/last value", "answerSource": "boxed", "isCorrect": true, "awardedPoints": ' + maxPoints + ', "confidence": "high", "feedback": "ملاحظة بالعامية المصرية للطالب: ليه صح أو ليه غلط — كأنك بتكلمه بجد (جملتين كحد أقصى)"}\n'
 

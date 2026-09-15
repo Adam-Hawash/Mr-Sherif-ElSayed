@@ -21,6 +21,11 @@ import { MathKeyboard } from '@/components/student/MathKeyboard'
 import { SecurePlayerModal } from '@/components/student/SecurePlayerModal'
 import { StudentComplaints } from '@/components/student/StudentComplaints'
 import { FractionText } from '@/components/FractionText'
+import BidiText from '@/components/BidiText'
+/* (2026-و44) «حط نقط على الرسمة» — طلب المستر: حل الرسمة بضغطة على المكان أو صورة من الكشكول */
+import { FigurePointEditor } from '@/components/student/FigurePointEditor'
+/* (2026-و44) جرس الإشعارات + بادج المجتمع — أي حاجة جديدة توصل للطالب */
+import { NotificationsBell } from '@/components/student/NotificationsBell'
 import { normalizeCorrectKey } from '@/lib/correct-key'
 import { BooksTab } from '@/components/student/BooksTab'
 /* (2026-و40-w) ورقة العمل: جداول قابلة للكتابة + رسومات مقصوصة + تجميع صفحات المصدر */
@@ -68,6 +73,52 @@ export function StudentPortal() {
 
   const grade = currentStudent?.grade || ''
   const studentId = currentStudent?.id || ''
+
+  /* ===== (2026-و44) بادج «المجتمع» — طلب المستر: «لو جه أكتر كل رسالة
+     يجيله إشعار فوق على القسم» — بنقارن آخر رسالة (id) بآخر واحد شافه
+     (localStorage) — وبنفتح التاب بيسجل إنه شاف. بيدور كل 60 ثانية. */
+  const [communityNewCount, setCommunityNewCount] = useState(0)
+  const communitySeenKey = 'mg_lastSeenCommunity_' + (grade || 'all')
+  useEffect(function () {
+    if (!grade || !studentId) return
+    var alive = true
+    var check = async function () {
+      try {
+        var r = await fetch('/api/discussions?grade=' + encodeURIComponent(grade) + '&pageSize=1', { cache: 'no-store' })
+        var j = await r.json()
+        var latest = j && j.discussions && j.discussions[0] ? String(j.discussions[0].id) : ''
+        if (!alive) return
+        if (latest) {
+          var seen = ''
+          try { seen = localStorage.getItem(communitySeenKey) || '' } catch (e) {}
+          if (seen && latest !== seen) {
+            /* جاب رسايل جديدة بعد آخر زيارة */
+            setCommunityNewCount(1)
+          } else if (!seen) {
+            /* أول مرة — مننبّهش بالغباء، بنسجل بس */
+            try { localStorage.setItem(communitySeenKey, latest) } catch (e) {}
+          }
+        }
+      } catch (e) {}
+    }
+    check()
+    var t = setInterval(check, 60000)
+    return function () { alive = false; clearInterval(t) }
+  }, [grade, studentId, communitySeenKey])
+  /* فتح تاب المجتمع = اتشاف */
+  useEffect(function () {
+    if (activeTab !== 'discussions' || !grade) return
+    setCommunityNewCount(0)
+    var markSeen = async function () {
+      try {
+        var r = await fetch('/api/discussions?grade=' + encodeURIComponent(grade) + '&pageSize=1', { cache: 'no-store' })
+        var j = await r.json()
+        var latest = j && j.discussions && j.discussions[0] ? String(j.discussions[0].id) : ''
+        if (latest) { try { localStorage.setItem(communitySeenKey, latest) } catch (e) {} }
+      } catch (e) {}
+    }
+    markSeen()
+  }, [activeTab, grade, communitySeenKey])
 
   useEffect(() => {
     if (!grade || !studentId) return
@@ -338,10 +389,14 @@ export function StudentPortal() {
           <h1 className="font-bold text-sm sm:text-base truncate">{currentStudent?.name?.split(' ')[0]}</h1>
           <Badge variant="outline" className="text-[10px] hidden sm:inline-flex">{grade}</Badge>
         </div>
-        <Button variant="ghost" size="sm" onClick={logout} className="text-destructive hover:text-destructive hover:bg-destructive/10">
-          <LogOut className="h-4 w-4 ml-1" />
-          <span className="hidden sm:inline">خروج</span>
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* (2026-و44) جرس الإشعارات — رد الشكوى/الكتب/الامتحانات/الواجبات/الإعلانات */}
+          <NotificationsBell studentId={studentId} />
+          <Button variant="ghost" size="sm" onClick={logout} className="text-destructive hover:text-destructive hover:bg-destructive/10">
+            <LogOut className="h-4 w-4 ml-1" />
+            <span className="hidden sm:inline">خروج</span>
+          </Button>
+        </div>
       </div>
 
       {/* Tab Bar */}
@@ -356,6 +411,10 @@ export function StudentPortal() {
           >
             <tab.icon className="h-4 w-4" />
             {tab.label}
+            {/* (2026-و44) بادج رسايل جديدة فوق على القسم — طلب المستر حرفيًا */}
+            {tab.id === 'discussions' && communityNewCount > 0 && (
+              <span className="ml-1 min-w-[16px] h-[16px] px-1 rounded-full bg-red-500 text-white text-[9px] font-bold inline-flex items-center justify-center">جديد</span>
+            )}
           </button>
         ))}
       </div>
@@ -756,6 +815,8 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
   /* (2026-و40-w) جداول ورقة العمل: قيم الطالب في الخانات — مفتاحها displayIdx
      (وضع ورقة العمل بيتعرض بالترتيب الأصلي — displayIdx = origIdx) */
   const [hwTableAnswers, setHwTableAnswers] = useState<Record<string, Record<number, string[][]>>>({})
+  /* (2026-و44) محرر النقط على الرسمة — مفتاحه hw:<id>:<displayIdx> */
+  const [pointsEditorFor, setPointsEditorFor] = useState<string>('')
   const [hwDrafts, setHwDrafts] = useState<Record<string, any>>({})
   const hwDraftKey = function (hwId: string) { return 'mg_hw_draft_' + hwId + '_' + studentId }
   const refreshHwDrafts = function () {
@@ -1188,7 +1249,7 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                               <p className={'text-xs font-bold mb-1 flex items-center gap-1.5 ' + (wa.isCorrect ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400')}>
                                 <span>📝</span> ملاحظة المصحح الذكي:
                               </p>
-                              <p className="text-xs leading-relaxed text-foreground whitespace-pre-wrap break-words" style={{ textAlign: 'right' }}><FractionText text={wa.aiFeedback || wa.feedback} /></p>
+                              <p className="text-xs leading-relaxed text-foreground whitespace-pre-wrap break-words"><BidiText text={wa.aiFeedback || wa.feedback} /></p>
                             </div>
                           )}
                           <div className="space-y-1">
@@ -1405,7 +1466,7 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                           <p className={'text-xs font-bold mb-1 flex items-center gap-1.5 ' + (writingAns.isCorrect === true ? 'text-emerald-700 dark:text-emerald-400' : writingAns.isCorrect === false ? 'text-red-700 dark:text-red-400' : 'text-foreground')}>
                             <span>📝</span> ملاحظة المصحح الذكي:
                           </p>
-                          <p className="text-xs leading-relaxed text-foreground whitespace-pre-wrap break-words" style={{ textAlign: 'right' }}><FractionText text={writingAns.aiFeedback || writingAns.feedback} /></p>
+                          <p className="text-xs leading-relaxed text-foreground whitespace-pre-wrap break-words" style={{ textAlign: 'right' }}><BidiText text={writingAns.aiFeedback || writingAns.feedback} /></p>
                         </div>
                       </div>
                     )}
@@ -1496,7 +1557,7 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                         <div className="pl-8 mt-1">
                           <div className="p-2.5 rounded-xl border-2 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-300 dark:border-emerald-700">
                             <p className="text-xs font-bold mb-1 text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5"><span>🤖</span> ملاحظة المصحح الذكي — ليه الإجابة دي:</p>
-                            <p className="text-xs leading-relaxed text-foreground whitespace-pre-wrap break-words"><FractionText text={nt} /></p>
+                            <p className="text-xs leading-relaxed text-foreground whitespace-pre-wrap break-words"><BidiText text={nt} /></p>
                           </div>
                         </div>
                       )
@@ -1807,6 +1868,29 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                                     />
                                   )}
                                   {q.figure && <WorksheetFigure figure={q.figure} />}
+                                  {qIsWriting && q.figure && q.figure.url && (
+                                    /* (2026-و44) «حط نقط على الرسمة» — الطريقة الأولى: يدوس على مكان النقطة،
+                                       والثانية: يصور الحل من الكشكول — الاتنين متاحين والمصحح بيحكم بالاتنين */
+                                    <div className="mt-1">
+                                      <button type="button" onClick={function () { setPointsEditorFor(pointsEditorFor === 'hw:' + hw.id + ':' + displayIdx ? '' : 'hw:' + hw.id + ':' + displayIdx) }} className="text-[11px] font-bold text-sky-700 dark:text-sky-300 hover:underline underline-offset-2 cursor-pointer">
+                                        🖱 حط نقط على الرسمة (أو صوّرها من الكشكول 📷)
+                                      </button>
+                                      {pointsEditorFor === 'hw:' + hw.id + ':' + displayIdx && (
+                                        <FigurePointEditor
+                                          figureUrl={q.figure.url}
+                                          onAttached={function (marker: string) {
+                                            setHwAnswers(function (prev) {
+                                              var a = { ...prev }
+                                              var cur = typeof a[hw.id]?.[displayIdx] === 'string' ? (a[hw.id][displayIdx] as string) : ''
+                                              a[hw.id] = { ...(a[hw.id] || {}), [displayIdx]: (cur + marker).trim() }
+                                              return a
+                                            })
+                                          }}
+                                          onClose={function () { setPointsEditorFor('') }}
+                                        />
+                                      )}
+                                    </div>
+                                  )}
                                   {qIsWriting ? (
                                     <div dir="ltr">
                                       <MathKeyboard
@@ -1900,6 +1984,10 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                   {/* (2026-و40-w) وضع ورقة العمل بيعرض المقالي جوه صفحاته — القسم القديم مقفول عليه */}
                   {!isWorksheet && hasWriting && (
                     <div className="space-y-4">
+                      {/* (2026-و44) رسالة قصيرة فوق الحل — طلب المستر حرفيًا */}
+                      <p className="text-[11px] font-bold text-sky-700 dark:text-sky-300 rounded-lg border border-sky-300/60 bg-sky-50/70 dark:bg-sky-950/30 dark:border-sky-800/60 px-3 py-2">
+                        ✏️ السؤال اللي فيه رسمة: اعمل الرسمة في كشكولك وصوّرها وارفع الصورة 📷 — أو دوس «حط نقط على الرسمة» على طول. والجدول اكتبه هنا بالكيبورد عادي — الاتنين بيحتسبوا في التصحيح.
+                      </p>
                       {hasMCQ && <div className="border-t pt-3"><p className="text-xs font-semibold text-amber-600 dark:text-amber-400">الأسئلة المقالية:</p></div>}
                       {displayWriting.map(function(q: any, wi: number) {
                         var displayIdx = displayMcq.length + wi
@@ -1911,6 +1999,30 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                               <span className="text-muted-foreground text-xs ml-2">({pts} pts)</span>
                               <Badge variant="outline" className="text-[9px] ml-2 border-amber-500/40 text-amber-600">Writing</Badge>
                             </p>
+                            {q.figure && <div dir="rtl" className="pt-1"><WorksheetFigure figure={q.figure} /></div>}
+                            {q.figure && q.figure.url && (
+                              /* (2026-و44) «حط نقط على الرسمة» — بدل ما تصور من الكشكول،
+                                 دوس على المكان وهنرفع الرسمة بنقطك للمصحح الذكي */
+                              <div dir="rtl" className="mt-1">
+                                <button type="button" onClick={function () { setPointsEditorFor(pointsEditorFor === 'hw:' + hw.id + ':' + displayIdx ? '' : 'hw:' + hw.id + ':' + displayIdx) }} className="text-[11px] font-bold text-sky-700 dark:text-sky-300 hover:underline underline-offset-2 cursor-pointer">
+                                  🖱 حط نقط على الرسمة (أو صوّرها من الكشكول 📷)
+                                </button>
+                                {pointsEditorFor === 'hw:' + hw.id + ':' + displayIdx && (
+                                  <FigurePointEditor
+                                    figureUrl={q.figure.url}
+                                    onAttached={function (marker: string) {
+                                      setHwAnswers(function (prev) {
+                                        var a = { ...prev }
+                                        var cur = typeof a[hw.id]?.[displayIdx] === 'string' ? (a[hw.id][displayIdx] as string) : ''
+                                        a[hw.id] = { ...(a[hw.id] || {}), [displayIdx]: (cur + marker).trim() }
+                                        return a
+                                      })
+                                    }}
+                                    onClose={function () { setPointsEditorFor('') }}
+                                  />
+                                )}
+                              </div>
+                            )}
                             <div dir="ltr">
                               <MathKeyboard
                                 value={typeof hwAnswers[hw.id]?.[displayIdx] === 'string' ? (hwAnswers[hw.id]?.[displayIdx] as string) : ''}
@@ -2135,6 +2247,8 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
   const [submitting, setSubmitting] = useState(false)
   /* 2026-و20 — ممنوع تسليم الامتحان لحد ما صور ورقة الحل توصل كاملة */
   const [examPhotoBusy, setExamPhotoBusy] = useState(false)
+  /* (2026-و44) محرر النقط على الرسمة في الامتحان — displayIdx المفتوح أو -1 */
+  const [examPointsEditor, setExamPointsEditor] = useState<number>(-1)
   const [examQuestions, setExamQuestions] = useState<any[]>([])
   const [examShuffleMap, setExamShuffleMap] = useState<number[]>([])
   /* (2026-و40-w) جداول ورقة العمل — مفتاحها displayIdx (وضع الورقة بالترتيب الأصلي) */
@@ -2756,7 +2870,7 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
                             if (nt) return (
                               <div className="mt-1 p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/25">
                                 <p className="text-[11px] font-bold text-emerald-600 mb-0.5">🤖 ملاحظة المصحح الذكي — ليه الإجابة دي:</p>
-                                <p className="text-xs leading-relaxed text-foreground whitespace-pre-wrap break-words"><FractionText text={nt} /></p>
+                                <p className="text-xs leading-relaxed text-foreground whitespace-pre-wrap break-words"><BidiText text={nt} /></p>
                               </div>
                             )
                             if (examMcqNotesLoading) return (
@@ -2809,7 +2923,7 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
                             <p className={'text-xs font-bold mb-1 flex items-center gap-1.5 ' + (w.isCorrect ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400')}>
                               <span>📝</span> ملاحظة المصحح الذكي:
                             </p>
-                            <p className="text-xs leading-relaxed text-foreground whitespace-pre-wrap break-words" style={{ textAlign: 'right' }}><FractionText text={w.feedback} /></p>
+                            <p className="text-xs leading-relaxed text-foreground whitespace-pre-wrap break-words"><BidiText text={w.feedback} /></p>
                           </div>
                         )}
                         <p className="text-xs text-foreground whitespace-pre-wrap break-words" dir="auto">إجابتك: <FractionText text={w.answer || '(فارغ)'} /></p>
@@ -2970,6 +3084,23 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
                           </div>
                         )}
                         {q.figure && <WorksheetFigure figure={q.figure} />}
+                        {qIsWriting && q.figure && q.figure.url && !examTimeUp && (
+                          /* (2026-و44) «حط نقط على الرسمة» — طريقتين: نقط على الشاشة أو صورة من الكشكول */
+                          <div dir="rtl" className="mt-1">
+                            <button type="button" onClick={function () { setExamPointsEditor(examPointsEditor === displayIdx ? -1 : displayIdx) }} className="text-[11px] font-bold text-sky-700 dark:text-sky-300 hover:underline underline-offset-2 cursor-pointer">
+                              🖱 حط نقط على الرسمة (أو صوّرها من الكشكول 📷)
+                            </button>
+                            {examPointsEditor === displayIdx && (
+                              <FigurePointEditor
+                                figureUrl={q.figure.url}
+                                onAttached={function (marker: string) {
+                                  setWritingAnswers(function (prev) { return { ...prev, [displayIdx]: ((prev[displayIdx] || '') + marker).trim() } })
+                                }}
+                                onClose={function () { setExamPointsEditor(-1) }}
+                              />
+                            )}
+                          </div>
+                        )}
                         {qIsWriting ? (
                           <div
                             dir="ltr"
@@ -3062,6 +3193,10 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
         {/* Writing Section */}
         {!isWorksheetExam && writingQs.length > 0 && (
           <div className="space-y-3">
+            {/* (2026-و44) رسالة قصيرة فوق الحل — طلب المستر حرفيًا */}
+            <p className="text-[11px] font-bold text-sky-700 dark:text-sky-300 rounded-lg border border-sky-300/60 bg-sky-50/70 dark:bg-sky-950/30 dark:border-sky-800/60 px-3 py-2">
+              ✏️ السؤال اللي فيه رسمة: اعمل الرسمة في كشكولك وصوّرها وارفع الصورة 📷 — أو دوس «حط نقط على الرسمة» على طول. والجدول اكتبه هنا بالكيبورد عادي — الاتنين بيحتسبوا في التصحيح.
+            </p>
             {mcqQs.length > 0 && <div className="border-t pt-3"><p className="text-xs font-semibold text-amber-600 dark:text-amber-400">الأسئلة المقالية:</p></div>}
             {writingQs.map(function(item, wi) {
               var q = item.q
@@ -3078,6 +3213,24 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
                     </p>
                     {/* (25-b2) عند انتهاء الوقت: منع تعديل نهائي — pointer-events +
                         قفل الكيبورد على الـ MathKeyboard من غير لمس الملف بتاعه */}
+                    {q.figure && <WorksheetFigure figure={q.figure} />}
+                    {q.figure && q.figure.url && !examTimeUp && (
+                      /* (2026-و44) «حط نقط على الرسمة» — طريقتين متاحين */
+                      <div dir="rtl" className="mt-1">
+                        <button type="button" onClick={function () { setExamPointsEditor(examPointsEditor === displayIdx ? -1 : displayIdx) }} className="text-[11px] font-bold text-sky-700 dark:text-sky-300 hover:underline underline-offset-2 cursor-pointer">
+                          🖱 حط نقط على الرسمة (أو صوّرها من الكشكول 📷)
+                        </button>
+                        {examPointsEditor === displayIdx && (
+                          <FigurePointEditor
+                            figureUrl={q.figure.url}
+                            onAttached={function (marker: string) {
+                              setWritingAnswers(function (prev) { return { ...prev, [displayIdx]: ((prev[displayIdx] || '') + marker).trim() } })
+                            }}
+                            onClose={function () { setExamPointsEditor(-1) }}
+                          />
+                        )}
+                      </div>
+                    )}
                     <div
                       dir="ltr"
                       className={examTimeUp ? 'pointer-events-none select-none opacity-60' : ''}

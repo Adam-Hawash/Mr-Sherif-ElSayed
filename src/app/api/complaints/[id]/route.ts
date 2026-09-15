@@ -8,6 +8,7 @@
 // ============================================================
 import { NextResponse } from 'next/server'
 import { db, safeWrite } from '@/lib/db'
+import { notifyStudent } from '@/lib/notify'
 
 export var maxDuration = 10
 
@@ -46,6 +47,14 @@ export async function PATCH(request: Request, ctx: any) {
 
     var rows = (await db.$queryRawUnsafe('SELECT * FROM Complaint WHERE id = ? LIMIT 1', id)) || []
     if (!rows.length) return NextResponse.json({ error: 'الشكوى مش موجودة' }, { status: 404 })
+    /* (و44) طلب المستر: لما الأدمن يرد على الطالب يجيله إشعار إن الشكوى اتحلت */
+    try {
+      var cid = String(rows[0].studentId || '')
+      if (cid && (body.reply !== undefined || status === 'resolved')) {
+        var nTitle = status === 'resolved' ? '✅ المستر رد على شكواك — واتحلت' : '💬 المستر رد على شكواك'
+        notifyStudent(cid, 'complaint_reply', nTitle, String(reply || '').slice(0, 240) || 'افتح تاب الشكاوى وشوف الرد')
+      }
+    } catch (nErr) {}
     return NextResponse.json({ complaint: rows[0], message: 'تم الحفظ ✅' })
   } catch (error) {
     console.error('[Complaints] PATCH error:', error)

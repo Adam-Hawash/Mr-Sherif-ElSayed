@@ -20,7 +20,7 @@ import {
   Link2, Activity, Eye, ImagePlus, Trophy, UserX, Camera,
   PlayCircle, Pause, Film, Search, FileDown, PictureInPicture2, Save, Sparkles, Wallet,
   Video as VideoIcon,
-  ChevronLeft, CheckCircle2, Smartphone, RotateCcw, ShieldCheck, Monitor, Tablet, Flag, GraduationCap, UsersRound, PieChart, BookOpen
+  ChevronLeft, CheckCircle2, Smartphone, RotateCcw, ShieldCheck, Monitor, Tablet, Flag, GraduationCap, UsersRound, PieChart, BookOpen, ChevronDown
 } from 'lucide-react'
 import { AdminComplaints } from './AdminComplaints'
 import { CMSPanel } from './CMSPanel'
@@ -41,6 +41,7 @@ import { MathKeyboard } from '@/components/student/MathKeyboard'
 import { openPdf, renderPageToJpeg } from '@/lib/pdf-pages'
 /* (2026-و40-w) ورقة العمل: قص رسومات الأسئلة + عرض الجداول/الرسومات في المراجعة */
 import { ensureFigureUrls } from '@/lib/question-figures'
+import BidiText from '@/components/BidiText'
 import { WorksheetTableReadonly, WorksheetFigure, parseTableValuesFromText } from '@/components/worksheet/WorksheetParts'
 /* (2026-و40) الكتب والملازم — تاب مكتبة الكتب للطالب */
 import { BooksManager } from './BooksManager'
@@ -2009,7 +2010,7 @@ function ExamTrackingPanel({ onViewImage }: { onViewImage?: (src: string) => voi
                                                 {aq.aiExtractedAnswer && (
                                                   <div className="mt-1 p-1.5 rounded bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-900/40">
                                                     <p className="text-[9px] font-bold text-blue-700 dark:text-blue-400 mb-0.5">🤖 AI قرأ الإجابة من الصورة:</p>
-                                                    <p className="text-foreground whitespace-pre-wrap break-words" dir="auto"><FractionText text={aq.aiExtractedAnswer} /></p>
+                                                    <p className="text-foreground whitespace-pre-wrap break-words"><BidiText text={aq.aiExtractedAnswer} /></p>
                                                     {aq.aiFeedback && (
                                                       <p className="text-[9px] text-muted-foreground mt-1">التعليق: {aq.aiFeedback}</p>
                                                     )}
@@ -3554,6 +3555,11 @@ function AIExtractionPanel({ onRefresh }: { onRefresh: () => void }) {
      (ممنوع الاستبدال) مع srcName «الملف الثاني/الثالث/…» على الدفعة الجديدة */
   const [appendingFile, setAppendingFile] = useState(false)
   const [fileBatchCount, setFileBatchCount] = useState(0)
+  /* (2026-و44) الكتب المحفوظة في وضع الكتاب — طلب المستر: «الكتاب المضاف باللينك
+     يبقى ثابت في كل مرة — علامة/سهم، لو دوست عليه تظهر صفحات الكتاب» */
+  const [savedBooks, setSavedBooks] = useState<any[]>([])
+  const [savedBooksLoading, setSavedBooksLoading] = useState(false)
+  const [showSavedBooks, setShowSavedBooks] = useState(false)
 
   var resetAll = function() {
     setStep(1); setExtractType('exam'); setGrade(''); setTitle('')
@@ -3582,7 +3588,13 @@ function AIExtractionPanel({ onRefresh }: { onRefresh: () => void }) {
      3) لو أول ملف → استبدال عادي من غير srcName (سؤال بمصدر واحد بيتعرض «صفحة N» بس) */
   var finishExtraction = async function (newQs: any[], cropSource: { file?: File | null; doc?: any | null }) {
     try {
-      var needCrop = newQs.filter(function (q: any) { return q && q.figure && q.figure.bbox && !q.figure.url }).length
+      /* (و44) العدّاد بيشمل رسومات الاختيارات كمان (optionFigures) */
+      var needCrop = 0
+      newQs.forEach(function (q: any) {
+        if (!q) return
+        if (q.figure && q.figure.bbox && !q.figure.url) needCrop++
+        if (Array.isArray(q.optionFigures)) q.optionFigures.forEach(function (of: any) { if (of && of.bbox && !of.url) needCrop++ })
+      })
       if (needCrop > 0) {
         setStatusMsg('جهز الرسومات 0 من ' + needCrop + '…')
         await ensureFigureUrls(newQs, cropSource || {}, function (done: number, total: number) {
@@ -3836,6 +3848,53 @@ function AIExtractionPanel({ onRefresh }: { onRefresh: () => void }) {
       toast.success('اتفتح الكتاب — عدد الصفحات: ' + opened.numPages)
     } catch (e: any) {
       toast.error('مقدرتش أفتح ملف الـ PDF: ' + (e.message || ''))
+    }
+    setBookPdfLoading(false)
+  }
+
+  /* (2026-و44) قايمة الكتب المحفوظة (من تاب الكتب والملازم — ملف أو لينك خارجي)
+     اللينك الخارجي بيمر من /api/books/proxy (pdf.js مش بيوصل للينكات بسبب CORS) */
+  var loadSavedBooks = async function () {
+    setSavedBooksLoading(true)
+    try {
+      var r = await fetch('/api/books', { cache: 'no-store' })
+      var j = await r.json()
+      setSavedBooks(j.books || [])
+    } catch (e) { /* صامت */ }
+    setSavedBooksLoading(false)
+  }
+  var openSavedBook = async function (b: any) {
+    if (bookPdfLoading) return
+    setBookPdfLoading(true)
+    try {
+      var blob: Blob | null = null
+      if (b.sourceUrl) {
+        var res = await fetch('/api/books/proxy?url=' + encodeURIComponent(b.sourceUrl), { cache: 'no-store' })
+        if (!res.ok) {
+          var je: any = null
+          try { je = await res.json() } catch (e) {}
+          throw new Error((je && je.error) || 'مقدرتش أجيب الكتاب من اللينك — اتأكد إن اللينك شغال')
+        }
+        blob = await res.blob()
+      } else if (b.filePath) {
+        var res2 = await fetch(b.filePath, { cache: 'no-store' })
+        if (!res2.ok) throw new Error('مقدرتش أجيب ملف الكتاب')
+        blob = await res2.blob()
+      } else {
+        throw new Error('الكتاب ده من غير ملف ولا لينك')
+      }
+      var file = new File([blob], (b.title || 'book') + '.pdf', { type: 'application/pdf' })
+      setBookFile(file)
+      setBookName(b.title || '')
+      var opened = await openPdf(file)
+      bookDocRef.current = opened.doc
+      setBookNumPages(opened.numPages)
+      setBookFrom(1)
+      setBookTo(Math.min(opened.numPages, 30))
+      toast.success('اتفتح «' + (b.title || 'الكتاب') + '» — ' + opened.numPages + ' صفحة — حدد الصفحات واضغط استخراج من الصفحات')
+      setShowSavedBooks(false)
+    } catch (e: any) {
+      toast.error(e && e.message ? e.message : 'حصلت مشكلة في فتح الكتاب')
     }
     setBookPdfLoading(false)
   }
@@ -4164,6 +4223,31 @@ function AIExtractionPanel({ onRefresh }: { onRefresh: () => void }) {
                 {bookFile ? bookFile.name : 'اختر ملف الكتاب (PDF)'}
               </Button>
             </div>
+            {/* (2026-و44) الكتب المحفوظة — سهم يفتح قايمة الكتب المضافة من تاب
+               «الكتب والملازم» (ملف أو لينك) — دوست على الكتاب يفتح وتحدد صفحاته */}
+            <div className="space-y-1.5">
+              <button type="button" onClick={function () { var next = !showSavedBooks; setShowSavedBooks(next); if (next && savedBooks.length === 0 && !savedBooksLoading) loadSavedBooks() }} className="w-full flex items-center justify-between rounded-md border border-sky-300/60 bg-white/70 dark:bg-transparent px-3 py-2 text-sm font-bold text-sky-700 dark:text-sky-300 hover:bg-sky-100/60 dark:hover:bg-sky-900/30 transition-colors cursor-pointer">
+                <span>📚 الكتب المحفوظة {savedBooks.length > 0 ? '(' + savedBooks.length + ')' : ''} — دوس على الكتاب يفتح على طول</span>
+                <ChevronDown className={'h-4 w-4 transition-transform' + (showSavedBooks ? ' rotate-180' : '')} />
+              </button>
+              {showSavedBooks && (
+                <div className="max-h-60 overflow-y-auto custom-scrollbar rounded-md border border-border">
+                  {savedBooksLoading ? (
+                    <div className="flex items-center justify-center py-4"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>
+                  ) : savedBooks.length === 0 ? (
+                    <p className="text-xs text-muted-foreground text-center py-4 px-3">مفيش كتب محفوظة — ضيف الكتب من تاب «الكتب والملازم» بالملف أو باللينك وهتلاقيها هنا ثابتة</p>
+                  ) : savedBooks.map(function (b: any) {
+                    var srcLabel = b.sourceUrl ? '🔗 لينك خارجي' : (b.filePath ? '📄 ملف محفوظ' : '')
+                    return (
+                      <button key={b.id} type="button" onClick={function () { openSavedBook(b) }} className="w-full text-right px-3 py-2 border-b border-border/50 last:border-0 hover:bg-muted/60 transition-colors cursor-pointer">
+                        <p className="text-xs font-bold truncate">📕 {b.title}</p>
+                        <p className="text-[10px] text-muted-foreground">{srcLabel}{b.grade ? ' — ' + b.grade : ''}</p>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
             {bookFile && <p className="text-xs text-muted-foreground text-center">{(bookFile.size / 1024 / 1024).toFixed(1)} MB</p>}
             {bookNumPages > 0 && <p className="text-xs text-center font-medium text-sky-600 dark:text-sky-400">عدد صفحات الكتاب: {bookNumPages}</p>}
             <div className="grid grid-cols-2 gap-2">
@@ -4325,6 +4409,8 @@ function AIExtractionPanel({ onRefresh }: { onRefresh: () => void }) {
                   <>
                     <div className="grid grid-cols-2 gap-2">
                       {(q.options || []).map(function(opt, oi) {
+                        /* (و44) الاختيار ده فيه رسمة من الملف (bbox) ولسه متلقطتش → تنبيه واضح */
+                        var ofMissing = !!(Array.isArray(q.optionFigures) && q.optionFigures[oi] && q.optionFigures[oi].bbox && !q.optionFigures[oi].url)
                         return (
                           <div key={oi} className="space-y-1">
                             <div className="flex items-center gap-1.5">
@@ -4351,11 +4437,14 @@ function AIExtractionPanel({ onRefresh }: { onRefresh: () => void }) {
                                       <Button type="button" variant="ghost" size="sm" className="h-6 w-6 p-0 text-destructive" title="إزالة صورة الاختيار" onClick={function () { removeOptionFigure(qi, oi) }}><X className="h-3 w-3" /></Button>
                                     </>
                                   ) : (
-                                    <Button type="button" variant="ghost" size="sm" className="h-6 px-1.5 text-[10px] text-muted-foreground" title="ارفع صورة للاختيار" onClick={function () { var el = optionFigureInputRefs.current[qi + '_' + oi]; if (el) el.click() }}>📷</Button>
+                                    <Button type="button" variant="ghost" size="sm" className={ofMissing ? 'h-6 px-1.5 text-[10px] font-bold border border-amber-500 bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 animate-pulse' : 'h-6 px-1.5 text-[10px] text-muted-foreground'} title={ofMissing ? 'الاختيار ده صورة في الملف الأصلي — ارفع صورته عشان تظهر للطالب' : 'ارفع صورة للاختيار'} onClick={function () { var el = optionFigureInputRefs.current[qi + '_' + oi]; if (el) el.click() }}>📷</Button>
                                   )}
                                 </div>
                               )
                             })()}
+                            {ofMissing && (
+                              <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400">⚠ الاختيار ده صورة في الملف الأصلي — دوس 📷 وارفع صورته</p>
+                            )}
                             {hasMathMarkup(opt || '') && (
                               <p className="text-xs text-foreground pr-6" dir="ltr" style={{ textAlign: 'left' }}><FractionText text={opt || ''} /></p>
                             )}
