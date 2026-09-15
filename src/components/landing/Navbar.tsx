@@ -28,6 +28,8 @@ import {
   Trophy,
   Shapes,
   CalendarClock,
+  Code2,
+  Heart,
 } from 'lucide-react'
 import { toast } from 'sonner'
 /* (2026-و29) «أوائل الطلبة» في النافبار — طلب المستر: زرار جنب Geometry
@@ -93,6 +95,24 @@ export function Navbar() {
   return (
     <>
       <header className="sticky top-0 z-50 w-full border-b bg-background/80 backdrop-blur-md">
+        {/* (و42) توقيع المطور فوق النافبار — زي منصة القائد: لينك لبرتفوليو المطور */}
+        {currentView === 'landing' && (
+          <div className="w-full bg-[#111827] text-white/90 border-b border-white/10">
+            <a
+              href={cfg.hero_developer_url || 'https://prime-developer-portfolio-11.vercel.app'}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Developer Portfolio"
+              className="flex items-center justify-center gap-1.5 py-1.5 text-[11px] hover:text-yellow-300 transition-colors group"
+            >
+              <Code2 className="h-3 w-3" />
+              <span dir="ltr" className="font-semibold group-hover:underline underline-offset-2">
+                {cfg.footer_made_by_label || 'Developed by Adam Hawash'}
+              </span>
+              <Heart className="h-2.5 w-2.5 text-red-400" />
+            </a>
+          </div>
+        )}
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
           {/* Brand - Right side (RTL start) */}
           <button
