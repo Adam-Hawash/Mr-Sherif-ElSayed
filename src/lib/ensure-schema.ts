@@ -35,7 +35,8 @@ export var SCHEMA_TABLES = [
   // (2026-و37) حساب ولي الأمر — مربوط بحساب ابنه بـ studentId (زي ما هو في Student.parentPhone)
   'CREATE TABLE IF NOT EXISTS Parent (id TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT "", phone TEXT NOT NULL UNIQUE, password TEXT NOT NULL DEFAULT "", studentId TEXT NOT NULL, createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
   // (2026-و40) الكتب والملازم — مكتبة PDF للطالب (تاب أدمن + تاب طالب)
-  'CREATE TABLE IF NOT EXISTS Book (id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT \'\', filePath TEXT NOT NULL DEFAULT \'\', fileName TEXT NOT NULL DEFAULT \'\', fileType TEXT NOT NULL DEFAULT \'application/pdf\', sizeBytes INTEGER NOT NULL DEFAULT 0, grade TEXT NOT NULL DEFAULT \'\', createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL)',
+  // (و43) sourceUrl = لينك خارجي للكتب الكبيرة (بدل تخزين الملف نفسه)
+  'CREATE TABLE IF NOT EXISTS Book (id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT \'\', filePath TEXT NOT NULL DEFAULT \'\', sourceUrl TEXT NOT NULL DEFAULT \'\', fileName TEXT NOT NULL DEFAULT \'\', fileType TEXT NOT NULL DEFAULT \'application/pdf\', sizeBytes INTEGER NOT NULL DEFAULT 0, grade TEXT NOT NULL DEFAULT \'\', createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL)',
 ]
 
 var SCHEMA_COLUMNS = [
@@ -100,6 +101,9 @@ var SCHEMA_COLUMNS = [
   ['Student', 'groupId', 'TEXT', "DEFAULT ''"],
   ['Exam', 'targetGroupIds', 'TEXT', "DEFAULT ''"],
   ['Homework', 'targetGroupIds', 'TEXT', "DEFAULT ''"],
+  // (و43) الكتب بلينك خارجي — عمود جديد على Book للقواعد الموجودة
+  // (بينفذ كـ: ALTER TABLE Book ADD COLUMN sourceUrl TEXT NOT NULL DEFAULT '')
+  ['Book', 'sourceUrl', 'TEXT', "NOT NULL DEFAULT ''"],
 ]
 
 var SCHEMA_FIXES = [
@@ -165,7 +169,11 @@ export var CORE_TABLES = ['Admin', 'Student', 'StudentActivity', 'Video', 'Homew
  * SCHEMA_TABLES + CORE_TABLES، وتغيير المفتاح بيضمن إن أول ريكوست بعد النشر
  * يعمل الفحص الكامل وينشئ الجدول على Turso (درس حادثة و38: جدول ناقص من
  * CORE_TABLES + بصمة قديمة = الجدول عمرك ما اتعمل على الإنتاج). */
-var SCHEMA_HASH_KEY = 'schema_heal_hash_v2_w40'
+/* (و43) مفتاح البصمة اتبدّل تاني — عمود Book.sourceUrl (كتب بلينك خارجي)
+ * دخل SCHEMA_COLUMNS، وتغيير المفتاح بيضمن إن أول ريكوست بعد النشر يعمل
+ * الفحص الكامل وينفّذ ALTER TABLE على قواعد Turso القديمة — من غير البَمب
+ * العمود عمرك ما بيتضاف على الإنتاج (البصمة القديمة مطابقة بتنطي الترميم). */
+var SCHEMA_HASH_KEY = 'schema_heal_hash_v2_w43'
 
 /* ============================================================
  * 2026-و23 — **إصلاح بطء المنصة** (طلب المستر: «المنصة بطيئة، تسجيل

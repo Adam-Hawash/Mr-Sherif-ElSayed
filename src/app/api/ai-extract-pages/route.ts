@@ -133,7 +133,16 @@ function buildPagesPrompt(pageNumbers: number[], mode: 'all' | 'top', count: num
   lines.push('- TABLES: if a question shows a printed table, return "table" reproducing it EXACTLY: {"headers":["x","f(x)","(x, f(x))"],"rows":[[{"t":"-2"},{"t":"","blank":true},{"t":"","blank":true}]]}.')
   lines.push('  * Printed cells → {"t":"<exact printed text>"}. Cells the STUDENT must fill → {"t":"","blank":true}.')
   lines.push('  * Do NOT blank printed cells, and do NOT fill the blank cells — the student writes inside them.')
-  lines.push('- GRAPHS/DIAGRAMS: if a question contains a graph, plot, or diagram, NEVER flatten it into text and NEVER describe it as words: return "figure":{"page":<the page number the figure is on>,"bbox":{"x":..,"y":..,"w":..,"h":..}} where bbox is the bounding rectangle of the figure as FRACTIONS of the WHOLE page image (each value 0..1, x/y = top-left corner, w/h = size of the rectangle).')
+  /* (و43) قاعدة صارمة للرسومات: أي رسمة/منحنى/شكل هندسي لازم تترجع figure /
+     optionFigures — ممنوع تحويل الرسمة لنص وصف أو جدول إحداثيات، والـ
+     modelAnswer بيبقى النتائج النهائية المختصرة بس */
+  lines.push('HARD RULE — FIGURES: for EVERY question (and every MCQ option) that contains or depends on any drawing, graph, plotted curve, geometric shape, diagram, chart, or image-based table: you MUST return figure/optionFigures data:')
+  lines.push('  * question-level "figure":{"page":N,"bbox":{"x":..,"y":..,"w":..,"h":..}}')
+  lines.push('  * option-level "optionFigures":[{"page":N,"bbox":{...}} or null, ...] aligned with the options array.')
+  lines.push('  * bbox = tight rectangle around the drawing INCLUDING its axes/labels, as FRACTIONS of the whole page image (0..1, x/y = top-left).')
+  lines.push('  * NEVER convert a drawing into text: do NOT describe the graph, do NOT write coordinate tables or step-by-step plotting inside question text or modelAnswer.')
+  lines.push('  * modelAnswer = concise final results only (example: "axis of symmetry: x = 3, maximum value = 4").')
+  lines.push('  * If unsure whether something is a figure, treat it AS a figure. Options that are pure images get empty string text plus their optionFigures entry.')
   lines.push('- modelAnswer must include the expected table values when applicable (e.g. "f(-1)=5, f(0)=3 → points (-1,5), (0,3)").')
   lines.push('- MATH FORMAT (the platform renders it as real math): powers as x^2; EVERY fraction as \\frac{numerator}{denominator} (NEVER a/b, and do NOT wrap the whole numerator/denominator in parentheses); square root √, cube root ∛, × ÷ π ≤ ≥ ≠ ≈ ∠ °. No $ signs, no other LaTeX, no markdown.')
   lines.push('- ALL output text in English (same as the rest of the platform).')

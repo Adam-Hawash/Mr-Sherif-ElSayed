@@ -84,26 +84,35 @@ export async function POST(request) {
        figure/optionFigures بتتحفظ جنب الحقول القانونية زي ما هي (كلها اختيارية
        والأسئلة القديمة من غيرها بتشتغل عادي). figure.url لازم يكون مسار
        ملفات المنصة (/api/files/<id>) — أي قيمة تانية بترمى (حماية من حشرات) */
+    /* (و43) الرسمة أو صورة الاختيار اليدوية ممكن تكون url بس من غير bbox —
+       بتقبل بشرط إن المسار من ملفات المنصة. optionFigures بتفضل
+       متحاذاة مع options (الفراغات null مش بتتشال) */
     function worksheetFields(q: any) {
       var ws: any = {}
       var spN = parseInt(String(q.sourcePage), 10)
       if (isFinite(spN) && spN > 0) ws.sourcePage = spN
       if (q.srcName && String(q.srcName).trim()) ws.srcName = String(q.srcName).trim()
       if (q.table && Array.isArray(q.table.rows)) ws.table = q.table
-      if (q.figure && q.figure.bbox) {
-        var fig: any = { page: parseInt(String(q.figure.page || 1), 10) || 1, bbox: q.figure.bbox }
-        if (typeof q.figure.url === 'string' && /^\/api\/files\//.test(q.figure.url)) fig.url = q.figure.url
+      var figUrlOk = q.figure && typeof q.figure.url === 'string' && /^\/api\/files\//.test(q.figure.url)
+      if (q.figure && (q.figure.bbox || figUrlOk)) {
+        var fig: any = { page: parseInt(String(q.figure.page || 1), 10) || 1 }
+        if (q.figure.bbox) fig.bbox = q.figure.bbox
+        if (figUrlOk) fig.url = q.figure.url
         ws.figure = fig
       }
       if (Array.isArray(q.optionFigures)) {
         var ofs: any[] = []
+        var hasAny = false
         q.optionFigures.forEach(function (ofg: any) {
-          if (!ofg || !ofg.bbox) return
-          var o: any = { bbox: ofg.bbox }
-          if (typeof ofg.url === 'string' && /^\/api\/files\//.test(ofg.url)) o.url = ofg.url
-          ofs.push(o)
+          if (!ofg) { ofs.push(null); return }
+          var o: any = {}
+          var urlOk = typeof ofg.url === 'string' && /^\/api\/files\//.test(ofg.url)
+          if (ofg.bbox) o.bbox = ofg.bbox
+          if (urlOk) o.url = ofg.url
+          if (o.bbox || o.url) { ofs.push(o); hasAny = true }
+          else ofs.push(null)
         })
-        if (ofs.length > 0) ws.optionFigures = ofs
+        if (hasAny) ws.optionFigures = ofs
       }
       return ws
     }
