@@ -154,6 +154,12 @@ export async function GET() {
       if (c.key === 'favicon_reset_v1') continue
       map[c.key] = c.value
     }
+    /* توقيع المطور (و41): القيمة القديمة الافتراضية «Made by Adam Hawash» المحفوظة
+       في الداتابيز كانت بتتجاوز الافتراضي الجديد — بتتعامل هنا كغير مضبوطة وترجع
+       «Developed by Adam Hawash» (الأدمن برضه يقدر يعدّلها عادي من لوحة التحكم) */
+    if (map.footer_made_by_label === 'Made by Adam Hawash') {
+      map.footer_made_by_label = DEFAULTS.footer_made_by_label
+    }
     return NextResponse.json(map)
   } catch (error) {
     console.error('Config fetch error:', error)
