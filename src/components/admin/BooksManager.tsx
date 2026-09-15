@@ -17,7 +17,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import {
-  BookOpen, Upload, Loader2, Trash2, FileDown, RefreshCw,
+  BookOpen, Upload, Loader2, Trash2, FileDown, RefreshCw, ExternalLink, Link2,
 } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
@@ -44,6 +44,9 @@ export function BooksManager() {
   const [grade, setGrade] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  /* (و43) وضع الإضافة: ملف صغير بالرفع المجزأ أو لينك خارجي للكتب الكبيرة */
+  const [srcMode, setSrcMode] = useState<'file' | 'link'>('file')
+  const [linkUrl, setLinkUrl] = useState('')
 
   var loadBooks = async function () {
     if (!adminId) return
@@ -115,6 +118,34 @@ export function BooksManager() {
     setSaving(false); setUploadPct(-1); setUploadMsg('')
   }
 
+  /* (و43) حفظ كتاب بلينك خارجي: مفيش رفع خالص — بنسجل اللينك بس في قاعدة
+     البيانات (وفّر مساحة التخزين) والطالب بيفتح/يحمل من المصدر مباشرة */
+  var handleSaveLink = async function () {
+    if (!adminId) { toast.error('مفيش جلسة أدمن'); return }
+    if (!title.trim()) { toast.error('اكتب عنوان الكتاب الأول'); return }
+    var link = linkUrl.trim()
+    if (!/^https?:\/\//i.test(link)) { toast.error('لينك الكتاب لازم يبدأ بـ http:// أو https://'); return }
+    setSaving(true)
+    try {
+      var res = await fetch('/api/admin/books?adminId=' + encodeURIComponent(adminId), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: title.trim(), description: description.trim(), grade: grade, sourceUrl: link }),
+      })
+      var data = await res.json()
+      if (res.ok && (data.success || data.book)) {
+        toast.success('تم إضافة الكتاب بلينك خارجي!')
+        setTitle(''); setDescription(''); setGrade(''); setLinkUrl('')
+        await loadBooks()
+      } else {
+        toast.error(data.error || 'خطأ في حفظ الكتاب')
+      }
+    } catch (e) {
+      toast.error('خطأ في الاتصال')
+    }
+    setSaving(false)
+  }
+
   var handleDelete = async function (b: any) {
     if (!adminId) { toast.error('مفيش جلسة أدمن'); return }
     if (!window.confirm('حذف "' + (b.title || '') + '" نهائيًا؟ الطالب مش هيشوفه تاني.')) return
@@ -140,6 +171,15 @@ export function BooksManager() {
       <CardContent className="space-y-6">
         {/* ===== نموذج الرفع ===== */}
         <div className="p-4 rounded-xl border-2 border-dashed border-sky-400/40 bg-sky-50 dark:bg-sky-950/20 space-y-3">
+          {/* (و43) سوتشر وضع الإضافة: ملف صغير أو لينك خارجي للكتب الكبيرة */}
+          <div className="flex gap-2 p-1 rounded-lg bg-white/60 dark:bg-white/5">
+            <button type="button" onClick={function () { setSrcMode('file') }} className={"flex-1 flex items-center justify-center py-2 rounded-md text-xs sm:text-sm font-medium transition-all " + (srcMode === 'file' ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground')}>
+              📁 رفع ملف (للملفات الصغيرة ≤ 60MB)
+            </button>
+            <button type="button" onClick={function () { setSrcMode('link') }} className={"flex-1 flex items-center justify-center py-2 rounded-md text-xs sm:text-sm font-medium transition-all " + (srcMode === 'link' ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground')}>
+              🔗 لينك خارجي (مستحسن للكتب الكبيرة)
+            </button>
+          </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">عنوان الكتاب *</Label>
@@ -157,24 +197,37 @@ export function BooksManager() {
             <Label className="text-xs font-medium">وصف مختصر (اختياري)</Label>
             <Input value={description} onChange={function (e) { setDescription(e.target.value) }} placeholder="مثال: شرح + مسائل الباب الأول" />
           </div>
-          <div className="flex items-center gap-2">
-            <input ref={fileRef} type="file" accept=".pdf,application/pdf" className="hidden" onChange={function (e) { setFile(e.target.files?.[0] || null) }} />
-            <Button type="button" variant="outline" onClick={function () { fileRef.current?.click() }} className="flex-1 border-sky-400/40 text-sky-700 dark:text-sky-400">
-              <Upload className="h-4 w-4 ml-2" />{file ? file.name : 'اختر ملف الكتاب (PDF) — أقصى حجم 60 ميجا'}
-            </Button>
-          </div>
-          {file && <p className="text-xs text-muted-foreground text-center">{(file.size / 1024 / 1024).toFixed(1)} MB</p>}
-          {uploadPct >= 0 && (
-            <div className="space-y-1">
-              <div className="h-2 rounded-full bg-muted overflow-hidden">
-                <div className="h-full bg-sky-500 transition-all" style={{ width: uploadPct + '%' }} />
+          {srcMode === 'file' ? (
+            <>
+              <div className="flex items-center gap-2">
+                <input ref={fileRef} type="file" accept=".pdf,application/pdf" className="hidden" onChange={function (e) { setFile(e.target.files?.[0] || null) }} />
+                <Button type="button" variant="outline" onClick={function () { fileRef.current?.click() }} className="flex-1 border-sky-400/40 text-sky-700 dark:text-sky-400">
+                  <Upload className="h-4 w-4 ml-2" />{file ? file.name : 'اختر ملف الكتاب (PDF) — أقصى حجم 60 ميجا'}
+                </Button>
               </div>
-              {uploadMsg && <p className="text-[11px] text-muted-foreground text-center">{uploadMsg}</p>}
+              {file && <p className="text-xs text-muted-foreground text-center">{(file.size / 1024 / 1024).toFixed(1)} MB</p>}
+              {uploadPct >= 0 && (
+                <div className="space-y-1">
+                  <div className="h-2 rounded-full bg-muted overflow-hidden">
+                    <div className="h-full bg-sky-500 transition-all" style={{ width: uploadPct + '%' }} />
+                  </div>
+                  {uploadMsg && <p className="text-[11px] text-muted-foreground text-center">{uploadMsg}</p>}
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">لينك الكتاب (PDF) *</Label>
+              <Input dir="ltr" value={linkUrl} onChange={function (e) { setLinkUrl(e.target.value) }} placeholder="https://drive.google.com/file/d/... أو أي لينك مباشر" />
+              {/* (و43) توضيح مهم للكتب الكبيرة */}
+              <p className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/30 p-2 rounded-md">
+                الكتاب الكبير (200MB+) مش بيتخزن في قاعدة البيانات خالص — بنحفظ اللينك بس والطلاب بيحملوا منه فورًا. وللاستخراج منه: نزّله على جهازك وافتحه في وضع (كتاب — صفحات محددة)
+              </p>
             </div>
           )}
-          <Button className="w-full" onClick={handleUpload} disabled={saving}>
-            {saving ? <Loader2 className="h-4 w-4 ml-1 animate-spin" /> : <Upload className="h-4 w-4 ml-1" />}
-            {saving ? 'جاري الرفع...' : 'رفع الكتاب'}
+          <Button className="w-full" onClick={srcMode === 'link' ? handleSaveLink : handleUpload} disabled={saving}>
+            {saving ? <Loader2 className="h-4 w-4 ml-1 animate-spin" /> : srcMode === 'link' ? <Link2 className="h-4 w-4 ml-1" /> : <Upload className="h-4 w-4 ml-1" />}
+            {saving ? (srcMode === 'link' ? 'جاري الحفظ...' : 'جاري الرفع...') : (srcMode === 'link' ? 'حفظ الكتاب باللينك' : 'رفع الكتاب')}
           </Button>
         </div>
 
@@ -189,7 +242,7 @@ export function BooksManager() {
         ) : books.length === 0 ? (
           <div className="text-center py-10 text-muted-foreground">
             <BookOpen className="h-10 w-10 mx-auto mb-3 opacity-40" />
-            <p className="text-sm">مفيش كتب متضافة لسه — ارفع أول كتاب من الفورم اللي فوق</p>
+            <p className="text-sm">مفيش كتب متضافة لسه — ارفع أول كتاب أو ضيف لينك من الفورم اللي فوق</p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -203,14 +256,23 @@ export function BooksManager() {
                     <p className="font-medium text-sm truncate">{b.title}</p>
                     <div className="flex items-center gap-2 flex-wrap text-[10px] text-muted-foreground">
                       {b.grade && <Badge variant="outline" className="text-[10px]">{b.grade}</Badge>}
-                      <span>{formatBookSize(b.sizeBytes)}</span>
+                      {/* (و43) بادج كتاب اللينك الخارجي — الملف مش متخزن عندنا */}
+                      {b.sourceUrl && <Badge variant="outline" className="text-[10px] border-sky-400/50 text-sky-600 dark:text-sky-400">🔗 لينك خارجي</Badge>}
+                      {!b.sourceUrl && <span>{formatBookSize(b.sizeBytes)}</span>}
                       {b.createdAt && <span>{new Date(b.createdAt).toLocaleDateString('ar-EG')}</span>}
                       {b.description && <span className="truncate max-w-[200px] hidden sm:inline">{b.description}</span>}
                     </div>
                   </div>
-                  <a href={b.filePath + (b.filePath.indexOf('?') !== -1 ? '&' : '?') + 'dl=1'} target="_blank" rel="noreferrer" className="shrink-0">
-                    <Button variant="outline" size="sm" className="h-8 gap-1"><FileDown className="h-3.5 w-3.5" />تحميل</Button>
-                  </a>
+                  {/* (و43) كتاب اللينك بيفتح من المصدر مباشرة — والملف المخزن بيتحمل بـ dl=1 */}
+                  {b.sourceUrl ? (
+                    <a href={b.sourceUrl} target="_blank" rel="noreferrer" className="shrink-0">
+                      <Button variant="outline" size="sm" className="h-8 gap-1"><ExternalLink className="h-3.5 w-3.5" />فتح</Button>
+                    </a>
+                  ) : (
+                    <a href={b.filePath + (b.filePath.indexOf('?') !== -1 ? '&' : '?') + 'dl=1'} target="_blank" rel="noreferrer" className="shrink-0">
+                      <Button variant="outline" size="sm" className="h-8 gap-1"><FileDown className="h-3.5 w-3.5" />تحميل</Button>
+                    </a>
+                  )}
                   <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-destructive" onClick={function () { handleDelete(b) }} title="حذف">
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>

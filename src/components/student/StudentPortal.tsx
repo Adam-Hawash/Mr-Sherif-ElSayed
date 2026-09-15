@@ -1840,6 +1840,11 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                                             style={{ textAlign: 'left' }}
                                           >
                                             <span className="mr-2 font-bold">{String.fromCharCode(65 + oi)}.</span><FractionText text={opt} />
+                                                {/* (و43) صورة الاختيار لو موجودة — بتظهر جوه زرار الاختيار زي الملف */}
+                                                {q.optionFigures && q.optionFigures[oi] && q.optionFigures[oi].url && (
+                                                  /* eslint-disable-next-line @next/next/no-img-element */
+                                                  <img src={q.optionFigures[oi].url} alt={"صورة الاختيار " + String.fromCharCode(65 + oi)} className="mt-1.5 max-h-24 w-auto rounded border bg-white object-contain" />
+                                                )}
                                           </button>
                                         )
                                       })}
@@ -1876,6 +1881,11 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                                     style={{ textAlign: 'left' }}
                                   >
                                     <span className="mr-2 font-bold">{String.fromCharCode(65 + oi)}.</span><FractionText text={opt} />
+                                        {/* (و43) صورة الاختيار لو موجودة — بتظهر جوه زرار الاختيار زي الملف */}
+                                        {q.optionFigures && q.optionFigures[oi] && q.optionFigures[oi].url && (
+                                          /* eslint-disable-next-line @next/next/no-img-element */
+                                          <img src={q.optionFigures[oi].url} alt={"صورة الاختيار " + String.fromCharCode(65 + oi)} className="mt-1.5 max-h-24 w-auto rounded border bg-white object-contain" />
+                                        )}
                                   </button>
                                 )
                               })}
@@ -2992,6 +3002,11 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
                                 style={{ textAlign: 'left' }}
                               >
                                 <span className="mr-2 font-bold">{String.fromCharCode(65 + oi)}.</span><FractionText text={opt} />
+                                    {/* (و43) صورة الاختيار لو موجودة — بتظهر جوه زرار الاختيار زي الملف */}
+                                    {q.optionFigures && q.optionFigures[oi] && q.optionFigures[oi].url && (
+                                      /* eslint-disable-next-line @next/next/no-img-element */
+                                      <img src={q.optionFigures[oi].url} alt={"صورة الاختيار " + String.fromCharCode(65 + oi)} className="mt-1.5 max-h-24 w-auto rounded border bg-white object-contain" />
+                                    )}
                               </button>
                             ))}
                           </div>
@@ -3029,6 +3044,11 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
                           style={{ textAlign: 'left' }}
                         >
                           <span className="mr-2 font-bold">{String.fromCharCode(65 + oi)}.</span><FractionText text={opt} />
+                              {/* (و43) صورة الاختيار لو موجودة — بتظهر جوه زرار الاختيار زي الملف */}
+                              {q.optionFigures && q.optionFigures[oi] && q.optionFigures[oi].url && (
+                                /* eslint-disable-next-line @next/next/no-img-element */
+                                <img src={q.optionFigures[oi].url} alt={"صورة الاختيار " + String.fromCharCode(65 + oi)} className="mt-1.5 max-h-24 w-auto rounded border bg-white object-contain" />
+                              )}
                         </button>
                       ))}
                     </div>

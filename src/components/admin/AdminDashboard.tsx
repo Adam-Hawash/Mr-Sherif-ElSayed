@@ -3659,6 +3659,71 @@ function AIExtractionPanel({ onRefresh }: { onRefresh: () => void }) {
         }
       } else {
         // File/image extraction (supports 1 or 2 files: questions + optional answer key)
+        /* (و43) الـ PDF الكبير (>3.5MB) بيتنفذ على المتصفح زي وضع «كتاب — صفحات
+           محددة» بالظبط: رفع الملف الخام كان بيكسر حد 4.5MB بتاع Vercel
+           (فشل «أضف ملف تاني») وبيبطيء الملفات الكبيرة — فبنصور الصفحات
+           هنا ونبعتها على /api/ai-extract-pages على دفعات، والمسار الخام
+           بيفضل للصور والـ PDFs الصغيرة (مطابقة ملف الإجابات شغالة فيه) */
+        var fBig = file
+        if (fBig && (fBig.type === 'application/pdf' || /\.pdf$/i.test(fBig.name || '')) && fBig.size > 3.5 * 1024 * 1024) {
+          var opened = await openPdf(fBig)
+          var doc = opened.doc
+          var totalPages = Math.min(opened.numPages || 0, 60)
+          var collected: any[] = []
+          var seenKeys: any = {}
+          var PDF_CHUNK = 5
+          var pdfBatches = Math.max(1, Math.ceil(totalPages / PDF_CHUNK))
+          var skippedPdfBatches = 0
+          for (var pb = 0; pb < pdfBatches; pb++) {
+            var pFrom = 1 + pb * PDF_CHUNK
+            var pTo = Math.min(totalPages, pFrom + PDF_CHUNK - 1)
+            setStatusMsg('بيقرأ صفحات الملف ' + pFrom + '–' + pTo + '… (' + (pb + 1) + '/' + pdfBatches + ')')
+            var pages: any[] = []
+            for (var pn = pFrom; pn <= pTo; pn++) {
+              var img = await renderPageToJpeg(doc, pn, 1400, 0.72)
+              pages.push({ n: pn, image: img })
+            }
+            var chunkQs: any[] | null = null
+            for (var attempt = 0; attempt < 2 && !chunkQs; attempt++) {
+              try {
+                var ctrlP = new AbortController()
+                var tmrP = setTimeout(function() { ctrlP.abort() }, 180000)
+                var resP = await fetch('/api/ai-extract-pages', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ pages: pages, mode: 'all', bookTitle: title }),
+                  signal: ctrlP.signal,
+                })
+                clearTimeout(tmrP)
+                var dataP = await resP.json()
+                if (resP.ok && dataP.extracted && Array.isArray(dataP.extracted.questions)) chunkQs = dataP.extracted.questions
+              } catch (eP: any) {
+                if (eP && eP.name === 'AbortError') throw eP
+              }
+              if (!chunkQs && attempt === 0) await new Promise(function (r) { setTimeout(r, 1200) })
+            }
+            if (!chunkQs) { skippedPdfBatches++; continue }
+            for (var pqi = 0; pqi < chunkQs.length; pqi++) {
+              var pk = bookQuestionKey(chunkQs[pqi])
+              if (pk && seenKeys[pk]) continue
+              if (pk) seenKeys[pk] = true
+              collected.push(chunkQs[pqi])
+            }
+          }
+          if (collected.length === 0) {
+            toast.error('مقدرتش أستخرج أسئلة من الملف — جرب ملف تاني أو استخدم وضع «كتاب — صفحات محددة»')
+            setStatusMsg('')
+            setExtracting(false)
+            return
+          }
+          /* (و43) قص الرسومات من مستند الـ PDF المفتوح + دمج أكتر من ملف عبر النقطة المشتركة */
+          await finishExtraction(collected, { doc: doc })
+          var okMsgPdf = (appendingFile ? 'تمت إضافة ' : 'تم استخراج ') + collected.length + (appendingFile ? ' سؤال من الملف الجديد!' : ' سؤال من الملف!')
+          if (skippedPdfBatches > 0) okMsgPdf += ' (فشلت ' + skippedPdfBatches + ' دفعة صفحات)'
+          toast.success(okMsgPdf)
+          setExtracting(false)
+          return
+        }
         var fd = new FormData()
         if (file) { fd.append('file', file) }
         else if (fileUrl.trim()) { fd.append('fileUrl', fileUrl.trim()) }
@@ -3778,6 +3843,79 @@ function AIExtractionPanel({ onRefresh }: { onRefresh: () => void }) {
   /* مفتاح منع التكرار: نص السؤال مطبّع (فراغات/ترقيم/طول 120) */
   var bookQuestionKey = function(q: any) {
     return String((q && (q.question || q.q)) || '').toLowerCase().replace(/\s+/g, ' ').replace(/[^\u0600-\u06FFa-z0-9]/g, '').substring(0, 120)
+  }
+
+  /* (و43) فحص «السؤال شكله فيه رسم»: كلمات مفتاحية للرسم والمنحنى والشكل الهندسي
+     في نص السؤال أو الإجابة النموذجية — بيستخدم في تحذير الرسمة الغايبة */
+  var isGraphicalLike = function(q: any) {
+    var t = String((q && q.question) || '') + ' ' + String((q && q.modelAnswer) || '')
+    return /(رسم|مخطط|شكل هندسي|مثلث|دائرة|زاوية|منحنى|graph|plot|diagram|figure|shape|axis of symmetry|represent graphically)/i.test(t)
+  }
+
+  /* (و43) مراجع inputs الصور المخفية في شاشة المراجعة: رسمة السؤال + صورة كل اختيار */
+  const figureInputRefs = useRef<Record<number, HTMLInputElement | null>>({})
+  const optionFigureInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
+
+  /* (و43) رفع صورة الرسمة يدويًا (chunkedUpload → /api/files/<id>) — بتتخزن في
+     q.figure.url عشان تتعرض للطالب زي الملف بالظبط من غير قص أو bbox */
+  var handleFigureAttach = async function (qi: number, f: File | null) {
+    if (!f) return
+    try {
+      var up = await chunkedUpload(f, 'exam-figures')
+      if (!up || !up.filePath || !/^\/api\/files\//.test(up.filePath)) throw new Error('فشل رفع الرسمة — جرب تاني')
+      setExtractedQuestions(function (prev) {
+        return prev.map(function (q, i) {
+          if (i !== qi) return q
+          return Object.assign({}, q, { figure: Object.assign({}, q.figure, { url: up.filePath }) })
+        })
+      })
+      toast.success('تم رفع الرسمة — هتظهر للطالب زي الملف')
+    } catch (e: any) {
+      toast.error(e.message || 'خطأ في رفع الرسمة')
+    }
+  }
+
+  /* (و43) إزالة صورة الرسمة المسجلة — بترجع للفارغ */
+  var removeFigure = function (qi: number) {
+    setExtractedQuestions(function (prev) {
+      return prev.map(function (q, i) { return i === qi ? Object.assign({}, q, { figure: null }) : q })
+    })
+  }
+
+  /* (و43) رفع صورة اختيار (MCQ) يدويًا — بتتخزن في q.optionFigures مصفوفة
+     متوافقة مع options (optionFigures[i] = {url} أو null لو مفيش صورة) */
+  var handleOptionFigureAttach = async function (qi: number, oi: number, f: File | null) {
+    if (!f) return
+    try {
+      var up = await chunkedUpload(f, 'exam-figures')
+      if (!up || !up.filePath || !/^\/api\/files\//.test(up.filePath)) throw new Error('فشل رفع صورة الاختيار — جرب تاني')
+      var savedPath = up.filePath
+      setExtractedQuestions(function (prev) {
+        return prev.map(function (q, i) {
+          if (i !== qi) return q
+          var arr = Array.isArray(q.optionFigures) ? q.optionFigures.slice() : []
+          while (arr.length <= oi) arr.push(null)
+          arr[oi] = { url: savedPath }
+          return Object.assign({}, q, { optionFigures: arr })
+        })
+      })
+      toast.success('تم رفع صورة الاختيار')
+    } catch (e: any) {
+      toast.error(e.message || 'خطأ في رفع صورة الاختيار')
+    }
+  }
+
+  /* (و43) إزالة صورة الاختيار (null مكانها — المصفوفة متحاذاة مع options زي ما هي) */
+  var removeOptionFigure = function (qi: number, oi: number) {
+    setExtractedQuestions(function (prev) {
+      return prev.map(function (q, i) {
+        if (i !== qi) return q
+        var arr = Array.isArray(q.optionFigures) ? q.optionFigures.slice() : []
+        while (arr.length <= oi) arr.push(null)
+        arr[oi] = null
+        return Object.assign({}, q, { optionFigures: arr })
+      })
+    })
   }
 
   var handleExtractBook = async function() {
@@ -4105,7 +4243,8 @@ function AIExtractionPanel({ onRefresh }: { onRefresh: () => void }) {
             var curSrc = String(q.srcName || '')
             var showFileDivider = qi > 0 && prevSrc !== curSrc
             var hasTablePreview = !!(q.table && Array.isArray(q.table.rows) && q.table.rows.length > 0)
-            var hasFigurePreview = !!(q.figure && q.figure.bbox)
+            /* (و43) الرسمة بتتحسب لو فيها bbox (قص الـ AI) أو url (رفع يدوي) */
+            var hasFigurePreview = !!(q.figure && (q.figure.bbox || q.figure.url))
             return (
               <Fragment key={qi}>
                 {showFileDivider && (
@@ -4155,8 +4294,30 @@ function AIExtractionPanel({ onRefresh }: { onRefresh: () => void }) {
                 )}
                 {hasFigurePreview && (
                   <div className="p-2 rounded-md bg-violet-500/5 border border-violet-500/20">
-                    <p className="text-[9px] font-semibold text-muted-foreground mb-1">📐 رسمة السؤال:</p>
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <p className="text-[9px] font-semibold text-muted-foreground">📐 رسمة السؤال:</p>
+                      {/* (و43) زرار إزالة الرسمة المسجلة (رفع غلط أو قص ناقص) */}
+                      {q.figure && q.figure.url && (
+                        <Button type="button" variant="ghost" size="sm" className="h-6 text-[10px] text-destructive" onClick={function () { removeFigure(qi) }}>✕ إزالة</Button>
+                      )}
+                    </div>
                     <WorksheetFigure figure={q.figure} />
+                  </div>
+                )}
+                {/* (و43) تحذير الرسمة الغايبة: سؤال شكله فيه رسم أو منحنى أو شكل هندسي
+                    ومفيش figure متسجل — المستر يرفع صورة الرسمة بإيده عشان
+                    تظهر للطالب زي الملف بالظبط */}
+                {isGraphicalLike(q) && !(q.figure && (q.figure.url || q.figure.bbox)) && (
+                  <div className="flex items-center gap-2 flex-wrap p-2 rounded-md border border-amber-400/50 bg-amber-50 dark:bg-amber-950/20 text-[11px] text-amber-700 dark:text-amber-300">
+                    <span className="flex-1 min-w-[220px]">⚠ السؤال ده فيه رسمة غالبًا ومش متسجلة — ارفع صورة الرسمة عشان تظهر للطالب زي الملف</span>
+                    <input
+                      ref={function (el) { figureInputRefs.current[qi] = el }}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={function (e) { var fPick = e.target.files && e.target.files[0] ? e.target.files[0] : null; handleFigureAttach(qi, fPick); e.target.value = '' }}
+                    />
+                    <Button type="button" variant="outline" size="sm" className="h-7 text-[11px] border-amber-400/60 text-amber-700 dark:text-amber-300" onClick={function () { var el = figureInputRefs.current[qi]; if (el) el.click() }}>📷 ارفع الرسمة</Button>
                   </div>
                 )}
 
@@ -4170,6 +4331,31 @@ function AIExtractionPanel({ onRefresh }: { onRefresh: () => void }) {
                               <button type="button" className={"w-5 h-5 rounded-full border-2 flex items-center justify-center text-[10px] transition-colors " + (q.correct === oi ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/30 hover:border-primary/50')} onClick={function() { updateQuestion(qi, 'correct', oi) }}>{String.fromCharCode(65 + oi)}</button>
                               <Input value={opt} onChange={function(e) { updateQuestion(qi, 'option_' + oi, e.target.value) }} placeholder={"اختيار " + (oi + 1)} className="h-8 text-xs" />
                             </div>
+                            {/* (و43) صورة الاختيار: رفع يدوي + thumbnail + زرار إزالة */}
+                            {(function() {
+                              var optFig = Array.isArray(q.optionFigures) ? q.optionFigures[oi] : null
+                              var optFigUrl = (optFig && optFig.url) || ''
+                              return (
+                                <div className="flex items-center gap-1.5 pr-6">
+                                  <input
+                                    ref={function (el) { optionFigureInputRefs.current[qi + '_' + oi] = el }}
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={function (e) { var fPick = e.target.files && e.target.files[0] ? e.target.files[0] : null; handleOptionFigureAttach(qi, oi, fPick); e.target.value = '' }}
+                                  />
+                                  {optFigUrl ? (
+                                    <>
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img src={optFigUrl} alt={'صورة الاختيار ' + (oi + 1)} className="max-h-12 rounded border bg-white object-contain" />
+                                      <Button type="button" variant="ghost" size="sm" className="h-6 w-6 p-0 text-destructive" title="إزالة صورة الاختيار" onClick={function () { removeOptionFigure(qi, oi) }}><X className="h-3 w-3" /></Button>
+                                    </>
+                                  ) : (
+                                    <Button type="button" variant="ghost" size="sm" className="h-6 px-1.5 text-[10px] text-muted-foreground" title="ارفع صورة للاختيار" onClick={function () { var el = optionFigureInputRefs.current[qi + '_' + oi]; if (el) el.click() }}>📷</Button>
+                                  )}
+                                </div>
+                              )
+                            })()}
                             {hasMathMarkup(opt || '') && (
                               <p className="text-xs text-foreground pr-6" dir="ltr" style={{ textAlign: 'left' }}><FractionText text={opt || ''} /></p>
                             )}

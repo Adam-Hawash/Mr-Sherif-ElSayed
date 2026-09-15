@@ -15,7 +15,9 @@ function ensureBookTable() {
   if (!_bookTableReady) {
     _bookTableReady = (async function () {
       try {
-        await db.$executeRawUnsafe("CREATE TABLE IF NOT EXISTS Book (id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', filePath TEXT NOT NULL DEFAULT '', fileName TEXT NOT NULL DEFAULT '', fileType TEXT NOT NULL DEFAULT 'application/pdf', sizeBytes INTEGER NOT NULL DEFAULT 0, grade TEXT NOT NULL DEFAULT '', createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL)")
+        await db.$executeRawUnsafe("CREATE TABLE IF NOT EXISTS Book (id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', filePath TEXT NOT NULL DEFAULT '', sourceUrl TEXT NOT NULL DEFAULT '', fileName TEXT NOT NULL DEFAULT '', fileType TEXT NOT NULL DEFAULT 'application/pdf', sizeBytes INTEGER NOT NULL DEFAULT 0, grade TEXT NOT NULL DEFAULT '', createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL)")
+        /* (و43) ترميم دفاعي للقواعد القديمة: عمود sourceUrl الناقص بيتضاف فورًا */
+        try { await db.$executeRawUnsafe("ALTER TABLE Book ADD COLUMN sourceUrl TEXT NOT NULL DEFAULT ''") } catch (e2) {}
       } catch (e) {}
     })()
   }
@@ -72,6 +74,7 @@ export async function GET(request: NextRequest) {
         title: b.title,
         description: b.description || '',
         filePath: b.filePath || '',
+        sourceUrl: b.sourceUrl || '',
         fileName: b.fileName || '',
         fileType: b.fileType || 'application/pdf',
         sizeBytes: b.sizeBytes || 0,

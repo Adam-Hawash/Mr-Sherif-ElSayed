@@ -407,7 +407,16 @@ function buildSingleFilePrompt(grade: string, type: string): string {
   lines.push('- TABLES: if the question shows a table, return "table" reproducing it EXACTLY: {"headers":["x","f(x)","(x, f(x))"],"rows":[[{"t":"-2"},{"t":"","blank":true},{"t":"","blank":true}]]}.')
   lines.push('  * Printed cells → {"t":"<exact printed text>"}. Cells the STUDENT must fill → {"t":"","blank":true}.')
   lines.push('  * Do NOT blank printed cells, and do NOT fill the blank cells — the student writes inside them.')
-  lines.push('- GRAPHS/DIAGRAMS: if the question contains a graph, plot, or diagram, NEVER flatten it into text: return "figure":{"page":<page number>,"bbox":{"x":..,"y":..,"w":..,"h":..}} where bbox is the bounding rectangle of the figure as FRACTIONS of the WHOLE page image (each value 0..1, x/y = top-left corner, w/h = size).')
+  /* (و43) قاعدة صارمة للرسومات: أي رسمة/منحنى/شكل هندسي لازم تترجع figure /
+     optionFigures — ممنوع تحويل الرسمة لنص وصف أو جدول إحداثيات، والـ
+     modelAnswer بيبقى النتائج النهائية المختصرة بس */
+  lines.push('HARD RULE — FIGURES: for EVERY question (and every MCQ option) that contains or depends on any drawing, graph, plotted curve, geometric shape, diagram, chart, or image-based table: you MUST return figure/optionFigures data:')
+  lines.push('  * question-level "figure":{"page":N,"bbox":{"x":..,"y":..,"w":..,"h":..}}')
+  lines.push('  * option-level "optionFigures":[{"page":N,"bbox":{...}} or null, ...] aligned with the options array.')
+  lines.push('  * bbox = tight rectangle around the drawing INCLUDING its axes/labels, as FRACTIONS of the whole page image (0..1, x/y = top-left).')
+  lines.push('  * NEVER convert a drawing into text: do NOT describe the graph, do NOT write coordinate tables or step-by-step plotting inside question text or modelAnswer.')
+  lines.push('  * modelAnswer = concise final results only (example: "axis of symmetry: x = 3, maximum value = 4").')
+  lines.push('  * If unsure whether something is a figure, treat it AS a figure. Options that are pure images get empty string text plus their optionFigures entry.')
   lines.push('- modelAnswer must include the expected table values when applicable (e.g. "f(-1)=5, f(0)=3 → points (-1,5), (0,3)").')
   lines.push('')
   lines.push('SMART ANSWER RULE (very important — the teacher relies on this):')
@@ -469,7 +478,16 @@ function buildQuestionsOnlyPrompt(grade: string, type: string): string {
   lines.push('- TABLES: if the question shows a table, return "table" reproducing it EXACTLY: {"headers":["x","f(x)","(x, f(x))"],"rows":[[{"t":"-2"},{"t":"","blank":true},{"t":"","blank":true}]]}.')
   lines.push('  * Printed cells → {"t":"<exact printed text>"}. Cells the STUDENT must fill → {"t":"","blank":true}.')
   lines.push('  * Do NOT blank printed cells, and do NOT fill the blank cells — the student writes inside them.')
-  lines.push('- GRAPHS/DIAGRAMS: if the question contains a graph, plot, or diagram, NEVER flatten it into text: return "figure":{"page":<page number>,"bbox":{"x":..,"y":..,"w":..,"h":..}} where bbox is the bounding rectangle of the figure as FRACTIONS of the WHOLE page image (each value 0..1, x/y = top-left corner, w/h = size).')
+  /* (و43) قاعدة صارمة للرسومات: أي رسمة/منحنى/شكل هندسي لازم تترجع figure /
+     optionFigures — ممنوع تحويل الرسمة لنص وصف أو جدول إحداثيات، والـ
+     modelAnswer بيبقى النتائج النهائية المختصرة بس */
+  lines.push('HARD RULE — FIGURES: for EVERY question (and every MCQ option) that contains or depends on any drawing, graph, plotted curve, geometric shape, diagram, chart, or image-based table: you MUST return figure/optionFigures data:')
+  lines.push('  * question-level "figure":{"page":N,"bbox":{"x":..,"y":..,"w":..,"h":..}}')
+  lines.push('  * option-level "optionFigures":[{"page":N,"bbox":{...}} or null, ...] aligned with the options array.')
+  lines.push('  * bbox = tight rectangle around the drawing INCLUDING its axes/labels, as FRACTIONS of the whole page image (0..1, x/y = top-left).')
+  lines.push('  * NEVER convert a drawing into text: do NOT describe the graph, do NOT write coordinate tables or step-by-step plotting inside question text or modelAnswer.')
+  lines.push('  * modelAnswer = concise final results only (example: "axis of symmetry: x = 3, maximum value = 4").')
+  lines.push('  * If unsure whether something is a figure, treat it AS a figure. Options that are pure images get empty string text plus their optionFigures entry.')
   lines.push('')
   lines.push('Return ONE single valid JSON object — no text before or after, no markdown fences, no fields outside the object:')
   lines.push('{"title":"...","content":"...","questions":[{"type":"mcq","question":"...","options":["A","B","C","D"],"correct":0,"points":1,"modelAnswer":"","sourcePage":1},{"type":"writing","question":"...","options":[],"correct":-1,"points":5,"modelAnswer":"","acceptedAnswers":[],"sourcePage":1,"table":{"headers":["x","f(x)"],"rows":[[{"t":"-1"},{"t":"","blank":true}]]},"figure":{"page":1,"bbox":{"x":0.05,"y":0.3,"w":0.4,"h":0.35}}}]}')

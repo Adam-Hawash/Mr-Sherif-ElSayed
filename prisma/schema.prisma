@@ -354,12 +354,14 @@ model VideoGroupSchedule {
 //   الأدمن يرفع كتاب/ملزمة PDF (chunkedUpload → Media → /api/files/<id>)
 //   والطالب يفتحه أو يحمله من تاب «الكتب والملازم» في البورتال.
 //   filePath بتخزن مسار /api/files/<mediaId> زي باقي الجداول.
+//   (و43) sourceUrl = لينك خارجي للكتب الكبيرة — بدل تخزين الملف نفسه.
 // ============================================================
 model Book {
   id          String   @id @default(cuid())
   title       String
   description String   @default("")
   filePath    String   @default("")
+  sourceUrl   String   @default("")
   fileName    String   @default("")
   fileType    String   @default("application/pdf")
   sizeBytes   Int      @default(0)

@@ -3,6 +3,8 @@
 // (2026-و40) إدارة الكتب والملازم — تاب «الكتب والملازم» في لوحة الأدمن.
 // الرفع نفسه بيتم من الكلينت بـ chunkedUpload('/api/upload/chunk' → Media)
 // وبعدها بنسجل صف Book فيه filePath = /api/files/<mediaId>.
+// (و43) وضع اللينك الخارجي: الكتاب الكبير (200MB+) مش بيتخزن في قاعدة
+// البيانات خالص — بنسجل sourceUrl بس والطالب بيحمل منه مباشرة.
 // DELETE بيشيل صف Book **و** صف Media اللي شايل الملف نفسه (لو لسه موجود).
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -19,7 +21,9 @@ function ensureBookTable() {
   if (!_bookTableReady) {
     _bookTableReady = (async function () {
       try {
-        await db.$executeRawUnsafe("CREATE TABLE IF NOT EXISTS Book (id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', filePath TEXT NOT NULL DEFAULT '', fileName TEXT NOT NULL DEFAULT '', fileType TEXT NOT NULL DEFAULT 'application/pdf', sizeBytes INTEGER NOT NULL DEFAULT 0, grade TEXT NOT NULL DEFAULT '', createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL)")
+        await db.$executeRawUnsafe("CREATE TABLE IF NOT EXISTS Book (id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', filePath TEXT NOT NULL DEFAULT '', sourceUrl TEXT NOT NULL DEFAULT '', fileName TEXT NOT NULL DEFAULT '', fileType TEXT NOT NULL DEFAULT 'application/pdf', sizeBytes INTEGER NOT NULL DEFAULT 0, grade TEXT NOT NULL DEFAULT '', createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL)")
+        /* (و43) ترميم دفاعي للقواعد القديمة: عمود sourceUrl الناقص بيتضاف فورًا */
+        try { await db.$executeRawUnsafe("ALTER TABLE Book ADD COLUMN sourceUrl TEXT NOT NULL DEFAULT ''") } catch (e2) {}
       } catch (e) {}
     })()
   }
@@ -53,13 +57,24 @@ export async function POST(request: NextRequest) {
     }
     await ensureBookTable()
     const body = await request.json()
-    const { title, description, filePath, fileName, fileType, sizeBytes, grade } = body || {}
+    const { title, description, filePath, fileName, fileType, sizeBytes, grade, sourceUrl } = body || {}
 
     if (!title || !String(title).trim()) {
       return NextResponse.json({ error: 'العنوان مطلوب' }, { status: 400 })
     }
-    if (!filePath || String(filePath).indexOf('/api/files/') !== 0) {
-      return NextResponse.json({ error: 'مسار الملف مطلوب (ارفع الملف الأول)' }, { status: 400 })
+    /* (و43) وضع اللينك الخارجي: sourceUrl صالح (http/https) بيكفي لوحده —
+       لينكات جوجل درايف بيتحولوا لتحميل مباشر، والمسار الخام بيفضل شغال
+       زي ما هو للملفات المرفوعة */
+    var link = String(sourceUrl || '').trim()
+    if (link) {
+      if (!/^https?:\/\//i.test(link)) {
+        return NextResponse.json({ error: 'لينك الكتاب لازم يبدأ بـ http:// أو https://' }, { status: 400 })
+      }
+      var drv = link.match(/drive\.google\.com\/file\/d\/([\w-]+)/) || link.match(/drive\.google\.com\/open\?id=([\w-]+)/)
+      if (drv && drv[1]) link = 'https://drive.google.com/uc?export=download&id=' + drv[1]
+    }
+    if (!link && (!filePath || String(filePath).indexOf('/api/files/') !== 0)) {
+      return NextResponse.json({ error: 'مسار الملف مطلوب (ارفع الملف الأول أو ضيف لينك خارجي)' }, { status: 400 })
     }
 
     var sizeNum = parseInt(String(sizeBytes == null ? 0 : sizeBytes), 10)
@@ -70,10 +85,12 @@ export async function POST(request: NextRequest) {
         data: {
           title: String(title).trim(),
           description: String(description || ''),
-          filePath: String(filePath),
+          /* (و43) وضع اللينك: filePath فاضي والحجم صفر — الملف مش متخزن عندنا */
+          filePath: link ? '' : String(filePath),
+          sourceUrl: link,
           fileName: String(fileName || ''),
           fileType: String(fileType || 'application/pdf'),
-          sizeBytes: sizeNum,
+          sizeBytes: link ? 0 : sizeNum,
           grade: String(grade || ''),
         },
       })

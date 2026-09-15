@@ -49,10 +49,15 @@ export function BooksTab({ grade }: { grade?: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [grade])
 
-  var openBook = function (filePath: string) {
-    try { window.open(filePath, '_blank') } catch (e) {}
+  /* (و43) كتاب اللينك الخارجي بيتفتح/يتحمل من المصدر مباشرة — والملف
+     المخزن بيفضل على مساره المعتاد مع dl=1 */
+  var openBook = function (b: any) {
+    var url = (b && b.sourceUrl) ? b.sourceUrl : ((b && b.filePath) || '')
+    try { window.open(url, '_blank') } catch (e) {}
   }
-  var downloadBook = function (filePath: string) {
+  var downloadBook = function (b: any) {
+    if (b && b.sourceUrl) { try { window.open(b.sourceUrl, '_blank') } catch (e) {} return }
+    var filePath = (b && b.filePath) || ''
     var url = filePath + (filePath.indexOf('?') !== -1 ? '&' : '?') + 'dl=1'
     try { window.open(url, '_blank') } catch (e) {}
   }
@@ -111,16 +116,17 @@ export function BooksTab({ grade }: { grade?: string }) {
                   {b.description && <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{b.description}</p>}
                   <div className="flex items-center gap-2 flex-wrap mt-1.5">
                     {b.grade && <Badge variant="outline" className="text-[10px]">{b.grade}</Badge>}
-                    <span className="text-[10px] text-muted-foreground">{formatBookSize(b.sizeBytes)}</span>
+                    {/* (و43) كتاب اللينك مالوش حجم مخزن — بادج بدل «0 B» */}
+                    <span className="text-[10px] text-muted-foreground">{b.sourceUrl ? '🔗 لينك خارجي' : formatBookSize(b.sizeBytes)}</span>
                     {b.createdAt && <span className="text-[10px] text-muted-foreground">{new Date(b.createdAt).toLocaleDateString('ar-EG')}</span>}
                   </div>
                 </div>
               </div>
               <div className="flex gap-2 mt-3">
-                <Button size="sm" className="flex-1 h-8 gap-1" onClick={function () { openBook(b.filePath) }}>
+                <Button size="sm" className="flex-1 h-8 gap-1" onClick={function () { openBook(b) }}>
                   <ExternalLink className="h-3.5 w-3.5" />فتح
                 </Button>
-                <Button size="sm" variant="outline" className="flex-1 h-8 gap-1" onClick={function () { downloadBook(b.filePath) }}>
+                <Button size="sm" variant="outline" className="flex-1 h-8 gap-1" onClick={function () { downloadBook(b) }}>
                   <FileDown className="h-3.5 w-3.5" />تحميل
                 </Button>
               </div>
