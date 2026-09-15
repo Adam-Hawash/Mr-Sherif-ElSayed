@@ -53,7 +53,7 @@ export function Footer() {
   var portfolioUrl = cfg.hero_developer_url || FALLBACK_PORTFOLIO_URL
   var primeUrl = cfg.prime_developer_url || FALLBACK_PORTFOLIO_URL
   var heroDevLabel = cfg.hero_developer_label || 'Hero Developer'
-  var madeByLabel = cfg.footer_made_by_label || 'Made by Adam Hawash'
+  var madeByLabel = cfg.footer_made_by_label || 'Developed by Adam Hawash'
   var brandName = cfg.footer_brand || 'Mr. Sherif ElSayed'
   var copyrightText = cfg.footer_copyright || 'جميع الحقوق محفوظة — Mr. Sherif ElSayed'
 
@@ -138,7 +138,7 @@ export function Footer() {
           </a>
         </div>
         
-        {/* Powered by Prime Developer + Made by Adam Hawash */}
+        {/* Powered by Prime Developer + Developed by Adam Hawash */}
         <div className="mt-6 pt-4 border-t border-border/40 text-center">
           <p className="text-xs text-foreground flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1">
             <span>Powered by</span>
