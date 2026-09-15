@@ -5,7 +5,9 @@ import { PrismaLibSQL } from '@prisma/adapter-libsql'
 var globalForPrisma = globalThis
 var _prisma = globalForPrisma._prismaInstance
 
-async function withRetry(fn, retries, delayMs) {
+/* (2026-و40) withRetry بقت exported — حارس الترتيب التسلسلي (sequential-guard)
+   بيغلف بيها قرايات SQL الخام عشان SQLITE_BUSY/انقطاع لحظي ما يبوّظش فحص التسليم */
+export async function withRetry(fn, retries, delayMs) {
   if (retries === void 0) { retries = 3 }
   if (delayMs === void 0) { delayMs = 200 }
   for (var attempt = 0; attempt <= retries; attempt++) {

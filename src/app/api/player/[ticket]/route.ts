@@ -318,25 +318,27 @@ const PLAYER_PAGE = `<!doctype html>
      • مستطيلين سودة تحت خالص (يمين وشمال) بيغطوا علامة الاشتراك/اللوجو
        بتوع يوتيوب — طلب المستر الحرفي: «عايزك تداريها لي بمستطيل أسود كده يمين وشمال» */
   .wm{position:absolute;inset:0;z-index:40;pointer-events:none;user-select:none;overflow:hidden}
-  @keyframes wmBlink30{0%{opacity:0}1.5%{opacity:var(--wmo,.5)}31.5%{opacity:var(--wmo,.5)}33.5%{opacity:0}98.5%{opacity:0}100%{opacity:var(--wmo,.5)}}
+  @keyframes wmBlink30{0%{opacity:0}1.5%{opacity:var(--wmo,.4)}31.5%{opacity:var(--wmo,.4)}33.5%{opacity:0}98.5%{opacity:0}100%{opacity:var(--wmo,.4)}}
   #wmBig{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:41;direction:rtl;
-    text-align:center;max-width:94%;--wmo:.5;opacity:0;
+    text-align:center;max-width:94%;--wmo:.4;opacity:0;
     animation:wmBlink30 30s linear infinite;
     font-weight:900;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
     /* 2026-و8 — المستر رجّع القرار: «اللي في النص الكبيرة دي رجّعلي مقاسها
        زي ما كانت كبيرة شوية» — رجعت لمقاسها الأصلي 5.6vw/72px بنفس المكان
        (التصغير بقى على الكروت الجانبية يمين وشمال بدلها) */
-    font-size:clamp(20px,5.6vw,72px);line-height:1.25;
+    /* 2026-و40-w — «الووترمارك بتشوش الطلاب»: الكارت المركزي أصغر ~20%
+       وأشفّ شوية — بتظهر وبتختفي زي ما هي لكن أقل حجب للفيديو */
+    font-size:clamp(16px,4.5vw,58px);line-height:1.25;
     unicode-bidi:plaintext;letter-spacing:0}
-  #wmBig .b1{display:block;color:rgba(0,0,0,.10);white-space:nowrap;
-    -webkit-text-stroke:1.3px rgba(0,0,0,.42);paint-order:stroke fill;
-    text-shadow:0 0 16px rgba(255,255,255,.16)}
+  #wmBig .b1{display:block;color:rgba(0,0,0,.08);white-space:nowrap;
+    -webkit-text-stroke:1.1px rgba(0,0,0,.34);paint-order:stroke fill;
+    text-shadow:0 0 16px rgba(255,255,255,.14)}
   #wmBig .b2{display:block;font-size:.5em;direction:ltr;unicode-bidi:plaintext;
-    margin-top:.14em;letter-spacing:0;white-space:nowrap;color:rgba(0,0,0,.10);
-    -webkit-text-stroke:1px rgba(0,0,0,.40);paint-order:stroke fill;
-    text-shadow:0 0 12px rgba(255,255,255,.16)}
+    margin-top:.14em;letter-spacing:0;white-space:nowrap;color:rgba(0,0,0,.08);
+    -webkit-text-stroke:.9px rgba(0,0,0,.32);paint-order:stroke fill;
+    text-shadow:0 0 12px rgba(255,255,255,.14)}
   .wmCard{position:absolute;z-index:46}
-  .wmCardT{top:2.8%;left:50%;transform:translateX(-50%) scale(1.14)}
+  .wmCardT{top:2.8%;left:50%;transform:translateX(-50%) scale(.95)}
   /* 2026-و9 — الكروت اليمين والشمال طلعوا فوق: بقى 3 فوق (شمال/نص/يمين)
      و3 تحت — بنفس تصغير ~18% — بطلب المستر: «اللي في النص دول تطلعهم فوق
      يبقوا تلاتة فوق وتلاتة تحت» */
@@ -344,8 +346,10 @@ const PLAYER_PAGE = `<!doctype html>
      للحافة بلا فاصل (كانت 2%) — يمين وشمال ملاصقين خالص */
   /* 2026-و15 — «كبّر الووترمارك اللي فوق مش كتير أوي» — الكروت التلاتة فوق
      كبروا شوية: النص 1.14x والجانبين من .82 لـ .92 */
-  .wmCardMR{top:2.8%;right:0;transform:scale(.92);transform-origin:top right;opacity:.88}
-  .wmCardML{top:2.8%;left:0;transform:scale(.92);transform-origin:top left;opacity:.88}
+  /* 2026-و40-w — «صغّر الووترمارك ~35% وقلل ظهورها ~30% — بتشوش الطلاب»:
+     كل الكروت أصغر (خط+padding) وأخف (opacity أقل) — بس لسه ظاهرة للإثبات */
+  .wmCardMR{top:2.8%;right:0;transform:scale(.72);transform-origin:top right;opacity:.62}
+  .wmCardML{top:2.8%;left:0;transform:scale(.72);transform-origin:top left;opacity:.62}
   /* 2026-و9 — كارتين صغيرين في نص الفيديو يمين وشمال على الطرف خالص —
      فيهم رقم الطالب بس (من غير اسم ولا QR) — بطلب المستر */
   .wmNumChip{position:absolute;z-index:46;transform:translateY(-50%)}
@@ -358,26 +362,26 @@ const PLAYER_PAGE = `<!doctype html>
   .wmNameChip{position:absolute;z-index:46;max-width:36vw;overflow:hidden}
   .wmNameR{right:0;top:68%;border-radius:7px 0 0 7px}
   .wmNameL{left:0;top:68%;border-radius:0 7px 7px 0}
-  .wmNameChip .in{display:inline-block;background:rgba(0,0,0,.55);color:#fff;
-    border:1px solid rgba(255,255,255,.16);border-left:0;border-right:0;padding:2.5px 9px;
-    font-size:clamp(8.5px,.95vw,11px);font-weight:700;direction:rtl;unicode-bidi:plaintext;
-    letter-spacing:0;white-space:nowrap;opacity:.85;max-width:36vw;overflow:hidden;
+  .wmNameChip .in{display:inline-block;background:rgba(0,0,0,.5);color:#fff;
+    border:1px solid rgba(255,255,255,.16);border-left:0;border-right:0;padding:2px 6px;
+    font-size:clamp(6.5px,.65vw,7.5px);font-weight:700;direction:rtl;unicode-bidi:plaintext;
+    letter-spacing:0;white-space:nowrap;opacity:.6;max-width:36vw;overflow:hidden;
     text-overflow:ellipsis}
-  .wmNumChip .in{display:inline-block;background:rgba(0,0,0,.55);color:#fff;
-    border:1px solid rgba(255,255,255,.16);border-left:0;border-right:0;padding:2.5px 9px;
-    font-size:clamp(8.5px,.95vw,11px);font-weight:700;direction:ltr;unicode-bidi:plaintext;
-    letter-spacing:0;white-space:nowrap;opacity:.85}
-  .wmCardB1{bottom:66px;left:0;opacity:.85}
-  .wmCardB2{bottom:66px;left:50%;transform:translateX(-50%);opacity:.85}
-  .wmCardB3{bottom:66px;right:0;opacity:.85}
-  .wmCard .in{display:inline-flex;align-items:center;gap:6px;background:rgba(0,0,0,.66);
-    border:1px solid rgba(255,255,255,.20);color:#fff;border-radius:9px;padding:3px 9px;
+  .wmNumChip .in{display:inline-block;background:rgba(0,0,0,.5);color:#fff;
+    border:1px solid rgba(255,255,255,.16);border-left:0;border-right:0;padding:2px 6px;
+    font-size:clamp(6.5px,.65vw,7.5px);font-weight:700;direction:ltr;unicode-bidi:plaintext;
+    letter-spacing:0;white-space:nowrap;opacity:.6}
+  .wmCardB1{bottom:52px;left:0;opacity:.6}
+  .wmCardB2{bottom:52px;left:50%;transform:translateX(-50%);opacity:.6}
+  .wmCardB3{bottom:52px;right:0;opacity:.6}
+  .wmCard .in{display:inline-flex;align-items:center;gap:5px;background:rgba(0,0,0,.5);
+    border:1px solid rgba(255,255,255,.20);color:#fff;border-radius:8px;padding:2px 6px;
     direction:rtl;white-space:nowrap}
-  .wmCard .qr{width:clamp(22px,2.8vw,32px);height:clamp(22px,2.8vw,32px);border-radius:3px;
-    background:#fff;padding:2px;display:block}
-  .wmCard .nm{font-size:clamp(9px,1.05vw,12.5px);font-weight:800;unicode-bidi:plaintext;letter-spacing:0;white-space:nowrap}
-  .wmCard .sep{opacity:.55;font-size:clamp(8px,.9vw,10.5px)}
-  .wmCard .ph{font-size:clamp(8.5px,.95vw,11.5px);font-weight:700;direction:ltr;unicode-bidi:plaintext;letter-spacing:0;opacity:.92;white-space:nowrap}
+  .wmCard .qr{width:clamp(15px,1.9vw,22px);height:clamp(15px,1.9vw,22px);border-radius:3px;
+    background:#fff;padding:1.5px;display:block}
+  .wmCard .nm{font-size:clamp(7px,.72vw,8.5px);font-weight:800;unicode-bidi:plaintext;letter-spacing:0;white-space:nowrap}
+  .wmCard .sep{opacity:.55;font-size:clamp(6px,.65vw,7.5px)}
+  .wmCard .ph{font-size:clamp(6.5px,.68vw,8px);font-weight:700;direction:ltr;unicode-bidi:plaintext;letter-spacing:0;opacity:.92;white-space:nowrap}
   /* المستطيلات السودة تحت خالص يمين وشمال — تغطية علامة الاشتراك/اللوجو
      بتاعة يوتيوب تغطية كاملة + بتمنع الدوس عليها (فيه يوتيوب بس) */
   /* (2026-و9) الشريط السفلي بقى بنفس سمك العلوي بالظبط — طلب المستر:
@@ -398,8 +402,10 @@ const PLAYER_PAGE = `<!doctype html>
      مساحة كبيرة من الفيديو */
   #topShield{position:absolute;top:0;left:0;right:0;z-index:22;pointer-events:auto;
     height:max(40px,min(7.5%,50px));
-    background:rgba(0,0,0,.80);
-    -webkit-backdrop-filter:blur(16px) saturate(.9);backdrop-filter:blur(16px) saturate(.9);
+    /* 2026-و40-w — «وضّح الفيديو»: أفتح وأقل بلور — التغطية زي ما هي بس
+       الفيديو يبان واضح تحتها (الطلاب كانوا بيشكوا إن الووترمارك بتشتت) */
+    background:rgba(0,0,0,.60);
+    -webkit-backdrop-filter:blur(10px) saturate(.9);backdrop-filter:blur(10px) saturate(.9);
     display:flex;align-items:center;justify-content:flex-start;
     padding-right:14px;
     border-bottom:1px solid rgba(255,255,255,.10)}
@@ -419,10 +425,12 @@ const PLAYER_PAGE = `<!doctype html>
   /* 2026-و19 — «نزّل الشريط اللي تحت شويه — ما يكونش عالي كده قوي» —
      بقى 66px + 6–10px بس (على مستوى سطر الكابشن بالظبط) بدل ما كان
      واصل لأول كروت الـ QR (96–106px) — والكروت فوقيه ظاهرة زي ما هي (z-46 > z-44) */
+  /* 2026-و40-w — الشريط كله أصغر: mgBar 60→45px والدرع 66→45+5–8px
+     (والكروت السفلية bottom:52px فوق حرفه بالظبط) — الفيديو أكبر وأوضح */
   #botShield{position:absolute;bottom:0;left:0;right:0;z-index:44;pointer-events:auto;
-    height:calc(66px + clamp(6px,0.9vw,10px));
-    background:rgba(0,0,0,.80);
-    -webkit-backdrop-filter:blur(16px) saturate(.9);backdrop-filter:blur(16px) saturate(.9);
+    height:calc(45px + clamp(5px,0.7vw,8px));
+    background:rgba(0,0,0,.60);
+    -webkit-backdrop-filter:blur(10px) saturate(.9);backdrop-filter:blur(10px) saturate(.9);
     display:flex;align-items:center;justify-content:flex-start;
     padding-right:14px;
     border-top:1px solid rgba(255,255,255,.10)}
@@ -432,7 +440,7 @@ const PLAYER_PAGE = `<!doctype html>
     font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
     font-size:clamp(12px,1.9vw,17px);letter-spacing:.5px;direction:ltr;white-space:nowrap;
     text-shadow:0 1px 3px rgba(0,0,0,.6);pointer-events:none}
-  #fsBtn{position:absolute;bottom:10px;left:10px;z-index:50;width:40px;height:40px;border-radius:10px;border:0;cursor:pointer;
+  #fsBtn{position:absolute;bottom:8px;left:8px;z-index:50;width:30px;height:30px;border-radius:8px;border:0;cursor:pointer;
     background:rgba(0,0,0,.55);color:#fff;display:flex;align-items:center;justify-content:center;opacity:.75}
   #fsBtn:hover{opacity:1;background:rgba(0,0,0,.75)}
   /* ===== كنترولز بتاعتنا (بدون أي شكل يوتيوب) ===== */
@@ -451,39 +459,41 @@ const PLAYER_PAGE = `<!doctype html>
      ⚙ الجودة + شريط التقدم بالسحب + زرار ملء الشاشة (كبير وواضح).
      التشغيل/الإيقاف بدوسة على الفيديو نفسه — مفيش كتم ولا وقت ولا براند.
      الخلفية SOLID معتمة 100% (2026-ي) */
-  #mgBar{position:absolute;bottom:0;left:0;right:0;z-index:60;height:60px;
-    display:flex;align-items:center;gap:4px;direction:rtl;padding:0 10px;
+  /* 2026-و40-w — «صغّر الشريط السفلي ~25% — الفيديو يبان أكبر»:
+     60px → 45px وكل العناصر جواه ×0.75 تقريبًا — كل الأزرار شغالة زي ما هي */
+  #mgBar{position:absolute;bottom:0;left:0;right:0;z-index:60;height:45px;
+    display:flex;align-items:center;gap:3px;direction:rtl;padding:0 8px;
     background:#050509;
     transition:opacity .3s ease;opacity:1}
   /* إخفاء تلقائي (2026-و3 — طلب المستر: الشريط يختفي أول ما الفيديو يمشي
      ويظهر لحظة الإيقاف — عشان ميفضلش مشتت الطالب طول المشاهدة) */
   #mgBar.hide{opacity:0;pointer-events:none}
   body.nocursor{cursor:none}
-  #mgBar .mBtn{flex:0 0 auto;width:44px;height:44px;border:0;border-radius:10px;
+  #mgBar .mBtn{flex:0 0 auto;width:33px;height:33px;border:0;border-radius:8px;
     background:transparent;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer}
   #mgBar .mBtn:hover{background:rgba(255,255,255,.12)}
   /* زرار ملء الشاشة **الكبير** (2026-و2 — «حطلي علامة تصغير كبيرة») */
-  #mgBar .mBtn.big{width:58px;height:48px}
-  #mgTrackWrap{flex:1 1 auto;direction:ltr;height:44px;display:flex;align-items:center;cursor:pointer;padding:0 6px;min-width:80px}
-  #mgTrack{position:relative;width:100%;height:5px;border-radius:4px;background:rgba(255,255,255,.22);overflow:hidden}
+  #mgBar .mBtn.big{width:44px;height:36px}
+  #mgTrackWrap{flex:1 1 auto;direction:ltr;height:33px;display:flex;align-items:center;cursor:pointer;padding:0 5px;min-width:70px}
+  #mgTrack{position:relative;width:100%;height:4px;border-radius:4px;background:rgba(255,255,255,.22);overflow:hidden}
   #mgBuf{position:absolute;top:0;left:0;bottom:0;width:0;background:rgba(255,255,255,.35)}
   #mgFill{position:absolute;top:0;left:0;bottom:0;width:0;background:#fff}
-  #mgBrand{flex:0 0 auto;color:rgba(255,255,255,.92);font-weight:900;font-size:12px;letter-spacing:.6px;
-    direction:ltr;font-family:system-ui,sans-serif;margin-right:8px;text-shadow:0 1px 2px rgba(0,0,0,.6)}
+  #mgBrand{flex:0 0 auto;color:rgba(255,255,255,.92);font-weight:900;font-size:9px;letter-spacing:.5px;
+    direction:ltr;font-family:system-ui,sans-serif;margin-right:6px;text-shadow:0 1px 2px rgba(0,0,0,.6)}
   @media(max-width:420px){#mgBrand{display:none}}
   /* ===== (المشغل العادي 2026-و) الوقت + زرار إعدادات الجودة ⚙ + القايمة =====
      طلب المستر الحرفي: «يكون فيه إعدادات بتاعت الجودة.. تعرف حاجات تكون شايفها» */
-  #mgTime{flex:0 0 auto;font-size:11.5px;font-weight:700;color:rgba(255,255,255,.85);
+  #mgTime{flex:0 0 auto;font-size:8.5px;font-weight:700;color:rgba(255,255,255,.85);
     direction:ltr;unicode-bidi:plaintext;letter-spacing:.2px;padding:0 6px;white-space:nowrap;
     font-variant-numeric:tabular-nums;text-shadow:0 1px 2px rgba(0,0,0,.6)}
   @media(max-width:620px){#mgTime{display:none}}
-  #mgBar .mBtnWide{flex:0 0 auto;min-width:44px;height:44px;border:0;border-radius:10px;
+  #mgBar .mBtnWide{flex:0 0 auto;min-width:33px;height:33px;border:0;border-radius:8px;
     background:transparent;color:#fff;display:flex;align-items:center;justify-content:center;
-    gap:6px;padding:0 10px;cursor:pointer}
+    gap:5px;padding:0 8px;cursor:pointer}
   #mgBar .mBtnWide:hover{background:rgba(255,255,255,.12)}
-  #mgQLabel{font-size:11px;font-weight:800;color:rgba(255,255,255,.9);letter-spacing:.3px;white-space:nowrap}
+  #mgQLabel{font-size:8.5px;font-weight:800;color:rgba(255,255,255,.9);letter-spacing:.3px;white-space:nowrap}
   @media(max-width:520px){#mgQLabel{display:none}}
-  #mgQMenu{position:absolute;bottom:68px;left:12px;z-index:72;min-width:170px;display:none;
+  #mgQMenu{position:absolute;bottom:52px;left:12px;z-index:72;min-width:170px;display:none;
     background:#0b0b12;border:1px solid rgba(255,255,255,.18);border-radius:12px;padding:6px;
     box-shadow:0 14px 40px rgba(0,0,0,.6);direction:rtl}
   #mgQMenu.open{display:block}
@@ -577,7 +587,8 @@ function buildWm(){
     big.id = 'wmBig';
     big.innerHTML = '<span class="b1">' + esc(big1) + '</span>' +
       ((wmName && wmPhone) ? '<span class="b2">' + esc(wmPhone) + '</span>' : '');
-    var wmo = Math.min(0.6, Math.max(0.3, (Number(CFG.wm.opacity) || 0.55) * 0.85));
+    /* (2026-و40-w) شفافية أقل — الووترمارك المركزية أقل حجب للفيديو */
+    var wmo = Math.min(0.45, Math.max(0.22, (Number(CFG.wm.opacity) || 0.55) * 0.7));
     big.style.setProperty('--wmo', String(wmo));
     big.style.animationPlayState = 'paused';
     layer.appendChild(big);

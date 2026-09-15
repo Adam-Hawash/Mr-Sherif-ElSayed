@@ -34,6 +34,8 @@ export var SCHEMA_TABLES = [
   'CREATE TABLE IF NOT EXISTS Complaint (id TEXT PRIMARY KEY, studentId TEXT DEFAULT "", studentName TEXT DEFAULT "", phone TEXT DEFAULT "", grade TEXT DEFAULT "", message TEXT NOT NULL, summary TEXT DEFAULT "", source TEXT NOT NULL DEFAULT "student", status TEXT NOT NULL DEFAULT "new", reply TEXT DEFAULT "", reviewedAt DATETIME, createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
   // (2026-و37) حساب ولي الأمر — مربوط بحساب ابنه بـ studentId (زي ما هو في Student.parentPhone)
   'CREATE TABLE IF NOT EXISTS Parent (id TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT "", phone TEXT NOT NULL UNIQUE, password TEXT NOT NULL DEFAULT "", studentId TEXT NOT NULL, createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
+  // (2026-و40) الكتب والملازم — مكتبة PDF للطالب (تاب أدمن + تاب طالب)
+  'CREATE TABLE IF NOT EXISTS Book (id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT \'\', filePath TEXT NOT NULL DEFAULT \'\', fileName TEXT NOT NULL DEFAULT \'\', fileType TEXT NOT NULL DEFAULT \'application/pdf\', sizeBytes INTEGER NOT NULL DEFAULT 0, grade TEXT NOT NULL DEFAULT \'\', createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL)',
 ]
 
 var SCHEMA_COLUMNS = [
@@ -152,14 +154,18 @@ export var SCHEMA_INDEXES = [
   'CREATE INDEX IF NOT EXISTS idx_parent_student ON Parent(studentId)',
 ]
 
-export var CORE_TABLES = ['Admin', 'Student', 'StudentActivity', 'Video', 'Homework', 'Exam', 'ExamResult', 'Announcement', 'Discussion', 'SiteConfig', 'Media', 'VideoProgress', 'GalleryImage', 'Payment', 'VideoAccess', 'Complaint', 'Parent']
+export var CORE_TABLES = ['Admin', 'Student', 'StudentActivity', 'Video', 'Homework', 'Exam', 'ExamResult', 'Announcement', 'Discussion', 'SiteConfig', 'Media', 'VideoProgress', 'GalleryImage', 'Payment', 'VideoAccess', 'Complaint', 'Parent', 'Book']
 
 /* (2026-و38) مفتاح البصمة اتبدل — البصمة القديمة كانت اتخزنت على الإنتاج
  * بعد ما كود و37 نزل (والجدول وقتها مش معمول لسه في CORE_TABLES فالترميم
  * اتخطى!) — وده كان سبب «حساب ولي أمر — حصلت مشكلة في إنشاء الحساب»:
  * جدول Parent مش موجود على Turso. بتغيير المفتاح أول ريكوست بعد النشر
  * بيعمل الفحص الكامل وينشئ أي جدول ناقص (Parent فوق كلهم). */
-var SCHEMA_HASH_KEY = 'schema_heal_hash_v2_w38'
+/* (2026-و40) مفتاح البصمة اتبدّل — جدول Book الجديد (الكتب والملازم) دخل
+ * SCHEMA_TABLES + CORE_TABLES، وتغيير المفتاح بيضمن إن أول ريكوست بعد النشر
+ * يعمل الفحص الكامل وينشئ الجدول على Turso (درس حادثة و38: جدول ناقص من
+ * CORE_TABLES + بصمة قديمة = الجدول عمرك ما اتعمل على الإنتاج). */
+var SCHEMA_HASH_KEY = 'schema_heal_hash_v2_w40'
 
 /* ============================================================
  * 2026-و23 — **إصلاح بطء المنصة** (طلب المستر: «المنصة بطيئة، تسجيل

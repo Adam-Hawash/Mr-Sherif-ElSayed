@@ -20,7 +20,7 @@ import {
   Link2, Activity, Eye, ImagePlus, Trophy, UserX, Camera,
   PlayCircle, Pause, Film, Search, FileDown, PictureInPicture2, Save, Sparkles, Wallet,
   Video as VideoIcon,
-  ChevronLeft, CheckCircle2, Smartphone, RotateCcw, ShieldCheck, Monitor, Tablet, Flag, GraduationCap, UsersRound, PieChart
+  ChevronLeft, CheckCircle2, Smartphone, RotateCcw, ShieldCheck, Monitor, Tablet, Flag, GraduationCap, UsersRound, PieChart, BookOpen
 } from 'lucide-react'
 import { AdminComplaints } from './AdminComplaints'
 import { CMSPanel } from './CMSPanel'
@@ -37,7 +37,14 @@ import { ActivityPanel } from './ActivityPanel'
 import { PaymentsPanel } from '@/components/PaymentsPanel'
 import { StudentTargetPicker, parseTargetStudentIds } from '@/components/admin/StudentTargetPicker'
 import { MathKeyboard } from '@/components/student/MathKeyboard'
-import { useState, useEffect, useRef } from 'react'
+/* (2026-و40) استخراج من صفحات كتاب PDF — تصوير الصفحات على المتصفح بـ pdf.js */
+import { openPdf, renderPageToJpeg } from '@/lib/pdf-pages'
+/* (2026-و40-w) ورقة العمل: قص رسومات الأسئلة + عرض الجداول/الرسومات في المراجعة */
+import { ensureFigureUrls } from '@/lib/question-figures'
+import { WorksheetTableReadonly, WorksheetFigure, parseTableValuesFromText } from '@/components/worksheet/WorksheetParts'
+/* (2026-و40) الكتب والملازم — تاب مكتبة الكتب للطالب */
+import { BooksManager } from './BooksManager'
+import { useState, useEffect, useRef, Fragment } from 'react'
 import Image from 'next/image'
 import { toast } from 'sonner'
 
@@ -299,6 +306,8 @@ export function AdminDashboard() {
             <TabsTrigger value="exams" className="text-xs sm:text-sm gap-1"><FileText className="h-4 w-4" /><span className="hidden sm:inline">الامتحانات</span></TabsTrigger>
             {/* (2026-و38) تحليلات الأسئلة — أكتر سؤال الطلاب غلطت فيه + أساميهم — طلب المستر */}
             <TabsTrigger value="item-analytics" className="text-xs sm:text-sm gap-1 text-violet-600 dark:text-violet-400"><PieChart className="h-4 w-4" /><span className="hidden sm:inline">تحليلات الأسئلة</span></TabsTrigger>
+            {/* (2026-و40) الكتب والملازم — مكتبة PDF الطالب يفتحها/يحملها */}
+            <TabsTrigger value="books" className="text-xs sm:text-sm gap-1 text-sky-600 dark:text-sky-400"><BookOpen className="h-4 w-4" /><span className="hidden sm:inline">الكتب والملازم</span></TabsTrigger>
             <TabsTrigger value="announcements" className="text-xs sm:text-sm gap-1"><Megaphone className="h-4 w-4" /><span className="hidden sm:inline">الإعلانات</span></TabsTrigger>
             <TabsTrigger value="community" className="text-xs sm:text-sm gap-1"><MessageSquare className="h-4 w-4" /><span className="hidden sm:inline">المجتمعات</span></TabsTrigger>
             <TabsTrigger value="activity" className="text-xs sm:text-sm gap-1"><Activity className="h-4 w-4" /><span className="hidden sm:inline">المتابعة</span></TabsTrigger>
@@ -323,6 +332,8 @@ export function AdminDashboard() {
           </TabsContent>
           <TabsContent value="exams"><ExamTrackingPanel onViewImage={setImageModalSrc} /></TabsContent>
           <TabsContent value="item-analytics"><AdminItemAnalytics /></TabsContent>
+          {/* (2026-و40) الكتب والملازم */}
+          <TabsContent value="books"><BooksManager /></TabsContent>
           <TabsContent value="announcements">
             <ContentManager<Announcement> title="إدارة الإعلانات | Announcements" apiPath="/api/announcements" itemName="announcements"
               fields={{ title: { label: 'عنوان | Title', type: 'text' }, content: { label: 'المحتوى | Content', type: 'textarea' } }}
@@ -1958,6 +1969,13 @@ function ExamTrackingPanel({ onViewImage }: { onViewImage?: (src: string) => voi
                                             </span>
                                             <p className="font-medium flex-1" style={{ textAlign: 'left' }}>{qi + 1}. <FractionText text={aq.question} /></p>
                                           </div>
+                                          {/* (2026-و40-w) جدول السؤال معبى بقيم الطالب + رسمته — عرض فقط */}
+                                          {(aq.table || aq.figure) && (
+                                            <div className="mt-1 pl-6">
+                                              {aq.table && <WorksheetTableReadonly table={aq.table} values={Array.isArray(aq.tableAnswers) ? aq.tableAnswers : parseTableValuesFromText(aq.studentAnswer || '', aq.table)} />}
+                                              {aq.figure && <WorksheetFigure figure={aq.figure} />}
+                                            </div>
+                                          )}
                                           <div className="mt-1 pl-6 space-y-0.5">
                                             {aq.type === 'writing' ? (
                                               <div className="space-y-1 p-2 rounded bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/40">
@@ -2678,6 +2696,13 @@ function MyStudentsPanel({ onViewImage }: { onViewImage?: (src: string) => void 
                                     </span>
                                     <p className="font-medium flex-1" style={{ textAlign: 'left' }}>{qi + 1}. <FractionText text={aq.question} /></p>
                                   </div>
+                                  {/* (2026-و40-w) جدول السؤال معبى بقيم الطالب + رسمته — عرض فقط */}
+                                  {(aq.table || aq.figure) && (
+                                    <div className="mt-1 pl-6">
+                                      {aq.table && <WorksheetTableReadonly table={aq.table} values={Array.isArray(aq.tableAnswers) ? aq.tableAnswers : parseTableValuesFromText(aq.studentAnswer || '', aq.table)} />}
+                                      {aq.figure && <WorksheetFigure figure={aq.figure} />}
+                                    </div>
+                                  )}
                                   <div className="mt-1 pl-6 space-y-0.5">
                                     {aq.type === 'writing' ? (
                                       <>
@@ -2811,6 +2836,13 @@ function MyStudentsPanel({ onViewImage }: { onViewImage?: (src: string) => void 
                                     </span>
                                     <p className="font-medium flex-1" style={{ textAlign: 'left' }}>{qi + 1}. <FractionText text={aq.question} /></p>
                                   </div>
+                                  {/* (2026-و40-w) جدول السؤال معبى بقيم الطالب + رسمته — عرض فقط */}
+                                  {(aq.table || aq.figure) && (
+                                    <div className="mt-1 pl-6">
+                                      {aq.table && <WorksheetTableReadonly table={aq.table} values={Array.isArray(aq.tableAnswers) ? aq.tableAnswers : parseTableValuesFromText(aq.studentAnswer || '', aq.table)} />}
+                                      {aq.figure && <WorksheetFigure figure={aq.figure} />}
+                                    </div>
+                                  )}
                                   <div className="mt-1 pl-6 space-y-0.5">
                                     {aq.type === 'writing' ? (
                                       <>
@@ -3500,11 +3532,28 @@ function AIExtractionPanel({ onRefresh }: { onRefresh: () => void }) {
   // YouTube state
   const [youtubeUrl, setYoutubeUrl] = useState('')
   const [numQuestions, setNumQuestions] = useState(10)
-  const [inputMode, setInputMode] = useState<'file' | 'youtube'>('file')
+  const [inputMode, setInputMode] = useState<'file' | 'youtube' | 'book'>('file')
+  /* (2026-و40) وضع الكتاب — استخراج من صفحات محددة في كتاب كبير (طلب المستر:
+     بفتح كتاب كبير، أحدد صفحات، يجيب كل الأسئلة أو أهم N سؤال بالترتيب) */
+  const [bookFile, setBookFile] = useState<File | null>(null)
+  const [bookNumPages, setBookNumPages] = useState(0)
+  const [bookFrom, setBookFrom] = useState(1)
+  const [bookTo, setBookTo] = useState(1)
+  const [bookMode, setBookMode] = useState<'all' | 'top'>('all')
+  const [bookCount, setBookCount] = useState(10)
+  const [bookName, setBookName] = useState('')
+  const [bookPdfLoading, setBookPdfLoading] = useState(false)
+  const bookDocRef = useRef<any>(null)
+  const bookFileRef = useRef<HTMLInputElement>(null)
   /* (25-ب1) إعدادات الامتحان قبل الحفظ: إظهار الإجابات + المؤقت + موعد الظهور */
   const [examShowResult, setExamShowResult] = useState(false)
   const [examTimeLimit, setExamTimeLimit] = useState('')
   const [examScheduledAt, setExamScheduledAt] = useState('')
+  /* (2026-و40-w) أكتر من ملف ورا بعض: زرار «أضف ملف تاني» في شاشة المراجعة
+     يرجّع لخطوة اختيار المصدر — والأسئلة الجديدة بتتنضاف تحت الحالية
+     (ممنوع الاستبدال) مع srcName «الملف الثاني/الثالث/…» على الدفعة الجديدة */
+  const [appendingFile, setAppendingFile] = useState(false)
+  const [fileBatchCount, setFileBatchCount] = useState(0)
 
   var resetAll = function() {
     setStep(1); setExtractType('exam'); setGrade(''); setTitle('')
@@ -3512,12 +3561,74 @@ function AIExtractionPanel({ onRefresh }: { onRefresh: () => void }) {
     setExtractedQuestions([]); setStatusMsg('')
     setYoutubeUrl(''); setNumQuestions(10); setInputMode('file')
     setExamShowResult(false); setExamTimeLimit(''); setExamScheduledAt('')
+    /* (2026-و40) تصفير وضع الكتاب */
+    setBookFile(null); setBookNumPages(0); setBookFrom(1); setBookTo(1)
+    setBookMode('all'); setBookCount(10); setBookName(''); bookDocRef.current = null
+    /* (2026-و40-w) تصفير وضع أكتر من ملف */
+    setAppendingFile(false); setFileBatchCount(0)
+  }
+
+  /* (2026-و40-w) تسمية الملفات بالترتيب: الأول/الثاني/الثالث… */
+  var fileOrdinalLabel = function (n: number): string {
+    var ordinals = ['', 'الملف الأول', 'الملف الثاني', 'الملف الثالث', 'الملف الرابع', 'الملف الخامس', 'الملف السادس', 'الملف السابع', 'الملف الثامن', 'الملف التاسع', 'الملف العاشر', 'الملف الحادي عشر', 'الملف الثاني عشر']
+    return (n >= 1 && n < ordinals.length) ? ordinals[n] : ('الملف ' + n)
+  }
+
+  /* (2026-و40-w) نقطة نهاية الاستخراج المشتركة (الملف/يوتيوب/الكتاب):
+     1) قص رسومات الأسئلة (figure.bbox من غير url) من مصدر الصفحات + رفعها
+        مع توست «جهز الرسومات X من Y…» — قبل شاشة المراجعة عشان url
+        يتخزن مع الحفظ من غير خطوة إضافية
+     2) لو بنضيف ملف تاني → دمج تحت الحالية (ممنوع الاستبدال) + srcName ترتيبي
+     3) لو أول ملف → استبدال عادي من غير srcName (سؤال بمصدر واحد بيتعرض «صفحة N» بس) */
+  var finishExtraction = async function (newQs: any[], cropSource: { file?: File | null; doc?: any | null }) {
+    try {
+      var needCrop = newQs.filter(function (q: any) { return q && q.figure && q.figure.bbox && !q.figure.url }).length
+      if (needCrop > 0) {
+        setStatusMsg('جهز الرسومات 0 من ' + needCrop + '…')
+        await ensureFigureUrls(newQs, cropSource || {}, function (done: number, total: number) {
+          setStatusMsg('جهز الرسومات ' + done + ' من ' + total + '…')
+        })
+        setStatusMsg('')
+      }
+    } catch (eCrop: any) {
+      /* فشل القص مش بيوقف الاستخراج — bbox هيفضل والواجهة تعرض placeholder */
+      setStatusMsg('')
+    }
+    if (appendingFile) {
+      var batchName = fileOrdinalLabel(Math.max(1, fileBatchCount + 1))
+      var tagged = newQs.map(function (q: any) { return Object.assign({}, q, { srcName: batchName }) })
+      var existing = extractedQuestions.map(function (q: any) {
+        if (q && q.srcName && String(q.srcName).trim()) return q
+        return Object.assign({}, q, { srcName: fileOrdinalLabel(1) })
+      })
+      setExtractedQuestions(existing.concat(tagged))
+      setFileBatchCount(fileBatchCount + 1)
+      setAppendingFile(false)
+      toast.success('تمت إضافة ' + tagged.length + ' سؤال من ' + batchName + ' — نزلوا تحت الأسئلة الحالية')
+    } else {
+      setExtractedQuestions(newQs)
+      setFileBatchCount(1)
+    }
+    setStep(3)
+  }
+
+  /* (2026-و40-w) زرار «أضف ملف تاني»: يرجّع لخطوة اختيار المصدر بنفس الأوضاع
+     مع الحفاظ على الأسئلة المستخرجة زي ما هي */
+  var startAppendFile = function () {
+    setAppendingFile(true)
+    setFile(null); setFileUrl(''); setAnswerFile(null); setAnswerUrl('')
+    setBookFile(null); setBookNumPages(0); setBookFrom(1); setBookTo(1); bookDocRef.current = null
+    setStatusMsg('اختار الملف التاني وابعت استخراج — أسئلته هتتنزّل تحت الحالية (' + extractedQuestions.length + ' سؤال)')
+    setStep(2)
   }
 
   var canProceedStep1 = extractType && grade.trim() && title.trim()
   var canExtractFile = file || fileUrl.trim()
   var canExtractYoutube = youtubeUrl.trim().length > 5
-  var canExtract = inputMode === 'youtube' ? canExtractYoutube : canExtractFile
+  /* (2026-و40) جاهزية وضع الكتاب: ملف مفتوح + نطاق صالح (≤30 صفحة) */
+  var bookPagesSelected = bookNumPages > 0 ? (bookTo - bookFrom + 1) : 0
+  var canExtractBook = !!bookFile && bookNumPages > 0 && bookFrom >= 1 && bookTo >= bookFrom && bookTo <= bookNumPages && bookPagesSelected <= 30
+  var canExtract = inputMode === 'youtube' ? canExtractYoutube : inputMode === 'book' ? canExtractBook : canExtractFile
 
   var handleExtract = async function() {
     if (!canExtract || extracting) return
@@ -3538,9 +3649,9 @@ function AIExtractionPanel({ onRefresh }: { onRefresh: () => void }) {
         var data = await res.json()
         if (res.ok && data.extracted && data.extracted.questions && data.extracted.questions.length > 0) {
           if (data.extracted.title && !title) { setTitle(data.extracted.title) }
-          setExtractedQuestions(data.extracted.questions)
+          /* (2026-و40-w) قص الرسومات + دمج أكتر من ملف عبر النقطة المشتركة */
+          await finishExtraction(data.extracted.questions, {})
           setStatusMsg('')
-          setStep(3)
           toast.success('تم استخراج ' + data.extracted.questions.length + ' سؤال من يوتيوب بنجاح!')
         } else {
           toast.error(data.error || 'لم يتم استخراج أسئلة من الفيديو')
@@ -3562,9 +3673,9 @@ function AIExtractionPanel({ onRefresh }: { onRefresh: () => void }) {
         clearTimeout(tmr2)
         var data2 = await res2.json()
         if (res2.ok && data2.extracted && data2.extracted.questions && data2.extracted.questions.length > 0) {
-          setExtractedQuestions(data2.extracted.questions)
+          /* (2026-و40-w) قص الرسومات من ملف المصدر + دمج أكتر من ملف عبر النقطة المشتركة */
+          await finishExtraction(data2.extracted.questions, { file: file || null })
           setStatusMsg('')
-          setStep(3)
           var stats = data2.extracted.stats || {}
           var msg = 'تم استخراج ' + data2.extracted.questions.length + ' سؤال بنجاح!'
           if (stats.mcq || stats.writing) {
@@ -3648,6 +3759,119 @@ function AIExtractionPanel({ onRefresh }: { onRefresh: () => void }) {
     return m ? m[1] : null
   }
 
+  /* ===== (2026-و40) وضع الكتاب ===== */
+  var handleBookFile = async function(f: File | null) {
+    setBookFile(f); bookDocRef.current = null; setBookNumPages(0); setBookFrom(1); setBookTo(1)
+    if (!f) return
+    setBookPdfLoading(true)
+    try {
+      var opened = await openPdf(f)
+      bookDocRef.current = opened.doc
+      setBookNumPages(opened.numPages)
+      toast.success('اتفتح الكتاب — عدد الصفحات: ' + opened.numPages)
+    } catch (e: any) {
+      toast.error('مقدرتش أفتح ملف الـ PDF: ' + (e.message || ''))
+    }
+    setBookPdfLoading(false)
+  }
+
+  /* مفتاح منع التكرار: نص السؤال مطبّع (فراغات/ترقيم/طول 120) */
+  var bookQuestionKey = function(q: any) {
+    return String((q && (q.question || q.q)) || '').toLowerCase().replace(/\s+/g, ' ').replace(/[^\u0600-\u06FFa-z0-9]/g, '').substring(0, 120)
+  }
+
+  var handleExtractBook = async function() {
+    if (!canExtractBook || extracting) return
+    var doc = bookDocRef.current
+    if (!doc) { toast.error('افتح ملف الكتاب الأول'); return }
+    var from = bookFrom, to = bookTo
+    var total = to - from + 1
+    var CHUNK = 5
+    var chunks = Math.ceil(total / CHUNK)
+    setExtracting(true)
+    try {
+      var collected: any[] = []
+      var seenKeys: any = {}
+      var skippedChunks = 0
+      for (var c = 0; c < chunks; c++) {
+        var cFrom = from + c * CHUNK
+        var cTo = Math.min(to, cFrom + CHUNK - 1)
+        setStatusMsg('جاري قراءة الصفحات ' + cFrom + '–' + cTo + '… (' + (c + 1) + '/' + chunks + ')')
+        var pages: any[] = []
+        for (var pn = cFrom; pn <= cTo; pn++) {
+          var img = await renderPageToJpeg(doc, pn, 1400, 0.72)
+          pages.push({ n: pn, image: img })
+        }
+        var extractedChunk: any = null
+        for (var attempt = 0; attempt < 2 && !extractedChunk; attempt++) {
+          try {
+            var ctrlB = new AbortController()
+            var tmrB = setTimeout(function() { ctrlB.abort() }, 180000)
+            var resB = await fetch('/api/ai-extract-pages', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ pages: pages, mode: 'all', bookTitle: bookName.trim() }),
+              signal: ctrlB.signal,
+            })
+            clearTimeout(tmrB)
+            var dataB = await resB.json()
+            if (resB.ok && dataB.extracted) extractedChunk = dataB.extracted
+          } catch (eB: any) {
+            if (eB && eB.name === 'AbortError') throw eB
+          }
+          if (!extractedChunk && attempt === 0) await new Promise(function (r) { setTimeout(r, 1200) })
+        }
+        if (!extractedChunk) { skippedChunks++; continue }
+        var qs = extractedChunk.questions || []
+        for (var qi = 0; qi < qs.length; qi++) {
+          var key = bookQuestionKey(qs[qi])
+          if (key && seenKeys[key]) continue
+          if (key) seenKeys[key] = true
+          collected.push(qs[qi])
+        }
+      }
+      /* أهم N سؤال: اختيار عابر للدفعات — نداء نص-only واحد على نفس المسار */
+      if (bookMode === 'top' && collected.length > bookCount) {
+        setStatusMsg('جاري اختيار أهم ' + bookCount + ' سؤال…')
+        var picked: any[] | null = null
+        try {
+          var ctrlS = new AbortController()
+          var tmrS = setTimeout(function() { ctrlS.abort() }, 180000)
+          var resS = await fetch('/api/ai-extract-pages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ selectTop: { questions: collected, count: bookCount } }),
+            signal: ctrlS.signal,
+          })
+          clearTimeout(tmrS)
+          var dataS = await resS.json()
+          if (resS.ok && dataS.extracted && Array.isArray(dataS.extracted.questions) && dataS.extracted.questions.length > 0) picked = dataS.extracted.questions
+        } catch (eS: any) {
+          if (eS && eS.name === 'AbortError') throw eS
+        }
+        collected = picked || collected.slice(0, bookCount)
+      }
+      if (collected.length === 0) {
+        toast.error('مقدرتش أستخرج أسئلة من الصفحات دي — جرب نطاق تاني أو تأكد إن الصفحات فيها أسئلة مطبوعة واضحة')
+        setStatusMsg('')
+        setExtracting(false)
+        return
+      }
+      if (!title.trim() && !appendingFile) setTitle(bookName.trim() || ('كتاب — صفحات ' + from + '–' + to))
+      setStatusMsg('')
+      /* (2026-و40-w) قص الرسومات من مستند الكتاب المفتوح + دمج أكتر من ملف */
+      await finishExtraction(collected, { doc: doc })
+      var okMsg = (appendingFile ? 'تمت إضافة ' : 'تم استخراج ') + collected.length + (appendingFile ? ' سؤال من الملف الجديد!' : ' سؤال من صفحات الكتاب!')
+      if (skippedChunks > 0) okMsg += ' (فشلت ' + skippedChunks + ' دفعة صفحات — جرب نطاقها تاني)'
+      toast.success(okMsg)
+    } catch (err: any) {
+      if (err && err.name === 'AbortError') { toast.error('انتهت مهلة الاستخراج - حاول مرة أخرى') }
+      else { toast.error('خطأ: ' + (err.message || '')) }
+      setStatusMsg('')
+    }
+    setExtracting(false)
+  }
+
   var renderStep1 = function() {
     return (
       <div className="space-y-4">
@@ -3696,13 +3920,22 @@ function AIExtractionPanel({ onRefresh }: { onRefresh: () => void }) {
           </div>
         </div>
 
-        {/* Input Mode Toggle */}
+        {/* (2026-و40-w) بانر وضع الإضافة: بنستخرج من ملف تاني والأسئلة هتتنضاف تحت الحالية */}
+        {appendingFile && (
+          <div className="p-2.5 rounded-lg border border-dashed border-primary/40 bg-primary/5 text-[11px] font-semibold text-primary">
+            ➕ بنضيف ملف تاني — الأسئلة الحالية ({extractedQuestions.length}) محفوظة، والجديدة هتتنزّل تحتها في آخر القايمة
+          </div>
+        )}
         <div className="flex gap-2 p-1 rounded-lg bg-muted">
           <button type="button" onClick={function() { setInputMode('file') }} className={"flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-sm font-medium transition-all " + (inputMode === 'file' ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground')}>
             <Upload className="h-4 w-4" /> رفع ملف
           </button>
           <button type="button" onClick={function() { setInputMode('youtube') }} className={"flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-sm font-medium transition-all " + (inputMode === 'youtube' ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground')}>
             <PlayCircle className="h-4 w-4" /> يوتيوب
+          </button>
+          {/* (2026-و40) وضع الكتاب — صفحات محددة من كتاب كبير */}
+          <button type="button" onClick={function() { setInputMode('book') }} className={"flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-sm font-medium transition-all " + (inputMode === 'book' ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground')}>
+            <BookOpen className="h-4 w-4" /> كتاب
           </button>
         </div>
 
@@ -3751,7 +3984,7 @@ function AIExtractionPanel({ onRefresh }: { onRefresh: () => void }) {
               )}
             </div>
           </div>
-        ) : (
+        ) : inputMode === 'youtube' ? (
           <div className="p-4 rounded-xl border-2 border-dashed border-red-300 bg-red-50 dark:bg-red-950/20 space-y-3">
             <div className="text-center">
               <PlayCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
@@ -3778,12 +4011,62 @@ function AIExtractionPanel({ onRefresh }: { onRefresh: () => void }) {
               </div>
             </div>
           </div>
+        ) : (
+          /* ===== (2026-و40) وضع الكتاب — صفحات محددة من كتاب PDF كبير ===== */
+          <div className="p-4 rounded-xl border-2 border-dashed border-sky-400/40 bg-sky-50 dark:bg-sky-950/20 space-y-3">
+            <div className="text-center">
+              <BookOpen className="h-8 w-8 text-sky-500 mx-auto mb-2" />
+              <p className="text-sm font-medium">📚 كتاب — صفحات محددة</p>
+              <p className="text-[10px] text-muted-foreground">افتح كتاب PDF كبير وحدد الصفحات — المنصة تقراها صفحة صفحة وتستخرج الأسئلة بترتيب الكتاب</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <input ref={bookFileRef} type="file" accept=".pdf" className="hidden" onChange={function(e) { handleBookFile(e.target.files?.[0] || null) }} />
+              <Button type="button" variant="outline" onClick={function() { bookFileRef.current?.click() }} className="flex-1 border-sky-400/40 text-sky-700 dark:text-sky-400">
+                {bookPdfLoading ? <Loader2 className="h-4 w-4 ml-2 animate-spin" /> : <BookOpen className="h-4 w-4 ml-2" />}
+                {bookFile ? bookFile.name : 'اختر ملف الكتاب (PDF)'}
+              </Button>
+            </div>
+            {bookFile && <p className="text-xs text-muted-foreground text-center">{(bookFile.size / 1024 / 1024).toFixed(1)} MB</p>}
+            {bookNumPages > 0 && <p className="text-xs text-center font-medium text-sky-600 dark:text-sky-400">عدد صفحات الكتاب: {bookNumPages}</p>}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs">من صفحة</Label>
+                <Input type="number" min={1} max={bookNumPages || undefined} value={bookFrom} onChange={function(e) { var v = parseInt(e.target.value) || 1; setBookFrom(v); if (bookTo < v) setBookTo(v) }} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">إلى صفحة</Label>
+                <Input type="number" min={1} max={bookNumPages || undefined} value={bookTo} onChange={function(e) { setBookTo(parseInt(e.target.value) || 1) }} />
+              </div>
+            </div>
+            {bookNumPages > 0 && (bookFrom < 1 || bookTo > bookNumPages || bookTo < bookFrom) && (
+              <p className="text-[11px] text-red-500">النطاق غير صحيح — الصفحات من 1 إلى {bookNumPages}</p>
+            )}
+            {bookPagesSelected > 30 && (
+              <p className="text-[11px] text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 p-2 rounded-md">اخترت {bookPagesSelected} صفحة — دي كتير. اشتغل على مراحل (مثلاً 1–30 وبعدين 31–60) عشان الذاكرة والوقت.</p>
+            )}
+            <div className="flex gap-2 flex-wrap">
+              <label className={"flex items-center gap-1.5 text-sm cursor-pointer p-2 rounded-md border " + (bookMode === 'all' ? 'border-primary bg-primary/5' : 'border-border')}>
+                <input type="radio" name="bookMode" checked={bookMode === 'all'} onChange={function() { setBookMode('all') }} />
+                كل الأسئلة في الصفحات
+              </label>
+              <label className={"flex items-center gap-1.5 text-sm cursor-pointer p-2 rounded-md border " + (bookMode === 'top' ? 'border-primary bg-primary/5' : 'border-border')}>
+                <input type="radio" name="bookMode" checked={bookMode === 'top'} onChange={function() { setBookMode('top') }} />
+                أهم
+                <Input type="number" min={1} max={100} value={bookCount} onClick={function(e) { e.stopPropagation() }} onChange={function(e) { setBookCount(Math.max(1, parseInt(e.target.value) || 10)) }} className="h-7 w-16 text-xs" />
+                سؤال
+              </label>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">اسم الكتاب (اختياري — بيتخزن كعنوان)</Label>
+              <Input placeholder="مثال: كتاب الشرح — الفصل الأول" value={bookName} onChange={function(e) { setBookName(e.target.value) }} />
+            </div>
+          </div>
         )}
 
         {statusMsg && <div className="flex items-center gap-2 p-3 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400"><Loader2 className="h-4 w-4 animate-spin" /><p className="text-sm">{statusMsg}</p></div>}
-        <Button className="w-full" size="lg" onClick={handleExtract} disabled={!canExtract || extracting}>
-          {extracting ? <Loader2 className="h-5 w-5 ml-2 animate-spin" /> : <Sparkles className="h-5 w-5 ml-2" />}
-          {extracting ? 'جاري الاستخراج...' : (inputMode === 'youtube' ? 'استخراج من يوتيوب' : 'استخراج الأسئلة')}
+        <Button className="w-full" size="lg" onClick={function() { if (inputMode === 'book') handleExtractBook(); else handleExtract() }} disabled={!canExtract || extracting}>
+          {extracting ? <Loader2 className="h-5 w-5 ml-2 animate-spin" /> : inputMode === 'book' ? <BookOpen className="h-5 w-5 ml-2" /> : <Sparkles className="h-5 w-5 ml-2" />}
+          {extracting ? 'جاري الاستخراج...' : (inputMode === 'book' ? 'استخراج من الصفحات' : (inputMode === 'youtube' ? 'استخراج من يوتيوب' : 'استخراج الأسئلة'))}
         </Button>
       </div>
     )
@@ -3803,17 +4086,47 @@ function AIExtractionPanel({ onRefresh }: { onRefresh: () => void }) {
           <Badge className="bg-purple-500/10 text-purple-600 dark:text-purple-400 border-0">{extractedQuestions.length} سؤال</Badge>
         </div>
         <p className="text-xs text-muted-foreground">راجع الأسئلة المستخرجة وعدلها قبل الحفظ. اختر الإجابة الصحيحة بجانب كل اختيار للـ MCQ، أو راجع الإجابة النموذجية للأسئلة المقالية.</p>
+        {/* (2026-و40-w) زرار بارز في أعلى المراجعة: استخراج من ملف تاني — الأسئلة الجديدة بتتنضاف تحت الحالية (ممنوع الاستبدال) */}
+        {extractedQuestions.length > 0 && (
+          <button
+            type="button"
+            onClick={startAppendFile}
+            className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed border-primary/50 bg-primary/5 text-primary font-bold text-sm hover:bg-primary/10 transition-colors"
+          >
+            ➕ أضف ملف تاني — أسئلته هتتنزّل تحت الحالية
+          </button>
+        )}
         {statusMsg && <div className="flex items-center gap-2 p-3 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400"><Loader2 className="h-4 w-4 animate-spin" /><p className="text-sm">{statusMsg}</p></div>}
         <div className="space-y-3 max-h-[500px] overflow-y-auto custom-scrollbar">
           {extractedQuestions.map(function(q, qi) {
             var qType = q.type === 'writing' || q.type === 'essay' || (!q.options || q.options.length === 0) ? 'writing' : 'mcq'
+            /* (2026-و40-w) فاصل خفيف بين مجموعات الملفات (srcName بيتبدل) */
+            var prevSrc = qi > 0 ? String(extractedQuestions[qi - 1].srcName || '') : ''
+            var curSrc = String(q.srcName || '')
+            var showFileDivider = qi > 0 && prevSrc !== curSrc
+            var hasTablePreview = !!(q.table && Array.isArray(q.table.rows) && q.table.rows.length > 0)
+            var hasFigurePreview = !!(q.figure && q.figure.bbox)
             return (
-              <div key={qi} className="p-3 rounded-lg border bg-card space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-primary">سؤال {qi + 1}</span>
-                    <Badge variant="outline" className={"text-[9px] " + (qType === 'mcq' ? 'border-blue-500/40 text-blue-600' : 'border-amber-500/40 text-amber-600')}>{qType === 'mcq' ? 'اختيارات' : 'مقالي'}</Badge>
-                    <span className="text-[10px] text-muted-foreground">{q.points || 1} نقطة</span>
+              <Fragment key={qi}>
+                {showFileDivider && (
+                  <div className="flex items-center gap-2 pt-1">
+                    <span className="h-px flex-1 bg-primary/20" />
+                    <span className="text-[10px] font-bold text-primary/70">{curSrc || ('الملف ' + (fileBatchCount))}</span>
+                    <span className="h-px flex-1 bg-primary/20" />
+                  </div>
+                )}
+            <div className="p-3 rounded-lg border bg-card space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-bold text-primary">سؤال {qi + 1}</span>
+                  <Badge variant="outline" className={"text-[9px] " + (qType === 'mcq' ? 'border-blue-500/40 text-blue-600' : 'border-amber-500/40 text-amber-600')}>{qType === 'mcq' ? 'اختيارات' : 'مقالي'}</Badge>
+                  <span className="text-[10px] text-muted-foreground">{q.points || 1} نقطة</span>
+                  {/* (2026-و40-w) بادج ورقة العمل: فيها جدول / فيها رسمة + صفحة المصدر */}
+                  {hasTablePreview && <Badge variant="outline" className="text-[9px] border-sky-500/40 text-sky-600">📋 فيها جدول</Badge>}
+                  {hasFigurePreview && <Badge variant="outline" className="text-[9px] border-violet-500/40 text-violet-600">📐 فيها رسمة</Badge>}
+                  {typeof q.sourcePage === 'number' && q.sourcePage > 0 && (
+                    <Badge variant="outline" className="text-[9px] border-amber-500/40 text-amber-600">صفحة {q.sourcePage}{curSrc ? ' — ' + curSrc : ''}</Badge>
+                  )}
                     {/* (استخراج أدق 2026-و10) تحذير صريح للأسئلة اللي الـ AI ماقدرش
                        يقرا إجابتها من ورقة الإجابات بثقة — ممنوع تخرج عشوائية */}
                     {qType === 'mcq' && (q.needsReview || q.correct === -1 || q.correct === undefined) && (
@@ -3830,6 +4143,20 @@ function AIExtractionPanel({ onRefresh }: { onRefresh: () => void }) {
                   <div className="p-2 rounded-md bg-primary/5 border border-primary/20">
                     <p className="text-[9px] font-semibold text-muted-foreground mb-1">👁 معاينة عرض الطالب:</p>
                     <p className="text-sm text-foreground" dir="ltr" style={{ textAlign: 'left' }}><FractionText text={q.question || ''} /></p>
+                  </div>
+                )}
+
+                {/* (2026-و40-w) معاينة الجدول (الخانات المظللة الطالب يكتبها) + الرسمة المقصوصة */}
+                {hasTablePreview && (
+                  <div className="p-2 rounded-md bg-sky-500/5 border border-sky-500/20">
+                    <p className="text-[9px] font-semibold text-muted-foreground mb-1">📋 معاينة الجدول — الخانات المظللة الطالب يكتبها:</p>
+                    <WorksheetTableReadonly table={q.table} />
+                  </div>
+                )}
+                {hasFigurePreview && (
+                  <div className="p-2 rounded-md bg-violet-500/5 border border-violet-500/20">
+                    <p className="text-[9px] font-semibold text-muted-foreground mb-1">📐 رسمة السؤال:</p>
+                    <WorksheetFigure figure={q.figure} />
                   </div>
                 )}
 
@@ -3881,6 +4208,7 @@ function AIExtractionPanel({ onRefresh }: { onRefresh: () => void }) {
                   </>
                 )}
               </div>
+              </Fragment>
             )
           })}
         </div>
