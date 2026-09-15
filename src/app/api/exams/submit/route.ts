@@ -20,6 +20,8 @@ import { after } from 'next/server'
 import { db } from '@/lib/db'
 import { gradeImageAnswer, gradeTextAnswer, extractImageMediaIds, finalAnswerCandidates } from '@/lib/ai-image-grader'
 import { quickSmartMatch, gradeFallbackDecisive } from '@/lib/smart-grader'
+/* (2026-و44) تسريع التصحيح — توازي محدود (اتنين) بمرحلة بداية متدرجة */
+import { runGradePool } from '@/lib/grade-pool'
 /* (2026-و33) مصدر واحد لمفتاح الإجابة — نفس الدالة اللي شاشة المراجعة بتستخدمها على العميل */
 import { normalizeCorrectKey } from '@/lib/correct-key'
 /* (2026-و29) مسار gradeWritingSmart الجماعي اتشال من التسليم — كان نداء AI واحد
@@ -444,133 +446,154 @@ export async function POST(request) {
         }
       }
 
-      /* (2026-و29) تصحيح متسلسل سؤال-بسؤال — نفس نمط الواجب بالظبط:
+      /* (2026-و29 + و44) تصحيح سؤال-بسؤال بتوازي محدود (اتنين مع بعض):
          1) مطابقة سريعة محلية (quickSmartMatch) → كاملة من غير AI
          2) AI لكل سؤال لوحده (gradeTextAnswer — فيه تحقق قيم مدمج STRICT VERIFY)
          3) فشل/عدم تأكد → فولباك حاسم للسؤال ده بس (مش الدفعة كلها)
-         + partial persist بعد كل سؤال — اللي اتصحح مش بيضيع لو اتقطعنا */
-      try {
-        for (var tw = 0; tw < textWorkload.length; tw++) {
-          var twItem = textWorkload[tw]
-          var twAnswer = twItem.studentText || ''
-          var graded1: any = null
-          if (!twAnswer.trim() || twAnswer.trim() === '[📷 صورة مرفقة]') {
-            graded1 = {
-              question: twItem.question, answer: twAnswer, modelAnswer: twItem.modelAnswer,
-              awardedPoints: 0, maxPoints: twItem.points, isCorrect: false,
-              feedback: 'لم يتم الإجابة', gradingStatus: 'graded',
-            }
-          } else if (quickSmartMatch(twAnswer, twItem.modelAnswer || '', twItem.acceptedAnswers || []) === true) {
-            /* (و24) ملاحظة شخصية زي معلم بيتكلم مع الطالب — حتى في المسار السريع */
-            var stNote = (finalAnswerCandidates(twAnswer)[0] || twAnswer.trim() || '').slice(0, 40)
-            graded1 = {
-              question: twItem.question, answer: twAnswer, modelAnswer: twItem.modelAnswer,
-              awardedPoints: twItem.points, maxPoints: twItem.points, isCorrect: true,
-              feedback: 'برافو عليك ✓ الإجابة النهائية (' + stNote + ') مطابقة للإجابة الصحيحة',
-              gradingStatus: 'graded',
-            }
-          } else {
-            var tGrade: any = null
+         + partial persist بعد كل سؤال — اللي اتصحح مش بيضيع لو اتقطعنا
+         + (و44) طلب المستر «تسرع التصحيح»: النصي والصور في pool واحد
+           بعاملين مع تأخير بداية — نفس منطق كل سؤال بالظبط، بس أسرع ~1.8x */
+      var gradeTasks: (() => Promise<void>)[] = []
+      var _tw2: number
+      for (_tw2 = 0; _tw2 < textWorkload.length; _tw2++) {
+        (function (tw: number) {
+          gradeTasks.push(async function () {
             try {
-              tGrade = await gradeTextAnswer({
-                question: twItem.question,
-                studentAnswer: twAnswer,
-                modelAnswer: twItem.modelAnswer || '',
-                acceptedAnswers: twItem.acceptedAnswers || [],
-                maxPoints: twItem.points,
+              var twItem = textWorkload[tw]
+              var twAnswer = twItem.studentText || ''
+              var graded1: any = null
+              if (!twAnswer.trim() || twAnswer.trim() === '[📷 صورة مرفقة]') {
+                graded1 = {
+                  question: twItem.question, answer: twAnswer, modelAnswer: twItem.modelAnswer,
+                  awardedPoints: 0, maxPoints: twItem.points, isCorrect: false,
+                  feedback: 'لم يتم الإجابة', gradingStatus: 'graded',
+                }
+              } else if (quickSmartMatch(twAnswer, twItem.modelAnswer || '', twItem.acceptedAnswers || []) === true) {
+                /* (و24) ملاحظة شخصية زي معلم بيتكلم مع الطالب — حتى في المسار السريع */
+                var stNote = (finalAnswerCandidates(twAnswer)[0] || twAnswer.trim() || '').slice(0, 40)
+                graded1 = {
+                  question: twItem.question, answer: twAnswer, modelAnswer: twItem.modelAnswer,
+                  awardedPoints: twItem.points, maxPoints: twItem.points, isCorrect: true,
+                  feedback: 'برافو عليك ✓ الإجابة النهائية (' + stNote + ') مطابقة للإجابة الصحيحة',
+                  gradingStatus: 'graded',
+                }
+              } else {
+                var tGrade: any = null
+                try {
+                  tGrade = await gradeTextAnswer({
+                    question: twItem.question,
+                    studentAnswer: twAnswer,
+                    modelAnswer: twItem.modelAnswer || '',
+                    acceptedAnswers: twItem.acceptedAnswers || [],
+                    maxPoints: twItem.points,
+                  })
+                } catch (tgErr) { console.error('[exam-submit] text grade error:', tgErr) }
+                if (tGrade && !tGrade.needsGrading) {
+                  graded1 = {
+                    question: twItem.question, answer: twAnswer, modelAnswer: twItem.modelAnswer,
+                    awardedPoints: tGrade.awardedPoints || 0, maxPoints: twItem.points,
+                    isCorrect: tGrade.isCorrect === true,
+                    feedback: tGrade.feedback || (tGrade.isCorrect ? 'إجابة صحيحة' : 'إجابة مختلفة عن الإجابة الصحيحة'),
+                    gradingStatus: 'graded',
+                  }
+                } else {
+                  /* AI فشل أو مش متأكد في السؤال ده بس → فولباك حاسم —
+                     تكافؤ القيم → كاملة، علاقة بالحل → نص درجة + مراجعة */
+                  graded1 = gradeFallbackDecisive({
+                    question: twItem.question, answer: twAnswer,
+                    modelAnswer: twItem.modelAnswer || '',
+                    acceptedAnswers: twItem.acceptedAnswers || [],
+                    points: twItem.points,
+                  })
+                }
+              }
+              textGraded[tw] = graded1
+              await persistExamGrades(false)
+            } catch (twErr) {
+              console.error('[exam-submit] text task error:', twErr)
+            }
+          })
+        })(_tw2)
+      }
+      /* الصور في نفس الـ pool — بتتقص على اتنين زي النصي بالظبط */
+      var _im2: number
+      for (_im2 = 0; _im2 < imageWorkload.length; _im2++) {
+        (function (im: number) {
+          gradeTasks.push(async function () {
+            var iw = imageWorkload[im]
+            var mediaIds2 = extractImageMediaIds(iw.studentText)
+            var gradeData: any = null
+            try {
+              gradeData = await gradeImageAnswer({
+                mediaId: mediaIds2[0],
+                question: iw.question,
+                modelAnswer: iw.modelAnswer,
+                acceptedAnswers: iw.acceptedAnswers,
+                maxPoints: iw.points,
+                /* (و44) النص الكامل للإجابة — عشان «الجدول: …» المكتوب بالكيبورد
+                   يتحسب مع الرسمة المصورة في نفس الحكم (المستر: التصحيح من الاثنين) */
+                studentText: iw.studentText || '',
               })
-            } catch (tgErr) { console.error('[exam-submit] text grade error:', tgErr) }
-            if (tGrade && !tGrade.needsGrading) {
-              graded1 = {
-                question: twItem.question, answer: twAnswer, modelAnswer: twItem.modelAnswer,
-                awardedPoints: tGrade.awardedPoints || 0, maxPoints: twItem.points,
-                isCorrect: tGrade.isCorrect === true,
-                feedback: tGrade.feedback || (tGrade.isCorrect ? 'إجابة صحيحة' : 'إجابة مختلفة عن الإجابة الصحيحة'),
+            } catch (imErr) {
+              console.error('Exam writing image grade error:', imErr)
+            }
+            if (gradeData && gradeData.needsGrading !== true) {
+              /* حكم الـ AI الواثق — نهائي: صح/جزئي/غلط (زي الواجب بالظبط) */
+              var imAwarded = Math.min(Math.max(Math.round(Number(gradeData.awardedPoints) || (gradeData.isCorrect ? iw.points : 0)), 0), iw.points)
+              imageGraded[im] = {
+                question: iw.question,
+                answer: iw.studentText,
+                modelAnswer: iw.modelAnswer,
+                awardedPoints: imAwarded,
+                maxPoints: iw.points,
+                isCorrect: imAwarded >= Math.ceil(iw.points * 0.5) && imAwarded > 0,
+                feedback: gradeData.feedback || (imAwarded > 0 ? 'تم تصحيح صورة الحل' : 'الحل مش مطابق'),
                 gradingStatus: 'graded',
+                aiExtractedAnswer: gradeData.extractedAnswer || '',
               }
             } else {
-              /* AI فشل أو مش متأكد في السؤال ده بس → فولباك حاسم —
-                 تكافؤ القيم → كاملة، علاقة بالحل → نص درجة + مراجعة */
-              graded1 = gradeFallbackDecisive({
-                question: twItem.question, answer: twAnswer,
-                modelAnswer: twItem.modelAnswer || '',
-                acceptedAnswers: twItem.acceptedAnswers || [],
-                points: twItem.points,
-              })
+              /* 2026-و13 — طلب المستر الحرفي: الامتحان يتصرف زي الواجب بالظبط —
+                 مفيش حالة «محتاجة مراجعة» معلقة وخالص: الـ AI مش متأكد من قراية
+                 الصورة ← درجة مؤقتة عادلة (نص درجة المحاولة) والمستر يقدر يعدلها
+                 بضغطة من لوحته — مفيش صفر ظالم ومفيش بادج معلق */
+              var hasRealWork = iw.studentText.replace(/\[📷[^\]]*\]/g, '').trim().length > 0
+              imageGraded[im] = {
+                question: iw.question,
+                answer: iw.studentText,
+                modelAnswer: iw.modelAnswer,
+                awardedPoints: hasRealWork ? Math.ceil(iw.points / 2) : 0,
+                maxPoints: iw.points,
+                isCorrect: false,
+                feedback: hasRealWork
+                  ? 'صورة الحل اترفعت — درجة مؤقتة لحد ما تراجعها وعدّلها من لوحتك'
+                  : 'لم يتم الإجابة',
+                gradingStatus: 'graded',
+                aiExtractedAnswer: hasRealWork ? '(صورة الحل مقدرناش نقراها بدقة)' : '',
+              }
             }
-          }
-          textGraded[tw] = graded1
-          await persistExamGrades(false)
-        }
+            /* (2026-و25) snapshot بعد كل صورة — اللي اتصحح متضيعش لو اتقطعنا */
+            await persistExamGrades(false)
+          })
+        })(_im2)
+      }
+      try {
+        await runGradePool(gradeTasks, 2, 400)
       } catch (grErr) {
         console.error('Exam writing grade error:', grErr)
-        for (var tw2 = 0; tw2 < textWorkload.length; tw2++) {
-          if (!textGraded[tw2]) {
-            textGraded[tw2] = gradeFallbackDecisive({
-              question: textWorkload[tw2].question,
-              answer: textWorkload[tw2].studentText,
-              modelAnswer: textWorkload[tw2].modelAnswer || '',
-              acceptedAnswers: textWorkload[tw2].acceptedAnswers || [],
-              points: textWorkload[tw2].points,
-            })
-          }
+      }
+      /* شبكة أمان: أي سؤال نصي ماحصلش حكم ليه → فولباك حاسم (مفيش pending) */
+      for (var twF = 0; twF < textWorkload.length; twF++) {
+        if (!textGraded[twF]) {
+          textGraded[twF] = gradeFallbackDecisive({
+            question: textWorkload[twF].question,
+            answer: textWorkload[twF].studentText,
+            modelAnswer: textWorkload[twF].modelAnswer || '',
+            acceptedAnswers: textWorkload[twF].acceptedAnswers || [],
+            points: textWorkload[twF].points,
+          })
         }
       }
       await persistExamGrades(false)
-
-      // 3ب) صور → VLM لكل سؤال (بتسلسل — مفتاح واحد مبيتحملش متوازي)
-      for (var im = 0; im < imageWorkload.length; im++) {
-        var iw = imageWorkload[im]
-        var mediaIds2 = extractImageMediaIds(iw.studentText)
-        var gradeData: any = null
-        try {
-          gradeData = await gradeImageAnswer({
-            mediaId: mediaIds2[0],
-            question: iw.question,
-            modelAnswer: iw.modelAnswer,
-            acceptedAnswers: iw.acceptedAnswers,
-            maxPoints: iw.points,
-          })
-        } catch (imErr) {
-          console.error('Exam writing image grade error:', imErr)
-        }
-        if (gradeData && gradeData.needsGrading !== true) {
-          /* حكم الـ AI الواثق — نهائي: صح/جزئي/غلط (زي الواجب بالظبط) */
-          var imAwarded = Math.min(Math.max(Math.round(Number(gradeData.awardedPoints) || (gradeData.isCorrect ? iw.points : 0)), 0), iw.points)
-          imageGraded[im] = {
-            question: iw.question,
-            answer: iw.studentText,
-            modelAnswer: iw.modelAnswer,
-            awardedPoints: imAwarded,
-            maxPoints: iw.points,
-            isCorrect: imAwarded >= Math.ceil(iw.points * 0.5) && imAwarded > 0,
-            feedback: gradeData.feedback || (imAwarded > 0 ? 'تم تصحيح صورة الحل' : 'الحل مش مطابق'),
-            gradingStatus: 'graded',
-            aiExtractedAnswer: gradeData.extractedAnswer || '',
-          }
-        } else {
-          /* 2026-و13 — طلب المستر الحرفي: الامتحان يتصرف زي الواجب بالظبط —
-             مفيش حالة «محتاجة مراجعة» معلقة وخالص: الـ AI مش متأكد من قراية
-             الصورة ← درجة مؤقتة عادلة (نص درجة المحاولة) والمستر يقدر يعدلها
-             بضغطة من لوحته — مفيش صفر ظالم ومفيش بادج معلق */
-          var hasRealWork = iw.studentText.replace(/\[📷[^\]]*\]/g, '').trim().length > 0
-          imageGraded[im] = {
-            question: iw.question,
-            answer: iw.studentText,
-            modelAnswer: iw.modelAnswer,
-            awardedPoints: hasRealWork ? Math.ceil(iw.points / 2) : 0,
-            maxPoints: iw.points,
-            isCorrect: false,
-            feedback: hasRealWork
-              ? 'صورة الحل اترفعت — درجة مؤقتة لحد ما تراجعها وعدّلها من لوحتك'
-              : 'لم يتم الإجابة',
-            gradingStatus: 'graded',
-            aiExtractedAnswer: hasRealWork ? '(صورة الحل مقدرناش نقراها بدقة)' : '',
-          }
-        }
-        /* (2026-و25) snapshot بعد كل صورة — اللي اتصحح متضيعش لو اتقطعنا */
-        await persistExamGrades(false)
-      }
 
       // 3ج) الحكم النهائي — كل اللي ماتصححش بياخد fallback حاسم (مش pending)
       await persistExamGrades(true)

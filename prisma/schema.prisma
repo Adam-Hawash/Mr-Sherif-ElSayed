@@ -350,6 +350,27 @@ model VideoGroupSchedule {
 }
 
 // ============================================================
+// (2026-و44) الإشعارات — طلب المستر: «أي حاجة يتضاف تظهر له إشعار للطالب»:
+//   • الأدمن رد على شكوى → الطالب ياخد إشعار «شكواك اتحلت/اترد عليها»
+//   • كتاب/ملزمة جديدة → إشعار للطلاب (حسب الصف)
+//   • امتحان/واجب/إعلان جديد → إشعار للطلاب المستهدفين
+// read=true يعني الطالب شافه — العداد بيبقى unreadCount بس
+// ============================================================
+model Notification {
+  id        String   @id @default(cuid())
+  studentId String
+  type      String   @default("general") // complaint_reply | book | exam | homework | announcement | general
+  title     String
+  body      String   @default("")
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([studentId, read])
+  @@index([createdAt])
+}
+
+// ============================================================
 // (2026-و40) الكتب والملازم — مكتبة PDF للطالب:
 //   الأدمن يرفع كتاب/ملزمة PDF (chunkedUpload → Media → /api/files/<id>)
 //   والطالب يفتحه أو يحمله من تاب «الكتب والملازم» في البورتال.

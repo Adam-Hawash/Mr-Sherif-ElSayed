@@ -64,6 +64,9 @@ async function sourceToCanvas(src: { kind: 'bitmap'; bitmap: ImageBitmap } | { k
 /**
  * التأكد إن كل figure.url معباية: لكل سؤال فيه figure.bbox ومن غير url
  * بنقص الرسمة من صفحة المصدر ونرفعها ونعبي figure.url بالمسار.
+ * (و44) كمان بنقص رسومات الاختيارات (optionFigures[i].bbox) أوتوماتيك —
+ * ده كان سبب «الاختيارات اللي فيها رسومات ما بتتضيفش» — القص كان
+ * بيتعامل مع رسمة السؤال بس!
  * onProgress(done, total) — لتوست «جهز الرسومات X من Y…».
  */
 export async function ensureFigureUrls(
@@ -71,10 +74,17 @@ export async function ensureFigureUrls(
   source: FigureCropSource,
   onProgress?: (done: number, total: number) => void
 ): Promise<void> {
-  var targets: any[] = []
+  /* هدف القص: { q, kind: 'q' | 'of', oi? } — رسمة سؤال أو رسمة اختيار */
+  var targets: { q: any; kind: 'q' | 'of'; oi?: number }[] = []
   if (Array.isArray(questions)) {
     questions.forEach(function (q: any) {
-      if (q && q.figure && q.figure.bbox && !q.figure.url) targets.push(q)
+      if (!q) return
+      if (q.figure && q.figure.bbox && !q.figure.url) targets.push({ q: q, kind: 'q' })
+      if (Array.isArray(q.optionFigures)) {
+        q.optionFigures.forEach(function (of: any, oi: number) {
+          if (of && of.bbox && !of.url) targets.push({ q: q, kind: 'of', oi: oi })
+        })
+      }
     })
   }
   var total = targets.length
@@ -131,11 +141,13 @@ export async function ensureFigureUrls(
 
   var done = 0
   for (var i = 0; i < targets.length; i++) {
-    var q = targets[i]
+    var tgt = targets[i]
+    var q = tgt.q
     try {
-      var bbox = sanitizeBbox(q.figure.bbox)
+      var fig = tgt.kind === 'q' ? q.figure : (q.optionFigures[tgt.oi || 0] || null)
+      var bbox = sanitizeBbox(fig && fig.bbox)
       if (!bbox) { done++; if (onProgress) onProgress(done, total); continue }
-      var page = parseInt(String(q.figure.page || q.sourcePage || 1), 10) || 1
+      var page = parseInt(String((fig && fig.page) || q.sourcePage || 1), 10) || 1
       var pageCanvas = await getPageCanvas(page)
       if (!pageCanvas) { done++; if (onProgress) onProgress(done, total); continue }
 
@@ -165,7 +177,14 @@ export async function ensureFigureUrls(
       var asFile = new File([blob], 'figure_q' + (i + 1) + '.jpg', { type: 'image/jpeg' })
       var up = await chunkedUpload(asFile, 'exam-figures')
       if (up && up.filePath && /^\/api\/files\//.test(up.filePath)) {
-        q.figure.url = up.filePath
+        if (tgt.kind === 'q') {
+          q.figure.url = up.filePath
+        } else {
+          var ofs = Array.isArray(q.optionFigures) ? q.optionFigures : []
+          while (ofs.length <= (tgt.oi || 0)) ofs.push(null)
+          ofs[tgt.oi || 0] = Object.assign({}, ofs[tgt.oi || 0] || {}, { url: up.filePath, bbox: fig.bbox, page: fig.page })
+          q.optionFigures = ofs
+        }
       }
     } catch (eFig) {
       /* فشل سؤال واحد مش بيوقف الباقي — bbox بيفضل موجود */

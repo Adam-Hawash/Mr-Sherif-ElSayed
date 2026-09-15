@@ -1,6 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { notifyStudents } from '@/lib/notify'
 
 // GET /api/announcements - جلب كل الإعلانات
 export async function GET(request: NextRequest) {
@@ -55,6 +56,9 @@ export async function POST(request: NextRequest) {
     const announcement = await db.announcement.create({
       data: { title, content, grade },
     })
+
+    /* (و44) إشعار للطلاب: إعلان جديد */
+    notifyStudents({ grade: String(grade || ''), type: 'announcement', title: '📣 إعلان جديد: ' + String(title), body: String(content || '').slice(0, 200) }).catch(function () {})
 
     return NextResponse.json({ message: 'تم إنشاء الإعلان بنجاح', announcement }, { status: 201 })
   } catch (error) {

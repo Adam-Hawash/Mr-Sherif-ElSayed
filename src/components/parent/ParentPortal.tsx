@@ -19,6 +19,7 @@ import { useAppStore } from '@/stores/app-store'
 import { UserCheck, Loader2, RefreshCw, LogOut, BookOpenCheck, ClipboardList, AlertCircle, TrendingUp, MonitorPlay, ChevronDown, CheckCircle2, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { FractionText, hasMathMarkup } from '@/components/FractionText'
+import BidiText from '@/components/BidiText'
 
 interface ResultRow {
   id: string
@@ -85,7 +86,7 @@ function AnswerCard({ q }: { q: AnswerQuestion }) {
       {q.kind === 'writing' && q.feedback && (
         <div className="rounded-md border border-border bg-muted/40 p-2">
           <p className="text-[11px] font-bold text-foreground mb-0.5">📝 ملاحظة المصحح الذكي:</p>
-          <p className="text-[11px] leading-relaxed text-foreground whitespace-pre-wrap break-words">{hasMathMarkup(q.feedback) ? <FractionText text={q.feedback} /> : q.feedback}</p>
+          <p className="text-[11px] leading-relaxed text-foreground whitespace-pre-wrap break-words"><BidiText text={q.feedback} /></p>
         </div>
       )}
       <p className="text-[10px] font-semibold text-muted-foreground">الدرجة: {q.awardedPoints}/{q.maxPoints}</p>
@@ -186,8 +187,10 @@ export function ParentPortal() {
   var loading = ld[0]
   var setLoading = ld[1]
 
-  /* (2026-و39) إجابات الابن: توجل الاسم + توسيع الصفوف + كاش الورق في الحالة */
-  var showAns = useState(false)
+  /* (2026-و39) إجابات الابن: توجل الاسم + توسيع الصفوف + كاش الورق في الحالة
+     (2026-و44) طلب المستر: «لو داس على اسم الامتحان أو الواجب يشوف درجته
+     كاملة والإجابات بتاعته» — العرض بقت مفتوح **على طول** من غير ما يدوس اسم الابن الأول */
+  var showAns = useState(true)
   var showAnswers = showAns[0]
   var setShowAnswers = showAns[1]
   var openKey = useState<string | null>(null)

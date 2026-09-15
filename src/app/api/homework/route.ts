@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db, safeWrite } from '@/lib/db'
+import { notifyStudents } from '@/lib/notify'
 import { isAdmin } from '@/lib/video-guard'
 
 /* (25-ب1) جدولة الظهور للواجبات — defensive ALTER بنفس نمط المشروع
@@ -185,6 +186,13 @@ export async function POST(request: NextRequest) {
         data: { title, content: content || '', grade, filePath: filePath || '', fileType: fileType || '', thumbnail: thumbnail || '', answerKeyPath: answerKeyPath || '', answerKeyType: answerKeyType || '', questions: questions || '', scheduledAt: scheduledDate, targetStudentIds: targetIds, targetGroupIds: targetGids },
       })
     })
+
+    /* (و44) إشعار للطلاب المستهدفين: واجب جديد */
+    try {
+      var nIds: string[] = []
+      try { var tp = JSON.parse(targetIds); if (Array.isArray(tp)) nIds = tp.filter(Boolean) } catch (e) {}
+      notifyStudents({ studentIds: nIds, grade: String(grade || ''), type: 'homework', title: '📚 واجب جديد: ' + String(title), body: 'دخل من تاب الواجبات وسلّمه قبل ميعاده' }).catch(function () {})
+    } catch (nE) {}
 
     return NextResponse.json({ message: 'Homework added', homework }, { status: 201 })
   } catch (error: any) {

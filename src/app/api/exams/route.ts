@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db, safeWrite } from '@/lib/db'
+import { notifyStudents } from '@/lib/notify'
 import { isAdmin } from '@/lib/video-guard'
 
 /* (25-ب1) أعمدة الميزات الجديدة (إظهار الإجابات / المؤقت / جدولة الظهور) —
@@ -256,6 +257,13 @@ export async function POST(request: NextRequest) {
         },
       })
     })
+
+    /* (و44) إشعار للطلاب المستهدفين: امتحان جديد */
+    try {
+      var nIds: string[] = []
+      try { var tp = JSON.parse(targetIds); if (Array.isArray(tp)) nIds = tp.filter(Boolean) } catch (e) {}
+      notifyStudents({ studentIds: nIds, grade: String(grade || ''), type: 'exam', title: '📝 امتحان جديد: ' + String(title), body: 'دخل من تاب الامتحانات وحل دلوقتي' }).catch(function () {})
+    } catch (nE) {}
 
     return NextResponse.json({ message: 'Exam added', exam }, { status: 201 })
   } catch (error: any) {
