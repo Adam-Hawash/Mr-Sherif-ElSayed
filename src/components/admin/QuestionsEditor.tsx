@@ -21,6 +21,8 @@ import { Badge } from '@/components/ui/badge'
 import { Loader2, Plus, Trash2, Save } from 'lucide-react'
 import { FractionText } from '@/components/FractionText'
 import { repairCorruptMath } from '@/lib/math-text'
+/* (و46) رفع صورة اختيار من المحرر نفسه — نفس مسار شاشة الاستخراج */
+import { chunkedUpload } from '@/lib/chunked-upload'
 
 export interface EditableQuestion {
   type: string
@@ -30,6 +32,19 @@ export interface EditableQuestion {
   points: number
   modelAnswer: string
   acceptedAnswers: string[]
+  /* (و46) رسومات الاختيارات + رسمة السؤال — كانت بتتمسح عند أي فتح وحفظ
+     من المحرر ده (ده كان سبب «باجي أحفظه ما بيتظهرش برضه») */
+  optionFigures?: any[]
+  figure?: any
+}
+
+/** (و46) هل السؤال ده اختياراته صور/رسومات؟ — نفس قاعدة question-figures بس من غير
+ *  أي اعتماديات عشان المحرر — السؤال ده مبيتحولش مقالي أبدًا */
+export function editorHasVisualOptions(q: any): boolean {
+  if (!q || typeof q !== 'object' || !Array.isArray(q.optionFigures)) return false
+  return q.optionFigures.some(function (ofg: any) {
+    return ofg && typeof ofg === 'object' && ((typeof ofg.url === 'string' && ofg.url) || ofg.bbox)
+  })
 }
 
 export function parseQuestionsRaw(raw: any): EditableQuestion[] {
@@ -38,10 +53,21 @@ export function parseQuestionsRaw(raw: any): EditableQuestion[] {
     if (!Array.isArray(arr)) return []
     return arr.map(function (q: any) {
       var isWriting = q.type === 'writing' || q.type === 'essay'
+      /* (و46) رسومات الاختيارات → اختياري دايمًا حتي لو النصوص كلها فاضية/N/A */
+      var hasVisual = editorHasVisualOptions(q)
+      if (hasVisual) isWriting = false
       var options = Array.isArray(q.options) ? q.options.slice(0, 4) : []
       while (options.length < 4) options.push('')
       var allNA = options.length > 0 && options.every(function (o: string) { return !o || o === 'N/A' || o === 'لا يوجد' })
-      if (!isWriting && (!Array.isArray(q.options) || q.options.length === 0 || allNA)) isWriting = true
+      if (!isWriting && (!Array.isArray(q.options) || q.options.length === 0 || allNA) && !hasVisual) isWriting = true
+      /* (و46) رسومات الاختيارات ورسمة السؤال بتتفضل زي ما هي (pass-through) */
+      var ofPass: any[] | undefined = undefined
+      if (hasVisual) {
+        ofPass = (q.optionFigures as any[]).slice(0, 4)
+        while (ofPass.length < 4) ofPass.push(null)
+      }
+      var figPass: any = undefined
+      if (q.figure && typeof q.figure === 'object' && (q.figure.url || q.figure.bbox)) figPass = q.figure
       // heal JSON-corrupted math ("rac{", control chars) on load —
       // a simple open+save in this dialog permanently repairs the stored text
       return {
@@ -52,6 +78,8 @@ export function parseQuestionsRaw(raw: any): EditableQuestion[] {
         points: typeof q.points === 'number' && q.points > 0 ? q.points : (isWriting ? 5 : 1),
         modelAnswer: repairCorruptMath(String(q.modelAnswer || q.answer || '')),
         acceptedAnswers: Array.isArray(q.acceptedAnswers) ? q.acceptedAnswers.map(function (a) { return repairCorruptMath(String(a)) }) : [],
+        optionFigures: ofPass,
+        figure: figPass,
       }
     })
   } catch (e) {
@@ -102,6 +130,43 @@ export function QuestionsEditorDialog({ open, onOpenChange, title, apiPath, item
     })
   }
 
+  /* (و46) رفع صورة اختيار من جوه المحرر — optionFigures[i] = { url } */
+  const uploadOptionFigure = async function (qi: number, oi: number, f: File | null) {
+    if (!f) return
+    try {
+      var up = await chunkedUpload(f, 'exam-figures')
+      if (up && up.filePath && /^\/api\/files\//.test(up.filePath)) {
+        setQuestions(function (prev) {
+          return prev.map(function (q, i) {
+            if (i !== qi) return q
+            var ofs = Array.isArray(q.optionFigures) ? q.optionFigures.slice() : ['', '', '', ''].map(function () { return null })
+            while (ofs.length < 4) ofs.push(null)
+            ofs[oi] = { url: up.filePath }
+            return Object.assign({}, q, { optionFigures: ofs, type: q.type === 'writing' ? 'mcq' : q.type })
+          })
+        })
+        toast.success('صورة الاختيار اتضافت — هتظهر للطالب صغيرة جنب حرف الاختيار')
+      } else {
+        toast.error('فشل رفع صورة الاختيار — جرب تاني')
+      }
+    } catch (e) {
+      toast.error('فشل رفع صورة الاختيار — جرب تاني')
+    }
+  }
+
+  /* (و46) إزالة صورة اختيار من المحرر */
+  const removeOptionFigure = function (qi: number, oi: number) {
+    setQuestions(function (prev) {
+      return prev.map(function (q, i) {
+        if (i !== qi) return q
+        var ofs = Array.isArray(q.optionFigures) ? q.optionFigures.slice() : ['', '', '', ''].map(function () { return null })
+        ofs[oi] = null
+        var anyLeft = ofs.some(function (o: any) { return o && (o.url || o.bbox) })
+        return Object.assign({}, q, { optionFigures: anyLeft ? ofs : undefined })
+      })
+    })
+  }
+
   const removeQuestion = function (qi: number) {
     setQuestions(function (prev) { return prev.filter(function (_, i) { return i !== qi }) })
   }
@@ -121,16 +186,24 @@ export function QuestionsEditorDialog({ open, onOpenChange, title, apiPath, item
             points: q.points || 5,
             modelAnswer: q.modelAnswer || '',
             acceptedAnswers: q.acceptedAnswers.filter(function (a) { return a.trim() }),
+            /* (و46) رسمة السؤال بتتفضل — مكانها مش بيتلمس */
+            figure: q.figure || undefined,
           }
         }
-        return {
+        var base: any = {
           type: 'mcq',
           question: q.question,
           options: q.options.map(function (o) { return o.trim() }),
           correct: q.correct,
           points: q.points || 1,
           modelAnswer: q.modelAnswer || '',
+          figure: q.figure || undefined,
         }
+        /* (و46) رسومات الاختيارات بتتفضل في الحفظ — دايمًا بمحاذاة الاختيارات */
+        if (Array.isArray(q.optionFigures) && q.optionFigures.some(function (o: any) { return o && (o.url || o.bbox) })) {
+          base.optionFigures = q.optionFigures
+        }
+        return base
       })
       var res = await fetch(apiPath + '/' + itemId, {
         method: 'PUT',
@@ -214,26 +287,44 @@ export function QuestionsEditorDialog({ open, onOpenChange, title, apiPath, item
                 {!isWriting && (
                   <div className="grid grid-cols-2 gap-1.5">
                     {q.options.map(function (opt, oi) {
+                      /* (و46) صورة الاختيار بتظهر هنا (صغيرة) — والزرار 📷 يرفعها لو ناقصة */
+                      var ofImg = q.optionFigures && q.optionFigures[oi]
                       return (
-                        <div key={oi} className="flex items-center gap-1.5">
-                          <input
-                            type="radio"
-                            name={'correct-' + itemId + '-' + qi}
-                            checked={q.correct === oi}
-                            onChange={function () { update(qi, { correct: oi }) }}
-                            className="accent-emerald-600"
-                            title="الإجابة الصحيحة"
-                          />
-                          <Input
-                            value={opt}
-                            onChange={function (e) {
-                              var newOpts = q.options.slice()
-                              newOpts[oi] = e.target.value
-                              update(qi, { options: newOpts })
-                            }}
-                            className="h-8 text-xs"
-                            placeholder={'اختيار ' + String.fromCharCode(65 + oi)}
-                          />
+                        <div key={oi} className="space-y-1">
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="radio"
+                              name={'correct-' + itemId + '-' + qi}
+                              checked={q.correct === oi}
+                              onChange={function () { update(qi, { correct: oi }) }}
+                              className="accent-emerald-600"
+                              title="الإجابة الصحيحة"
+                            />
+                            <Input
+                              value={opt}
+                              onChange={function (e) {
+                                var newOpts = q.options.slice()
+                                newOpts[oi] = e.target.value
+                                update(qi, { options: newOpts })
+                              }}
+                              className="h-8 text-xs"
+                              placeholder={'اختيار ' + String.fromCharCode(65 + oi)}
+                            />
+                            <label
+                              title="رفع صورة للاختيار (اختياري — لما الاختيار نفسه رسمة)"
+                              className="shrink-0 h-8 px-1.5 inline-flex items-center justify-center rounded-md border border-border text-[11px] cursor-pointer transition-colors hover:bg-muted"
+                            >
+                              📷
+                              <input type="file" accept="image/*" hidden onChange={function (e) { var f = e.target.files && e.target.files[0]; e.target.value = ''; uploadOptionFigure(qi, oi, f) }} />
+                            </label>
+                          </div>
+                          {ofImg && ofImg.url && (
+                            <span className="relative inline-flex pr-6">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={ofImg.url} alt={'صورة الاختيار ' + String.fromCharCode(65 + oi)} className="h-10 rounded border border-border bg-white object-contain" />
+                              <button type="button" title="إزالة صورة الاختيار" onClick={function () { removeOptionFigure(qi, oi) }} className="absolute top-0 right-0 h-4 w-4 rounded-full bg-destructive text-white text-[9px] leading-none flex items-center justify-center">✕</button>
+                            </span>
+                          )}
                         </div>
                       )
                     })}

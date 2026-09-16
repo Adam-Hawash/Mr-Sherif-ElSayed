@@ -22,15 +22,31 @@ import { SecurePlayerModal } from '@/components/student/SecurePlayerModal'
 import { StudentComplaints } from '@/components/student/StudentComplaints'
 import { FractionText } from '@/components/FractionText'
 import BidiText from '@/components/BidiText'
-/* (2026-و44) «حط نقط على الرسمة» — طلب المستر: حل الرسمة بضغطة على المكان أو صورة من الكشكول */
-import { FigurePointEditor } from '@/components/student/FigurePointEditor'
 /* (2026-و44) جرس الإشعارات + بادج المجتمع — أي حاجة جديدة توصل للطالب */
 import { NotificationsBell } from '@/components/student/NotificationsBell'
-/* (2026-و45) شيرين — المساعدة الشخصية العائمة (تحت على الشمال) */
-import { SherineChat } from '@/components/student/SherineChat'
 import { normalizeCorrectKey } from '@/lib/correct-key'
 /* (و45) تصنيف موحّد: سؤال له اختيارات صور/رسومات = اختياري مش مقالي */
 import { isWritingQuestion } from '@/lib/question-figures'
+/* ============================================================
+ * (و46) قايمة اختيارات موحّدة للعرض — طلب المستر:
+ *   «عايز الرسمة تكون شكلها صغير عشان الطالب يقدر يختار — هي مش موجودة أصلًا»
+ * 1) لو options فاضية (سؤال رسومات اتحول مقالي في بيانات قديمة) بنبني
+ *    القايمة من optionFigures نفسها — الطالب يلاقي الاختيارات قدامه.
+ * 2) لو الاختيار نصه فاضي/N/A ومعاه صورة → النص بيتخفى والرسمة الصغيرة هي الاختيار.
+ * ============================================================ */
+function mcqChoiceList(q: any): { text: string; figUrl: string }[] {
+  var opts = q && Array.isArray(q.options) ? q.options : []
+  var figs = q && Array.isArray(q.optionFigures) ? q.optionFigures : []
+  var n = Math.max(opts.length, figs.length)
+  var out: { text: string; figUrl: string }[] = []
+  for (var i = 0; i < n; i++) {
+    var t = String(opts[i] == null ? '' : opts[i])
+    var f = figs[i] && figs[i].url ? String(figs[i].url) : ''
+    var isPlaceholder = t.trim() === '' || t === 'N/A' || t === 'لا يوجد'
+    out.push({ text: f && isPlaceholder ? '' : t, figUrl: f })
+  }
+  return out
+}
 import { BooksTab } from '@/components/student/BooksTab'
 /* (2026-و40-w) ورقة العمل: جداول قابلة للكتابة + رسومات مقصوصة + تجميع صفحات المصدر */
 import {
@@ -40,14 +56,7 @@ import {
 } from '@/components/worksheet/WorksheetParts'
 
 export function StudentPortal() {
-  return (
-    <>
-      <StudentPortalInner />
-      {/* (2026-و45) شيرين — مركّبة مرة واحدة فوق البورتال كله (الداشبورد + الشوز)،
-         بتقفل نفسها لو مفيش طالب مسجل */}
-      <SherineChat />
-    </>
-  )
+  return <StudentPortalInner />
 }
 
 function StudentPortalInner() {
@@ -830,8 +839,6 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
   /* (2026-و40-w) جداول ورقة العمل: قيم الطالب في الخانات — مفتاحها displayIdx
      (وضع ورقة العمل بيتعرض بالترتيب الأصلي — displayIdx = origIdx) */
   const [hwTableAnswers, setHwTableAnswers] = useState<Record<string, Record<number, string[][]>>>({})
-  /* (2026-و44) محرر النقط على الرسمة — مفتاحه hw:<id>:<displayIdx> */
-  const [pointsEditorFor, setPointsEditorFor] = useState<string>('')
   const [hwDrafts, setHwDrafts] = useState<Record<string, any>>({})
   const hwDraftKey = function (hwId: string) { return 'mg_hw_draft_' + hwId + '_' + studentId }
   const refreshHwDrafts = function () {
@@ -1877,29 +1884,6 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                                     />
                                   )}
                                   {q.figure && <WorksheetFigure figure={q.figure} />}
-                                  {qIsWriting && q.figure && q.figure.url && (
-                                    /* (2026-و44) «حط نقط على الرسمة» — الطريقة الأولى: يدوس على مكان النقطة،
-                                       والثانية: يصور الحل من الكشكول — الاتنين متاحين والمصحح بيحكم بالاتنين */
-                                    <div className="mt-1">
-                                      <button type="button" onClick={function () { setPointsEditorFor(pointsEditorFor === 'hw:' + hw.id + ':' + displayIdx ? '' : 'hw:' + hw.id + ':' + displayIdx) }} className="text-[11px] font-bold text-sky-700 dark:text-sky-300 hover:underline underline-offset-2 cursor-pointer">
-                                        🖱 حط نقط على الرسمة (أو صوّرها من الكشكول 📷)
-                                      </button>
-                                      {pointsEditorFor === 'hw:' + hw.id + ':' + displayIdx && (
-                                        <FigurePointEditor
-                                          figureUrl={q.figure.url}
-                                          onAttached={function (marker: string) {
-                                            setHwAnswers(function (prev) {
-                                              var a = { ...prev }
-                                              var cur = typeof a[hw.id]?.[displayIdx] === 'string' ? (a[hw.id][displayIdx] as string) : ''
-                                              a[hw.id] = { ...(a[hw.id] || {}), [displayIdx]: (cur + marker).trim() }
-                                              return a
-                                            })
-                                          }}
-                                          onClose={function () { setPointsEditorFor('') }}
-                                        />
-                                      )}
-                                    </div>
-                                  )}
                                   {qIsWriting ? (
                                     <div dir="ltr">
                                       <MathKeyboard
@@ -1920,7 +1904,8 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                                     </div>
                                   ) : (
                                     <div className="space-y-1.5">
-                                      {(q.options || []).map(function(opt: string, oi: number) {
+                                      {/* (و46) قايمة الاختيارات الموحدة — رسومات الاختيارات بتظهر صغيرة */}
+                                      {mcqChoiceList(q).map(function(ch: { text: string; figUrl: string }, oi: number) {
                                         var isSelected = myAnswers[displayIdx] === oi
                                         return (
                                           <button
@@ -1932,11 +1917,11 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                                             )}
                                             style={{ textAlign: 'left' }}
                                           >
-                                            <span className="mr-2 font-bold">{String.fromCharCode(65 + oi)}.</span><FractionText text={opt} />
-                                                {/* (و43) صورة الاختيار لو موجودة — بتظهر جوه زرار الاختيار زي الملف */}
-                                                {q.optionFigures && q.optionFigures[oi] && q.optionFigures[oi].url && (
+                                            <span className="mr-2 font-bold">{String.fromCharCode(65 + oi)}.</span>{ch.text ? <FractionText text={ch.text} /> : null}
+                                                {ch.figUrl && (
+                                                  /* (و46) صورة الاختيار — شكل صغير واضح عشان الطالب يختار */
                                                   /* eslint-disable-next-line @next/next/no-img-element */
-                                                  <img src={q.optionFigures[oi].url} alt={"صورة الاختيار " + String.fromCharCode(65 + oi)} className="mt-1.5 max-h-24 w-auto rounded border bg-white object-contain" />
+                                                  <img src={ch.figUrl} alt={'صورة الاختيار ' + String.fromCharCode(65 + oi)} className="mt-1 block max-h-24 w-auto max-w-full rounded border border-border bg-white object-contain" />
                                                 )}
                                           </button>
                                         )
@@ -1961,7 +1946,8 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                           <div key={'mcq-' + di} className="space-y-2 rounded-lg p-2" dir="ltr">
                             <p className="font-medium text-sm whitespace-pre-wrap break-words" style={{ textAlign: 'left' }}>{di + 1}. <FractionText text={q.question || q.q} /> <span className="text-muted-foreground text-xs">({pts} {pts === 1 ? 'pt' : 'pts'})</span></p>
                             <div className="space-y-1.5">
-                              {(q.options || []).map(function(opt: string, oi: number) {
+                              {/* (و46) قايمة الاختيارات الموحدة — رسومات الاختيارات بتظهر صغيرة */}
+                              {mcqChoiceList(q).map(function(ch: { text: string; figUrl: string }, oi: number) {
                                 var isSelected = myAnswers[di] === oi
                                 return (
                                   <button
@@ -1973,11 +1959,11 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                                     )}
                                     style={{ textAlign: 'left' }}
                                   >
-                                    <span className="mr-2 font-bold">{String.fromCharCode(65 + oi)}.</span><FractionText text={opt} />
-                                        {/* (و43) صورة الاختيار لو موجودة — بتظهر جوه زرار الاختيار زي الملف */}
-                                        {q.optionFigures && q.optionFigures[oi] && q.optionFigures[oi].url && (
+                                    <span className="mr-2 font-bold">{String.fromCharCode(65 + oi)}.</span>{ch.text ? <FractionText text={ch.text} /> : null}
+                                        {ch.figUrl && (
+                                          /* (و46) صورة الاختيار — شكل صغير واضح عشان الطالب يختار */
                                           /* eslint-disable-next-line @next/next/no-img-element */
-                                          <img src={q.optionFigures[oi].url} alt={"صورة الاختيار " + String.fromCharCode(65 + oi)} className="mt-1.5 max-h-24 w-auto rounded border bg-white object-contain" />
+                                          <img src={ch.figUrl} alt={'صورة الاختيار ' + String.fromCharCode(65 + oi)} className="mt-1 block max-h-24 w-auto max-w-full rounded border border-border bg-white object-contain" />
                                         )}
                                   </button>
                                 )
@@ -1995,7 +1981,7 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                     <div className="space-y-4">
                       {/* (2026-و44) رسالة قصيرة فوق الحل — طلب المستر حرفيًا */}
                       <p className="text-[11px] font-bold text-sky-700 dark:text-sky-300 rounded-lg border border-sky-300/60 bg-sky-50/70 dark:bg-sky-950/30 dark:border-sky-800/60 px-3 py-2">
-                        ✏️ السؤال اللي فيه رسمة: اعمل الرسمة في كشكولك وصوّرها وارفع الصورة 📷 — أو دوس «حط نقط على الرسمة» على طول. والجدول اكتبه هنا بالكيبورد عادي — الاتنين بيحتسبوا في التصحيح.
+                        ✏️ السؤال اللي فيه رسمة: اعمل الرسمة في كشكولك وصوّرها وارفع الصورة 📷. والجدول اكتبه هنا بالكيبورد عادي — الاتنين بيحتسبوا في التصحيح.
                       </p>
                       {hasMCQ && <div className="border-t pt-3"><p className="text-xs font-semibold text-amber-600 dark:text-amber-400">الأسئلة المقالية:</p></div>}
                       {displayWriting.map(function(q: any, wi: number) {
@@ -2009,29 +1995,6 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                               <Badge variant="outline" className="text-[9px] ml-2 border-amber-500/40 text-amber-600">Writing</Badge>
                             </p>
                             {q.figure && <div dir="rtl" className="pt-1"><WorksheetFigure figure={q.figure} /></div>}
-                            {q.figure && q.figure.url && (
-                              /* (2026-و44) «حط نقط على الرسمة» — بدل ما تصور من الكشكول،
-                                 دوس على المكان وهنرفع الرسمة بنقطك للمصحح الذكي */
-                              <div dir="rtl" className="mt-1">
-                                <button type="button" onClick={function () { setPointsEditorFor(pointsEditorFor === 'hw:' + hw.id + ':' + displayIdx ? '' : 'hw:' + hw.id + ':' + displayIdx) }} className="text-[11px] font-bold text-sky-700 dark:text-sky-300 hover:underline underline-offset-2 cursor-pointer">
-                                  🖱 حط نقط على الرسمة (أو صوّرها من الكشكول 📷)
-                                </button>
-                                {pointsEditorFor === 'hw:' + hw.id + ':' + displayIdx && (
-                                  <FigurePointEditor
-                                    figureUrl={q.figure.url}
-                                    onAttached={function (marker: string) {
-                                      setHwAnswers(function (prev) {
-                                        var a = { ...prev }
-                                        var cur = typeof a[hw.id]?.[displayIdx] === 'string' ? (a[hw.id][displayIdx] as string) : ''
-                                        a[hw.id] = { ...(a[hw.id] || {}), [displayIdx]: (cur + marker).trim() }
-                                        return a
-                                      })
-                                    }}
-                                    onClose={function () { setPointsEditorFor('') }}
-                                  />
-                                )}
-                              </div>
-                            )}
                             <div dir="ltr">
                               <MathKeyboard
                                 value={typeof hwAnswers[hw.id]?.[displayIdx] === 'string' ? (hwAnswers[hw.id]?.[displayIdx] as string) : ''}
@@ -2256,8 +2219,6 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
   const [submitting, setSubmitting] = useState(false)
   /* 2026-و20 — ممنوع تسليم الامتحان لحد ما صور ورقة الحل توصل كاملة */
   const [examPhotoBusy, setExamPhotoBusy] = useState(false)
-  /* (2026-و44) محرر النقط على الرسمة في الامتحان — displayIdx المفتوح أو -1 */
-  const [examPointsEditor, setExamPointsEditor] = useState<number>(-1)
   const [examQuestions, setExamQuestions] = useState<any[]>([])
   const [examShuffleMap, setExamShuffleMap] = useState<number[]>([])
   /* (2026-و40-w) جداول ورقة العمل — مفتاحها displayIdx (وضع الورقة بالترتيب الأصلي) */
@@ -3093,23 +3054,6 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
                           </div>
                         )}
                         {q.figure && <WorksheetFigure figure={q.figure} />}
-                        {qIsWriting && q.figure && q.figure.url && !examTimeUp && (
-                          /* (2026-و44) «حط نقط على الرسمة» — طريقتين: نقط على الشاشة أو صورة من الكشكول */
-                          <div dir="rtl" className="mt-1">
-                            <button type="button" onClick={function () { setExamPointsEditor(examPointsEditor === displayIdx ? -1 : displayIdx) }} className="text-[11px] font-bold text-sky-700 dark:text-sky-300 hover:underline underline-offset-2 cursor-pointer">
-                              🖱 حط نقط على الرسمة (أو صوّرها من الكشكول 📷)
-                            </button>
-                            {examPointsEditor === displayIdx && (
-                              <FigurePointEditor
-                                figureUrl={q.figure.url}
-                                onAttached={function (marker: string) {
-                                  setWritingAnswers(function (prev) { return { ...prev, [displayIdx]: ((prev[displayIdx] || '') + marker).trim() } })
-                                }}
-                                onClose={function () { setExamPointsEditor(-1) }}
-                              />
-                            )}
-                          </div>
-                        )}
                         {qIsWriting ? (
                           <div
                             dir="ltr"
@@ -3131,7 +3075,8 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
                           </div>
                         ) : (
                           <div className="space-y-2">
-                            {(q.options || []).map((opt: string, oi: number) => (
+                            {/* (و46) قايمة الاختيارات الموحدة — رسومات الاختيارات بتظهر صغيرة */}
+                            {mcqChoiceList(q).map((ch: { text: string; figUrl: string }, oi: number) => (
                               <button
                                 key={oi}
                                 disabled={examTimeUp}
@@ -3141,11 +3086,11 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
                                 }`}
                                 style={{ textAlign: 'left' }}
                               >
-                                <span className="mr-2 font-bold">{String.fromCharCode(65 + oi)}.</span><FractionText text={opt} />
-                                    {/* (و43) صورة الاختيار لو موجودة — بتظهر جوه زرار الاختيار زي الملف */}
-                                    {q.optionFigures && q.optionFigures[oi] && q.optionFigures[oi].url && (
+                                <span className="mr-2 font-bold">{String.fromCharCode(65 + oi)}.</span>{ch.text ? <FractionText text={ch.text} /> : null}
+                                    {ch.figUrl && (
+                                      /* (و46) صورة الاختيار — شكل صغير واضح عشان الطالب يختار */
                                       /* eslint-disable-next-line @next/next/no-img-element */
-                                      <img src={q.optionFigures[oi].url} alt={"صورة الاختيار " + String.fromCharCode(65 + oi)} className="mt-1.5 max-h-24 w-auto rounded border bg-white object-contain" />
+                                      <img src={ch.figUrl} alt={'صورة الاختيار ' + String.fromCharCode(65 + oi)} className="mt-1 block max-h-24 w-auto max-w-full rounded border border-border bg-white object-contain" />
                                     )}
                               </button>
                             ))}
@@ -3173,7 +3118,8 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
                   <CardContent className="p-4 space-y-3">
                     <p className="font-medium text-sm" style={{ textAlign: 'left' }}>{mi + 1}. <FractionText text={qText} /> <span className="text-muted-foreground text-xs">({pts} {pts === 1 ? 'درجة' : 'درجات'})</span></p>
                     <div className="space-y-2">
-                      {(q.options || []).map((opt: string, oi: number) => (
+                      {/* (و46) قايمة الاختيارات الموحدة — رسومات الاختيارات بتظهر صغيرة */}
+                      {mcqChoiceList(q).map((ch: { text: string; figUrl: string }, oi: number) => (
                         <button
                           key={oi}
                           disabled={examTimeUp}
@@ -3183,11 +3129,11 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
                           }`}
                           style={{ textAlign: 'left' }}
                         >
-                          <span className="mr-2 font-bold">{String.fromCharCode(65 + oi)}.</span><FractionText text={opt} />
-                              {/* (و43) صورة الاختيار لو موجودة — بتظهر جوه زرار الاختيار زي الملف */}
-                              {q.optionFigures && q.optionFigures[oi] && q.optionFigures[oi].url && (
+                          <span className="mr-2 font-bold">{String.fromCharCode(65 + oi)}.</span>{ch.text ? <FractionText text={ch.text} /> : null}
+                              {ch.figUrl && (
+                                /* (و46) صورة الاختيار — شكل صغير واضح عشان الطالب يختار */
                                 /* eslint-disable-next-line @next/next/no-img-element */
-                                <img src={q.optionFigures[oi].url} alt={"صورة الاختيار " + String.fromCharCode(65 + oi)} className="mt-1.5 max-h-24 w-auto rounded border bg-white object-contain" />
+                                <img src={ch.figUrl} alt={'صورة الاختيار ' + String.fromCharCode(65 + oi)} className="mt-1 block max-h-24 w-auto max-w-full rounded border border-border bg-white object-contain" />
                               )}
                         </button>
                       ))}
@@ -3204,7 +3150,7 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
           <div className="space-y-3">
             {/* (2026-و44) رسالة قصيرة فوق الحل — طلب المستر حرفيًا */}
             <p className="text-[11px] font-bold text-sky-700 dark:text-sky-300 rounded-lg border border-sky-300/60 bg-sky-50/70 dark:bg-sky-950/30 dark:border-sky-800/60 px-3 py-2">
-              ✏️ السؤال اللي فيه رسمة: اعمل الرسمة في كشكولك وصوّرها وارفع الصورة 📷 — أو دوس «حط نقط على الرسمة» على طول. والجدول اكتبه هنا بالكيبورد عادي — الاتنين بيحتسبوا في التصحيح.
+              ✏️ السؤال اللي فيه رسمة: اعمل الرسمة في كشكولك وصوّرها وارفع الصورة 📷. والجدول اكتبه هنا بالكيبورد عادي — الاتنين بيحتسبوا في التصحيح.
             </p>
             {mcqQs.length > 0 && <div className="border-t pt-3"><p className="text-xs font-semibold text-amber-600 dark:text-amber-400">الأسئلة المقالية:</p></div>}
             {writingQs.map(function(item, wi) {
@@ -3223,23 +3169,6 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
                     {/* (25-b2) عند انتهاء الوقت: منع تعديل نهائي — pointer-events +
                         قفل الكيبورد على الـ MathKeyboard من غير لمس الملف بتاعه */}
                     {q.figure && <WorksheetFigure figure={q.figure} />}
-                    {q.figure && q.figure.url && !examTimeUp && (
-                      /* (2026-و44) «حط نقط على الرسمة» — طريقتين متاحين */
-                      <div dir="rtl" className="mt-1">
-                        <button type="button" onClick={function () { setExamPointsEditor(examPointsEditor === displayIdx ? -1 : displayIdx) }} className="text-[11px] font-bold text-sky-700 dark:text-sky-300 hover:underline underline-offset-2 cursor-pointer">
-                          🖱 حط نقط على الرسمة (أو صوّرها من الكشكول 📷)
-                        </button>
-                        {examPointsEditor === displayIdx && (
-                          <FigurePointEditor
-                            figureUrl={q.figure.url}
-                            onAttached={function (marker: string) {
-                              setWritingAnswers(function (prev) { return { ...prev, [displayIdx]: ((prev[displayIdx] || '') + marker).trim() } })
-                            }}
-                            onClose={function () { setExamPointsEditor(-1) }}
-                          />
-                        )}
-                      </div>
-                    )}
                     <div
                       dir="ltr"
                       className={examTimeUp ? 'pointer-events-none select-none opacity-60' : ''}
