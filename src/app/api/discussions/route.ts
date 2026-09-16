@@ -1,6 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+/* (و46) إشعار الطلاب — طلب المستر: «في المجتمع لو حد بعت رسالة يجي له إشعار» */
+import { notifyStudents } from '@/lib/notify'
 
 export async function GET(request: NextRequest) {
   try {
@@ -62,6 +64,19 @@ export async function POST(request: NextRequest) {
         isAdminReply: isAdminReply || false,
       },
     })
+
+    /* (و46) رد المستر في المجتمع → إشعار جرس لكل طلاب الصف ده
+       (insert متسامح — أي فشل ما يبوّظش إرسال الرسالة) */
+    if (isAdminReply) {
+      try {
+        await notifyStudents({
+          grade: String(grade || ''),
+          type: 'community',
+          title: '💬 المستر ردّ في المجتمع',
+          body: String(content || '').slice(0, 200),
+        })
+      } catch (nE) { /* صامت */ }
+    }
 
     return NextResponse.json({ message: 'Discussion created', discussion }, { status: 201 })
   } catch (error) {

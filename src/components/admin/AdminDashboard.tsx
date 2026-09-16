@@ -190,6 +190,43 @@ export function AdminDashboard() {
     return function () { alive = false; clearInterval(t) }
   }, [])
 
+  /* ===== (و46) بادج «المجتمعات» — طلب المستر: «في المجتمع لو حد بعت رسالة
+     يجي له إشعار» — رسايل الطلاب الجديدة (بعد آخر فتح للمجتمع) بتظهر كعداد
+     على التاب — وفتح التاب بيسجل إنها اتشافت. بيدور كل 60 ثانية. */
+  const [newCommunityCount, setNewCommunityCount] = useState(0)
+  const adminCommunitySeenKey = 'mg_admin_community_seen'
+  useEffect(function () {
+    var alive = true
+    var check = async function () {
+      try {
+        var r = await fetch('/api/discussions?pageSize=100', { cache: 'no-store' })
+        var j = await r.json()
+        var list: any[] = Array.isArray(j && j.discussions) ? j.discussions : []
+        if (!alive) return
+        var seen = ''
+        try { seen = localStorage.getItem(adminCommunitySeenKey) || '' } catch (e) {}
+        if (adminTab === 'community') {
+          /* التاب مفتوح دلوقتي = كله اتشاف */
+          try { localStorage.setItem(adminCommunitySeenKey, new Date().toISOString()) } catch (e) {}
+          setNewCommunityCount(0)
+          return
+        }
+        if (!seen) { try { localStorage.setItem(adminCommunitySeenKey, new Date().toISOString()) } catch (e) {} return }
+        var seenTime = new Date(seen).getTime()
+        if (isNaN(seenTime)) return
+        var n = list.filter(function (d: any) {
+          if (!d || d.isAdminReply || d.studentId === 'admin') return false
+          var t = new Date(d.createdAt || '').getTime()
+          return isFinite(t) && t > seenTime
+        }).length
+        setNewCommunityCount(n)
+      } catch (e) { /* صامت */ }
+    }
+    check()
+    var t2 = setInterval(check, 60000)
+    return function () { alive = false; clearInterval(t2) }
+  }, [adminTab])
+
   const fetchStats = async () => {
     try {
       const res = await fetch('/api/stats')
@@ -310,7 +347,7 @@ export function AdminDashboard() {
             {/* (2026-و40) الكتب والملازم — مكتبة PDF الطالب يفتحها/يحملها */}
             <TabsTrigger value="books" className="text-xs sm:text-sm gap-1 text-sky-600 dark:text-sky-400"><BookOpen className="h-4 w-4" /><span className="hidden sm:inline">الكتب والملازم</span></TabsTrigger>
             <TabsTrigger value="announcements" className="text-xs sm:text-sm gap-1"><Megaphone className="h-4 w-4" /><span className="hidden sm:inline">الإعلانات</span></TabsTrigger>
-            <TabsTrigger value="community" className="text-xs sm:text-sm gap-1"><MessageSquare className="h-4 w-4" /><span className="hidden sm:inline">المجتمعات</span></TabsTrigger>
+            <TabsTrigger value="community" className="text-xs sm:text-sm gap-1"><MessageSquare className="h-4 w-4" /><span className="hidden sm:inline">المجتمعات</span>{newCommunityCount > 0 && <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-emerald-500 text-white text-[10px] font-bold">{newCommunityCount > 99 ? '99+' : newCommunityCount}</span>}</TabsTrigger>
             <TabsTrigger value="activity" className="text-xs sm:text-sm gap-1"><Activity className="h-4 w-4" /><span className="hidden sm:inline">المتابعة</span></TabsTrigger>
             <TabsTrigger value="gallery" className="text-xs sm:text-sm gap-1"><Camera className="h-4 w-4" /><span className="hidden sm:inline">معرض الصور</span></TabsTrigger>
             <TabsTrigger value="cms" className="text-xs sm:text-sm gap-1"><Settings className="h-4 w-4" /><span className="hidden sm:inline">المحتوى</span></TabsTrigger>

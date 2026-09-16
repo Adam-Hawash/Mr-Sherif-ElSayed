@@ -59,16 +59,31 @@ export async function POST(request) {
       return NextResponse.json({ error: 'No questions to save' }, { status: 400 })
     }
 
+    /* (و46) سؤال اختياراته صور/رسومات (optionFigures) = اختياري **مطلقًا مقالي** —
+       طلب المستر الحرفي: «الأسئلة اللي فيها اختيارات على شكل رسم ما بتتضافش…
+       عايز الرسمة تكون شكلها صغير عشان الطالب يقدر يختار». قبل كده الحرس
+       كان شايف الاختيارات كلها N/A فبيحوّل السؤال مقالي ويتمسح الاختيارات
+       — فالطالب كان يلاقي السؤال من غير أي اختيارات خالص! */
+    function serverHasVisualOptions(q: any): boolean {
+      if (!q || typeof q !== 'object' || !Array.isArray(q.optionFigures)) return false
+      return q.optionFigures.some(function (ofg: any) {
+        return ofg && typeof ofg === 'object' && ((typeof ofg.url === 'string' && ofg.url) || ofg.bbox)
+      })
+    }
+
     /* 2026-و11 — حرس سيرفر: ممنوع تسجيل أي سؤال اختياري من غير إجابة مؤكدة
        — «ما تكونش بالحر» — العميل كان بيفلتر بس، وده بيقفل التجاوز نهائيًا */
     var unanswered: number[] = []
     questions.forEach(function(q: any, i: number) {
       var isWriting = q.type === 'writing' || q.type === 'essay'
+      /* (و46) رسومات الاختيارات → اختياري دايمًا حتي لو النصوص كلها N/A */
+      var hasVisual = serverHasVisualOptions(q)
+      if (hasVisual) isWriting = false
       if (!isWriting && Array.isArray(q.options)) {
         var allNA = q.options.length > 0 && q.options.every(function(o: any) { return !o || o === 'N/A' || o === 'لا يوجد' || String(o).trim() === '' })
-        if (allNA) isWriting = true
+        if (allNA && !hasVisual) isWriting = true
       }
-      if (!isWriting && (!q.options || q.options.length === 0)) isWriting = true
+      if (!isWriting && (!q.options || q.options.length === 0) && !hasVisual) isWriting = true
       if (!isWriting) {
         var c = typeof q.correct === 'number' ? q.correct : -99
         if (c < 0 || c > 3) unanswered.push(i + 1)
@@ -121,11 +136,15 @@ export async function POST(request) {
     var dbQuestions = questions.map(function(q) {
       var questionText = q.question || q.q || ''
       var isWriting = q.type === 'writing' || q.type === 'essay'
+      /* (و46) رسومات الاختيارات → اختياري دايمًا + الاختيارات بتتفضل موجودة
+         (ممتلية بنفس عدد الرسومات) عشان الطالب يلاقي حاجة يدوس عليها */
+      var hasVisual = serverHasVisualOptions(q)
+      if (hasVisual) isWriting = false
       if (!isWriting && Array.isArray(q.options)) {
         var allNA = q.options.length > 0 && q.options.every(function(o) { return !o || o === 'N/A' || o === 'لا يوجد' || String(o).trim() === '' })
-        if (allNA) isWriting = true
+        if (allNA && !hasVisual) isWriting = true
       }
-      if (!isWriting && (!q.options || q.options.length === 0)) {
+      if (!isWriting && (!q.options || q.options.length === 0) && !hasVisual) {
         isWriting = true
       }
       var pts = (typeof q.points === 'number' && q.points > 0) ? q.points : (isWriting ? 5 : 1)
@@ -141,10 +160,13 @@ export async function POST(request) {
           acceptedAnswers: Array.isArray(q.acceptedAnswers) ? q.acceptedAnswers : [],
         }, ws)
       }
-      var opts = Array.isArray(q.options) ? q.options.slice(0, 4) : ['N/A', 'N/A', 'N/A', 'N/A']
-      while (opts.length < 4) { opts.push('N/A') }
+      var opts = Array.isArray(q.options) ? q.options.slice(0, 4) : []
+      /* (و46) سؤال الرسومات: نملأ الاختيارات بنفس عدد الرسومات على الأقل —
+         نص فاضي = الاختيار صورة بس (الطالب يشوف الرسمة الصغيرة ويختارها) */
+      var minOpts = hasVisual && Array.isArray(q.optionFigures) ? q.optionFigures.length : 0
+      while (opts.length < Math.max(4, minOpts)) { opts.push('') }
       var correctIdx = typeof q.correct === 'number' ? q.correct : 0
-      if (correctIdx < 0 || correctIdx > 3) { correctIdx = 0 }
+      if (correctIdx < 0 || correctIdx >= opts.length) { correctIdx = 0 }
       return Object.assign({
         type: 'mcq',
         question: questionText,
