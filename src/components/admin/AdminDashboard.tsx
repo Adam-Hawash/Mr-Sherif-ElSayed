@@ -3673,6 +3673,10 @@ function AIExtractionPanel({ onRefresh }: { onRefresh: () => void }) {
   const [saving, setSaving] = useState(false)
   const [extractedQuestions, setExtractedQuestions] = useState<Array<any>>([])
   const [statusMsg, setStatusMsg] = useState('')
+  /* (و47) حل الأسئلة بالذكاء الاصطناعي من صفحة الأدمن — طلب المستر:
+     «ضايف ملف مش محلول → الذكاء الاصطناعي يحله وأنا أقدر أغير في الحل
+     عشان يظهر للطلبة + يشوف الرسمة الصحيحة في الاختيارات ويحط عليها» */
+  const [aiSolving, setAiSolving] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const answerFileRef = useRef<HTMLInputElement>(null)
   // YouTube state
@@ -3945,6 +3949,96 @@ function AIExtractionPanel({ onRefresh }: { onRefresh: () => void }) {
   var deleteQuestion = function(qi: number) { setExtractedQuestions(extractedQuestions.filter(function(_, i) { return i !== qi })) }
   var addQuestion = function() { setExtractedQuestions([...extractedQuestions, { type: 'mcq', question: '', options: ['لا يوجد','لا يوجد','لا يوجد','لا يوجد'], correct: 0, points: 1 }]) }
   var addWritingQuestion = function() { setExtractedQuestions([...extractedQuestions, { type: 'writing', question: '', options: [], correct: -1, points: 5, modelAnswer: '', acceptedAnswers: [] }]) }
+
+  /* ============================================================
+   * (و47) الحل بالذكاء الاصطناعي — زرار في شاشة المراجعة:
+   *  بيبعت الأسئلة دفعات (3 سؤال في كل طلب) على /api/ai/solve-questions،
+   *  والسيرفر بيقرا رسومات الأسئلة والاختيارات من Media ويبص عليها بعينه:
+   *   • اختيارات نصية → يحدد الإجابة الصحيحة
+   *   • اختيارات رسومات → يشوف الرسمة الصحيحة ويحط عليها (correct)
+   *   • مقالي → يكتب حل بسيط خطوة بخطوة يفهمه الطالب
+   *  والأستاذ يعدل أي حل من نفس الشاشة قبل الحفظ.
+   * ============================================================ */
+  var aiSolveAll = async function () {
+    if (aiSolving || extractedQuestions.length === 0) return
+    setAiSolving(true)
+    var total = extractedQuestions.length
+    var solvedCount = 0, failCount = 0
+    try {
+      var BATCH = 3
+      for (var start = 0; start < total; start += BATCH) {
+        var endSlice = Math.min(total, start + BATCH)
+        setStatusMsg('الذكاء الاصطناعي بيحل… ' + (start + 1) + '–' + endSlice + ' من ' + total + ' سؤال')
+        var payload = extractedQuestions.slice(start, endSlice).map(function (q: any, bi: number) {
+          var isWriting = q.type === 'writing' || q.type === 'essay'
+          return {
+            i: start + bi,
+            type: isWriting ? 'writing' : 'mcq',
+            question: String(q.question || q.q || ''),
+            options: Array.isArray(q.options) ? q.options : [],
+            figureUrl: q.figure && q.figure.url ? String(q.figure.url) : '',
+            optionFigureUrls: Array.isArray(q.optionFigures) ? q.optionFigures.map(function (ofg: any) { return ofg && ofg.url ? String(ofg.url) : '' }) : [],
+          }
+        })
+        var okBatch = false
+        for (var attempt = 0; attempt < 2 && !okBatch; attempt++) {
+          try {
+            var ctrl = new AbortController()
+            var tmr = setTimeout(function () { ctrl.abort() }, 200000)
+            var res = await fetch('/api/ai/solve-questions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ questions: payload }),
+              signal: ctrl.signal,
+            })
+            clearTimeout(tmr)
+            var data = await res.json()
+            if (res.ok && data && Array.isArray(data.solved) && data.solved.length > 0) {
+              var solvedMap: any = {}
+              data.solved.forEach(function (s: any) { if (s && s.i >= 0) solvedMap[s.i] = s })
+              setExtractedQuestions(function (prev) {
+                return prev.map(function (q: any, idx: number) {
+                  var s = solvedMap[idx]
+                  if (!s) return q
+                  var upd: any = Object.assign({}, q)
+                  var isW = q.type === 'writing' || q.type === 'essay'
+                  if (!isW) {
+                    var c = parseInt(String(s.correct), 10)
+                    var optCount = Array.isArray(q.options) && q.options.length > 0 ? q.options.length : (Array.isArray(q.optionFigures) ? q.optionFigures.filter(Boolean).length : 0)
+                    if (isFinite(c) && c >= 0 && (optCount <= 0 || c < optCount)) upd.correct = c
+                  }
+                  var ma = String(s.modelAnswer || '').trim()
+                  if (ma) upd.modelAnswer = ma
+                  return upd
+                })
+              })
+              solvedCount += Object.keys(solvedMap).length
+              okBatch = true
+            } else if (res.ok) {
+              okBatch = true /* الرد فاضي — نعدي على الباتش ده من غير فشل */
+            }
+          } catch (eB: any) {
+            if (eB && eB.name === 'AbortError') throw eB
+          }
+          if (!okBatch && attempt === 0) await new Promise(function (r) { setTimeout(r, 1500) })
+        }
+        if (!okBatch) failCount += endSlice - start
+      }
+      setStatusMsg('')
+      if (solvedCount > 0) {
+        var msg = 'الذكاء الاصطناعي حل ' + solvedCount + ' سؤال ✅ — راجع الحلول وعدّل أي حاجة قبل الحفظ'
+        if (failCount > 0) msg += ' — (' + failCount + ' سؤال معملش حل، جرب دوس الحل تاني)'
+        toast.success(msg)
+      } else {
+        toast.error('مقدرتش أحل الأسئلة — جرب تاني')
+      }
+    } catch (err: any) {
+      setStatusMsg('')
+      if (err && err.name === 'AbortError') toast.error('انتهت مهلة الحل — جرب تاني')
+      else toast.error('خطأ في الحل: ' + (err.message || ''))
+    }
+    setAiSolving(false)
+  }
 
   var handleSave = async function() {
     if (extractedQuestions.length === 0) { toast.error('لا يوجد أسئلة للحفظ'); return }
@@ -4714,12 +4808,29 @@ function AIExtractionPanel({ onRefresh }: { onRefresh: () => void }) {
           </div>
         )}
         <div className="flex gap-2 pt-2">
+          {/* (و47) الحل بالذكاء الاصطناعي — قبل الحفظ: بيحل كل الأسئلة (اختيارات/رسومات/مقالي)
+             والأستاذ يعدل في الحل من الشاشة دي قبل ما يحفظ للطلبة */}
+          <Button
+            variant="outline"
+            className="border-violet-500/60 text-violet-600 dark:text-violet-400 hover:bg-violet-500/10"
+            onClick={aiSolveAll}
+            disabled={aiSolving || saving || extractedQuestions.length === 0}
+            title="الذكاء الاصطناعي يحل كل الأسئلة: يحدد إجابة الاختيارات (ويشوف رسومات الاختيارات بعينه ويحط على الصحيحة) ويكتب حل بسيط للمقالي — وبعد كده تعدل براحتك"
+          >
+            {aiSolving ? <Loader2 className="h-4 w-4 ml-1 animate-spin" /> : <Sparkles className="h-4 w-4 ml-1" />}
+            {aiSolving ? 'بيحل…' : 'حل بالذكاء الاصطناعي'}
+          </Button>
           <Button className="flex-1" onClick={handleSave} disabled={saving || extractedQuestions.length === 0}>
             {saving ? <Loader2 className="h-4 w-4 ml-1 animate-spin" /> : <Save className="h-4 w-4 ml-1" />}
             {saving ? 'جاري الحفظ...' : 'حفظ في قاعدة البيانات'}
           </Button>
           <Button variant="outline" onClick={resetAll}>الغاء</Button>
         </div>
+        <p className="text-[10px] text-muted-foreground mt-1">
+          {aiSolving
+            ? 'الذكاء الاصطناعي بيحل الأسئلة دفعة دفعة — سيبه يخلص ثم راجع الحلول'
+            : '💡 ملف مش محلول؟ دوس «حل بالذكاء الاصطناعي» — يحل كل الأسئلة ويحدد رسمة الاختيار الصحيحة، وبعدين عدّل أي حل قبل الحفظ'}
+        </p>
       </div>
     )
   }
