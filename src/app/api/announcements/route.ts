@@ -58,7 +58,8 @@ export async function POST(request: NextRequest) {
     })
 
     /* (و44) إشعار للطلاب: إعلان جديد */
-    notifyStudents({ grade: String(grade || ''), type: 'announcement', title: '📣 إعلان جديد: ' + String(title), body: String(content || '').slice(0, 200) }).catch(function () {})
+    /* (و45) await — الإشعار بيتكتب قبل الرد */
+      try { await notifyStudents({ grade: String(grade || ''), type: 'announcement', title: '📣 إعلان جديد: ' + String(title), body: String(content || '').slice(0, 200) }) } catch (nE) {}
 
     return NextResponse.json({ message: 'تم إنشاء الإعلان بنجاح', announcement }, { status: 201 })
   } catch (error) {

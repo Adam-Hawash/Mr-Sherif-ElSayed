@@ -11,6 +11,8 @@
 import { NextResponse } from 'next/server'
 import { callGemini as callGeminiCentral, hasGeminiKey } from '@/lib/gemini'
 import { repairModelJson, repairCorruptMath } from '@/lib/math-text'
+/* (و45) تصنيف موحّد اختياري/مقالي — سؤال له اختيارات (حتى لو صور) = اختياري */
+import { isWritingQuestion } from '@/lib/question-figures'
 
 export const runtime = 'nodejs'
 export const maxDuration = 180
@@ -138,11 +140,10 @@ function mergeQuestionsAndAnswers(questions: any[], answers: any[]): any[] {
       }
     }
 
-    var qType = q.type === 'writing' || q.type === 'essay' || (!q.options || q.options.length === 0) ? 'writing' : 'mcq'
+    /* (و45) سؤال له اختيارات (نص أو صور/رسومات) = اختياري دايمًا — ممنوع يتحول مقالي */
+    var qType = isWritingQuestion(q) ? 'writing' : 'mcq'
     var modelAnswer = (ans && (ans.modelAnswer || ans.answer || ans.solution)) || q.modelAnswer || ''
     var acceptedAnswers = (ans && Array.isArray(ans.acceptedAnswers) ? ans.acceptedAnswers : (Array.isArray(q.acceptedAnswers) ? q.acceptedAnswers : []))
-
-    /* (2026-و40-w) pass-through حقول ورقة العمل من أسئلة المصدر */
     var wsFields: any = {}
     ;['sourcePage', 'srcName', 'table', 'figure', 'optionFigures'].forEach(function (k: string) {
       if (q[k] !== undefined && q[k] !== null) wsFields[k] = q[k]
@@ -365,6 +366,7 @@ function buildSingleFilePrompt(grade: string, type: string): string {
   lines.push('1. "mcq" - Multiple Choice Questions: the document shows ANSWER CHOICES under the question (A/B/C/D letters, numbered choices, boxes, or any listed options).')
   lines.push('2. "writing" - Essay/Written Questions: NO answer choices are printed under the question — the student writes the full solution themselves.')
   lines.push('DECISIVE CLASSIFICATION RULE (follow it EXACTLY): choices/options printed under the question → "mcq". NO choices printed → "writing". The VERB in the question NEVER decides the type: math questions that say "Solve", "Find x", "Calculate", "Simplify" are STILL "mcq" whenever choices are listed under them. Only classify "writing" when the document truly shows no choices at all.')
+  lines.push('IMAGE-CHOICE RULE (2026-W45 — mandatory): a question whose choices are PICTURES / FIGURES / GRAPHS (not text) is STILL "mcq": return "options" as an array of empty strings with the SAME length as the number of picture-choices, and put each choice picture in "optionFigures" aligned by index. NEVER label a picture-choices question as "writing" and NEVER flatten its choices into text.')
   lines.push('')
   lines.push('For "mcq" questions:')
   lines.push('- Copy the EXACT question text from the document (translate to English if needed)')
@@ -443,6 +445,7 @@ function buildQuestionsOnlyPrompt(grade: string, type: string): string {
   lines.push('1. "mcq" - Multiple Choice Questions: the document shows ANSWER CHOICES under the question (A/B/C/D letters, numbered choices, boxes, or any listed options).')
   lines.push('2. "writing" - Essay/Written Questions: NO answer choices are printed under the question — the student writes the full solution themselves.')
   lines.push('DECISIVE CLASSIFICATION RULE (follow it EXACTLY): choices/options printed under the question → "mcq". NO choices printed → "writing". The VERB in the question NEVER decides the type: math questions that say "Solve", "Find x", "Calculate", "Simplify" are STILL "mcq" whenever choices are listed under them. Only classify "writing" when the document truly shows no choices at all.')
+  lines.push('IMAGE-CHOICE RULE (2026-W45 — mandatory): a question whose choices are PICTURES / FIGURES / GRAPHS (not text) is STILL "mcq": return "options" as an array of empty strings with the SAME length as the number of picture-choices, and put each choice picture in "optionFigures" aligned by index. NEVER label a picture-choices question as "writing" and NEVER flatten its choices into text.')
   lines.push('')
   lines.push('For "mcq" questions:')
   lines.push('- Copy the EXACT question text from the document (translate to English if needed)')
@@ -501,7 +504,8 @@ function buildAnswersOnlyPrompt(grade: string, type: string, questions: any[]): 
   lines.push('')
   lines.push('Here are the questions extracted from a separate questions document (in order):')
   questions.forEach(function(q, i) {
-    var qType = q.type === 'writing' || q.type === 'essay' || (!q.options || q.options.length === 0) ? 'writing' : 'mcq'
+    /* (و45) سؤال له اختيارات (نص أو صور) = اختياري دايمًا */
+    var qType = isWritingQuestion(q) ? 'writing' : 'mcq'
     if (qType === 'mcq') {
       lines.push((i + 1) + '. [MCQ] ' + (q.question || ''))
       if (Array.isArray(q.options) && q.options.length > 0) {
@@ -571,7 +575,8 @@ function finalizeExtracted(extracted: any, type: string, grade: string, twoFiles
   if (!extracted.answerKey) { extracted.answerKey = '' }
 
   extracted.questions = extracted.questions.map(function(q) {
-    var qType = q.type === 'writing' || q.type === 'essay' ? 'writing' : 'mcq'
+    /* (و45) سؤال له اختيارات (نص أو صور/رسومات) = اختياري دايمًا — ممنوع يتحول مقالي */
+    var qType = isWritingQuestion(q) ? 'writing' : 'mcq'
     /* (2026-و40-w) حقول ورقة العمل — pass-through (المصدر: البحث عن الجداول
        والرسومات في ورقة المستر): sourcePage/srcName/table/figure/optionFigures
        بتتحفظ زي ما هي جنب الحقول القانونية — مع تطبيع خفيف */
@@ -597,7 +602,16 @@ function finalizeExtracted(extracted: any, type: string, grade: string, twoFiles
     return withWs({
       type: 'mcq',
       question: normalizeMath(q.question || ''),
-      options: (q.options || ['N/A', 'N/A', 'N/A', 'N/A']).slice(0, 4).map(function(o: any) { return normalizeMath(String(o)) }),
+      /* (و45) لو الاختيارات صور من غير نص — بنملأ نص فاضي بنفس عدد رسومات الاختيارات
+         عشان الفهارس تبقى متوافقة والسؤال يفضل اختياري صور مش مقالي */
+      options: (function () {
+        var opts = Array.isArray(q.options) ? q.options.slice() : []
+        if (opts.length === 0 && Array.isArray(q.optionFigures) && q.optionFigures.length > 0) {
+          for (var ofi = 0; ofi < q.optionFigures.length; ofi++) opts.push('')
+        }
+        if (opts.length === 0) opts = ['N/A', 'N/A', 'N/A', 'N/A']
+        return opts.slice(0, 4).map(function(o: any) { return normalizeMath(String(o)) })
+      })(),
       correct: typeof q.correct === 'number' ? q.correct : 0,
       points: q.points || 1,
       modelAnswer: normalizeMath(q.modelAnswer || '')

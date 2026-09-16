@@ -13,18 +13,38 @@ function nid(): string {
   return 'ntf' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
 }
 
-/** إشعار لطالب واحد */
+/* (و45) ضمان وجود جدول Notification — درس و43 الموثق: الـ heal الرئيسي
+   مش مضمون يتشغّل على كل نشر، فأول فشل INSERT بنعمل CREATE TABLE IF NOT
+   EXISTS + الفهارس ونعدّي المحاولة — مرة واحدة لكل process */
+var _notificationTableReady = false
+async function ensureNotificationTable(): Promise<void> {
+  if (_notificationTableReady) return
+  try {
+    await db.$executeRawUnsafe("CREATE TABLE IF NOT EXISTS Notification (id TEXT PRIMARY KEY, studentId TEXT NOT NULL, type TEXT NOT NULL DEFAULT 'general', title TEXT NOT NULL, body TEXT NOT NULL DEFAULT '', read INTEGER NOT NULL DEFAULT 0, createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+    try { await db.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS idx_notification_student ON Notification(studentId, read)') } catch (e) {}
+    try { await db.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS idx_notification_created ON Notification(createdAt)') } catch (e) {}
+    _notificationTableReady = true
+  } catch (e) {
+    console.error('[notify] ensure table failed (ignored):', e)
+  }
+}
+
+/** إشعار لطالب واحد — (و45) لو الجدول ناقص بنعمله ونعدّي المحاولة */
 export async function notifyStudent(studentId: string, type: string, title: string, body?: string): Promise<void> {
   if (!studentId) return
+  var args = [nid(), studentId, type, String(title || '').slice(0, 160), String(body || '').slice(0, 500)]
   try {
     await db.$executeRawUnsafe(
       'INSERT INTO Notification (id, studentId, type, title, body, read, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)',
-      nid(), studentId, type, String(title || '').slice(0, 160), String(body || '').slice(0, 500)
+      args[0], args[1], args[2], args[3], args[4]
     )
+    return
   } catch (e) {
+    /* المحاولة الأولى فشلت — غالبًا الجدول ناقص: نعمله ونعدّي مرة كمان */
     try {
+      await ensureNotificationTable()
       await db.$executeRawUnsafe(
-        "INSERT INTO Notification (id, studentId, type, title, body, read, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+        'INSERT INTO Notification (id, studentId, type, title, body, read, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)',
         nid(), studentId, type, String(title || '').slice(0, 160), String(body || '').slice(0, 500)
       )
     } catch (e2) {
@@ -69,8 +89,10 @@ export async function notifyStudents(opts: {
         ids = (all || []).map(function (r: any) { return String(r.id) })
       } catch (eA) { ids = [] }
     }
-    /* INSERT مجمّع على دفعات — سريع ومفيش N نداءات */
+    /* INSERT مجمّع على دفعات — سريع ومفيش N نداءات
+       (و45) أول فشل دفعة بنضمن وجود الجدول ونعدّيها مرة */
     var CHUNK = 40
+    var retried = false
     for (var i = 0; i < ids.length; i += CHUNK) {
       var slice = ids.slice(i, i + CHUNK)
       var values: string[] = []
@@ -85,7 +107,21 @@ export async function notifyStudents(opts: {
           ...args
         )
       } catch (eB) {
-        console.error('[notifyStudents] batch insert failed (ignored):', eB)
+        if (!retried) {
+          retried = true
+          try {
+            await ensureNotificationTable()
+            await db.$executeRawUnsafe(
+              'INSERT INTO Notification (id, studentId, type, title, body, read, createdAt, updatedAt) VALUES ' + values.join(', '),
+              ...args
+            )
+            continue
+          } catch (eB2) {
+            console.error('[notifyStudents] batch insert failed after heal (ignored):', eB2)
+          }
+        } else {
+          console.error('[notifyStudents] batch insert failed (ignored):', eB)
+        }
       }
     }
   } catch (e) {

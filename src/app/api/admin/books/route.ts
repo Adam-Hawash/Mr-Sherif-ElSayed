@@ -98,7 +98,8 @@ export async function POST(request: NextRequest) {
     })
 
     /* (و44) إشعار للطلاب: كتاب جديد اتضاف */
-    notifyStudents({ grade: String(grade || ''), type: 'book', title: '📕 كتاب جديد اتضاف: ' + String(title).trim(), body: String(description || '').slice(0, 200) || 'تقدر تفتحه أو تحمله من تاب الكتب والملازم' }).catch(function () {})
+    /* (و45) await — الإشعار بيتكتب قبل الرد */
+      try { await notifyStudents({ grade: String(grade || ''), type: 'book', title: '📕 كتاب جديد اتضاف: ' + String(title).trim(), body: String(description || '').slice(0, 200) || 'تقدر تفتحه أو تحمله من تاب الكتب والملازم' }) } catch (nE) {}
 
     return NextResponse.json({ message: 'تم إضافة الكتاب', book }, { status: 201 })
   } catch (error: any) {

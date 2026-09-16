@@ -26,6 +26,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { callGemini as callGeminiCentral, hasGeminiKey } from '@/lib/gemini'
 import { repairModelJson, repairCorruptMath } from '@/lib/math-text'
+/* (و45) تصنيف موحّد اختياري/مقالي — سؤال له اختيارات صور = اختياري مش مقالي */
+import { isWritingQuestion } from '@/lib/question-figures'
 
 export const runtime = 'nodejs'
 export const maxDuration = 180
@@ -143,6 +145,7 @@ function buildPagesPrompt(pageNumbers: number[], mode: 'all' | 'top', count: num
   lines.push('  * NEVER convert a drawing into text: do NOT describe the graph, do NOT write coordinate tables or step-by-step plotting inside question text or modelAnswer.')
   lines.push('  * modelAnswer = concise final results only (example: "axis of symmetry: x = 3, maximum value = 4").')
   lines.push('  * If unsure whether something is a figure, treat it AS a figure. Options that are pure images get empty string text plus their optionFigures entry.')
+  lines.push('IMAGE-CHOICE RULE (2026-W45 — mandatory): a question whose choices are PICTURES / FIGURES (not text) is STILL "mcq" — NEVER "writing". Return "options" as empty strings with the SAME length as the picture-choices and put each picture in "optionFigures" aligned by index.')
   lines.push('- modelAnswer must include the expected table values when applicable (e.g. "f(-1)=5, f(0)=3 → points (-1,5), (0,3)").')
   lines.push('- MATH FORMAT (the platform renders it as real math): powers as x^2; EVERY fraction as \\frac{numerator}{denominator} (NEVER a/b, and do NOT wrap the whole numerator/denominator in parentheses); square root √, cube root ∛, × ÷ π ≤ ≥ ≠ ≈ ∠ °. No $ signs, no other LaTeX, no markdown.')
   lines.push('- ALL output text in English (same as the rest of the platform).')
@@ -186,8 +189,8 @@ function finalizeQuestion(q: any): any | null {
   if (q.table && Array.isArray(q.table.rows)) ws.table = q.table
   if (q.figure && q.figure.bbox) ws.figure = q.figure
   if (Array.isArray(q.optionFigures)) ws.optionFigures = q.optionFigures
-  var isWriting = q.type === 'writing' || q.type === 'essay'
-  if (!isWriting && (!Array.isArray(q.options) || q.options.length === 0)) isWriting = true
+  /* (و45) سؤال له اختيارات (نص أو صور/رسومات) = اختياري دايمًا — ممنوع يتحول مقالي */
+  var isWriting = isWritingQuestion(q)
   if (isWriting) {
     return Object.assign({
       type: 'writing',
@@ -200,7 +203,13 @@ function finalizeQuestion(q: any): any | null {
       sourcePage: sourcePage,
     }, ws)
   }
-  var opts = (q.options || []).map(function (o: any) { return normalizeMath(String(o == null ? '' : o)) }).filter(function (o: string) { return o.trim() !== '' }).slice(0, 4)
+  /* (و45) رسومات الاختيارات: النص الفاضي بيفضل زي ما هو (الاختيار صورة) —
+     ولو مفيش نص أصلًا بنملأ نص فاضي بنفس عدد رسومات الاختيارات */
+  var hasOf = Array.isArray(q.optionFigures) && q.optionFigures.length > 0
+  var opts = (q.options || []).map(function (o: any) { return normalizeMath(String(o == null ? '' : o)) })
+  if (!hasOf) { opts = opts.filter(function (o: string) { return o.trim() !== '' }) }
+  if (opts.length === 0 && hasOf) { for (var oiE = 0; oiE < q.optionFigures.length; oiE++) opts.push('') }
+  opts = opts.slice(0, 4)
   var correct = typeof q.correct === 'number' ? q.correct : (parseInt(String(q.correct), 10) || -1)
   if (correct >= opts.length) correct = -1
   return Object.assign({

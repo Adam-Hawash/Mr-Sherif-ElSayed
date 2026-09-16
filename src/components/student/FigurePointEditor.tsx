@@ -116,6 +116,9 @@ export function FigurePointEditor({ figureUrl, questionLabel, onAttached, onClos
           <MousePointerClick className="h-3.5 w-3.5" />
           حط نقط على الرسمة{questionLabel ? ' — ' + questionLabel : ''} — دوس على المكان وربع هتتحط نقطة، ودوس عليها تاني لو عايز تشيلها
         </p>
+        <p className="text-[10px] text-sky-700/80 dark:text-sky-400/80 w-full">
+          متقلقش من الدقة — المصحح بيفهم الرسم: المهم مكان النقطة يكون منطقي على الرسمة (مش بالملّيمتر) 👌
+        </p>
         <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground" aria-label="إغلاق">
           <X className="h-4 w-4" />
         </button>

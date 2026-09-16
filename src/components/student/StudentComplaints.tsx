@@ -47,6 +47,14 @@ export function StudentComplaints({ studentId, studentName, studentPhone, grade 
 
   useEffect(function () { loadMine() }, [loadMine])
 
+  /* (و45 بطلب المستر) الطالب يشوف علامة الرد على الشكوة من غير ما يحدث الصفحة
+     — بندور كل دقيقة على تحديث حالات الشكاوى (رد/حل) */
+  useEffect(function () {
+    if (!studentId) return
+    var t = setInterval(function () { loadMine() }, 60000)
+    return function () { clearInterval(t) }
+  }, [studentId, loadMine])
+
   async function submit() {
     const msg = message.trim()
     if (msg.length < 3) {
@@ -125,8 +133,10 @@ export function StudentComplaints({ studentId, studentName, studentPhone, grade 
             <div className="space-y-3 max-h-96 overflow-y-auto pr-1" style={{ scrollbarWidth: 'thin' }}>
               {mine.map(function (c) {
                 const resolved = c.status === 'resolved'
+                /* (و45) علامة واضحة على الشكوة نفسها: تم الرد ✓ / تم الحل */
+                const hasReply = Boolean(c.reply && String(c.reply).trim())
                 return (
-                  <div key={c.id} className="rounded-xl border p-3 space-y-2">
+                  <div key={c.id} className={'rounded-xl border p-3 space-y-2 ' + (resolved ? 'border-emerald-300/60 dark:border-emerald-800/60' : hasReply ? 'border-primary/40 bg-primary/5' : '')}>
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <div className="flex items-center gap-1.5">
                         {c.source === 'ai'
@@ -134,7 +144,9 @@ export function StudentComplaints({ studentId, studentName, studentPhone, grade 
                           : null}
                         {resolved
                           ? <Badge className="text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 gap-1"><CheckCircle2 className="h-3 w-3" />تم الحل</Badge>
-                          : <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-300 dark:text-amber-400 gap-1"><Clock3 className="h-3 w-3" />قيد المراجعة</Badge>}
+                          : hasReply
+                            ? <Badge className="text-[10px] bg-primary/10 text-primary border border-primary/30 gap-1"><CheckCircle2 className="h-3 w-3" />تم الرد ✓</Badge>
+                            : <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-300 dark:text-amber-400 gap-1"><Clock3 className="h-3 w-3" />قيد المراجعة</Badge>}
                       </div>
                       <span className="text-[10px] text-muted-foreground">
                         {new Date(c.createdAt).toLocaleDateString('ar-EG', { day: 'numeric', month: 'short' })}

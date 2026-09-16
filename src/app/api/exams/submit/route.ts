@@ -29,6 +29,8 @@ import { normalizeCorrectKey } from '@/lib/correct-key'
    دلوقتي تصحيح متسلسل سؤال-بسؤال (نفس إصلاح الواجب و25) — فشل سؤال ما يأثرش على غيره. */
 import { checkExamSequential } from '@/lib/sequential-guard'
 import { parseQuestions, resolveQuestionsForStudent } from '@/lib/exam-models'
+/* (و45) تصنيف موحّد اختياري/مقالي — سؤال له اختيارات صور = اختياري مش مقالي */
+import { isWritingQuestion } from '@/lib/question-figures'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -184,12 +186,8 @@ export async function POST(request) {
     var mcqQuestions: any[] = []
     var writingQuestions: any[] = []
     questions.forEach(function(q, idx) {
-      var isWriting = q.type === 'writing' || q.type === 'essay'
-      if (!isWriting && Array.isArray(q.options)) {
-        var allNA = q.options.length > 0 && q.options.every(function(o) { return !o || o === 'N/A' || o === 'لا يوجد' || String(o).trim() === '' })
-        if (allNA) isWriting = true
-      }
-      if (!isWriting && (!q.options || q.options.length === 0)) isWriting = true
+      /* (و45) تصنيف موحّد: سؤال له اختيارات (نص أو صور/رسومات) = اختياري دايمًا */
+      var isWriting = isWritingQuestion(q)
       if (isWriting) writingQuestions.push({ q: q, origIdx: idx })
       else mcqQuestions.push({ q: q, origIdx: idx })
     })
