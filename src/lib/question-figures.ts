@@ -23,6 +23,41 @@ export interface FigureCropSource {
   doc?: any | null     // مستند pdf.js مفتوح — وضع الصفحات
 }
 
+/* ============================================================
+ * (و45) تصنيف موحّد MCQ/مقالي — طلب المستر الحرفي:
+ *   «الطالب يجي يحل الواجب ما يلاقيش الاختيارات، يلاقي السؤال اللي في
+ *    اختيارات على شكل رسومات يلاقي سؤال مقالي»
+ * السؤال اللي له اختيارات — حتى لو الاختيارات نفسها **صور/رسومات**
+ * (optionFigures بدون نص) — لازم يتصنف اختياري (mcq) ومطلقًا مقالي.
+ * ============================================================ */
+
+/** هل السؤال ده له اختيارات مرئية (صور/رسومات في الاختيارات)؟ */
+export function hasVisualOptions(q: any): boolean {
+  if (!q || typeof q !== 'object') return false
+  if (!Array.isArray(q.optionFigures)) return false
+  return q.optionFigures.some(function (of: any) {
+    return of && typeof of === 'object' && (of.url || of.bbox)
+  })
+}
+
+/**
+ * الحكم الموحد: هل السؤال مقالي؟
+ * مقالي = مفيش اختيارات نصية مرة واحدة ومفيش رسومات اختيارات.
+ * أي اختيارات (نص أو صور) → اختياري زي ما هو.
+ */
+export function isWritingQuestion(q: any): boolean {
+  if (!q || typeof q !== 'object') return true
+  if (hasVisualOptions(q)) return false
+  if (Array.isArray(q.options) && q.options.length > 0) {
+    // اختيارات موجودة — لو كلها فاضية/N/A من غير رسومات → مقالي
+    var allNA = q.options.every(function (o: any) {
+      return !o || o === 'N/A' || o === 'لا يوجد' || String(o).trim() === ''
+    })
+    return allNA
+  }
+  return true
+}
+
 /* تطبيع bbox: كل القيم 0..1 وw/h أكبر من صفر — وإلا null (مفيش قص) */
 function sanitizeBbox(bbox: any): { x: number; y: number; w: number; h: number } | null {
   if (!bbox || typeof bbox !== 'object') return null

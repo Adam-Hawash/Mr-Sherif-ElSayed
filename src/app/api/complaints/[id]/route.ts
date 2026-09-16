@@ -52,7 +52,9 @@ export async function PATCH(request: Request, ctx: any) {
       var cid = String(rows[0].studentId || '')
       if (cid && (body.reply !== undefined || status === 'resolved')) {
         var nTitle = status === 'resolved' ? '✅ المستر رد على شكواك — واتحلت' : '💬 المستر رد على شكواك'
-        notifyStudent(cid, 'complaint_reply', nTitle, String(reply || '').slice(0, 240) || 'افتح تاب الشكاوى وشوف الرد')
+        /* (و45) await — الإشعار بيتكتب قبل الرد على السيرفلس
+           (fire-and-forget كان بيتقتل أحيانًا على السيرفلس بعد إرسال الرد) */
+        try { await notifyStudent(cid, 'complaint_reply', nTitle, String(reply || '').slice(0, 240) || 'افتح تاب الشكاوى وشوف الرد') } catch (nE2) {}
       }
     } catch (nErr) {}
     return NextResponse.json({ complaint: rows[0], message: 'تم الحفظ ✅' })

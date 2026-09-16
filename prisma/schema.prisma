@@ -242,6 +242,9 @@ model GalleryImage {
   filePath  String   @default("")
   type      String   @default("image")
   videoUrl  String   @default("")
+  // (2026-و45) صورة مصغرة لعناصر الفيديو — افتراضيًا بيتجيب أوتوماتيك من
+  // رابط اليوتيوب، والأدمن يقدر يعدّلها برابط صورة من عنده
+  thumbnail String   @default("")
   sortOrder Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

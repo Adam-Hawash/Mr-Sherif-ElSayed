@@ -46,7 +46,8 @@ function getVideoEmbedUrl(url: string) {
 }
 
 function getVideoThumb(url: string) {
-  var yt = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([\w-]+)/)
+  /* (و45) كل صيغ اليوتيوب — وبنرجّع فاضي عشان السلسلة تكمل لـ thumbnail/filePath */
+  var yt = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/|live\/))([\w-]{11})/)
   if (yt) return 'https://img.youtube.com/vi/' + yt[1] + '/mqdefault.jpg'
   return ''
 }
@@ -221,7 +222,9 @@ export default function GallerySection() {
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                   {onlyVideos.map((img, index) => {
-                    var thumb = getVideoThumb(img.videoUrl) || img.filePath || ''
+                    /* (و45) سلسلة الصورة المصغرة: المخزنة ← أوتوماتيك يوتيوب ← القديم (filePath)
+                       كل فيديو بيبان بصورته من غير خطوة إضافية من الأدمن */
+                    var thumb = (img as any).thumbnail || getVideoThumb(img.videoUrl) || img.filePath || ''
                     return (
                       <div
                         key={img.id}

@@ -262,7 +262,8 @@ export async function POST(request: NextRequest) {
     try {
       var nIds: string[] = []
       try { var tp = JSON.parse(targetIds); if (Array.isArray(tp)) nIds = tp.filter(Boolean) } catch (e) {}
-      notifyStudents({ studentIds: nIds, grade: String(grade || ''), type: 'exam', title: '📝 امتحان جديد: ' + String(title), body: 'دخل من تاب الامتحانات وحل دلوقتي' }).catch(function () {})
+      /* (و45) await — الإشعار بيتكتب قبل الرد */
+        try { await notifyStudents({ studentIds: nIds, grade: String(grade || ''), type: 'exam', title: '📝 امتحان جديد: ' + String(title), body: 'دخل من تاب الامتحانات وحل دلوقتي' }) } catch (nE) {}
     } catch (nE) {}
 
     return NextResponse.json({ message: 'Exam added', exam }, { status: 201 })

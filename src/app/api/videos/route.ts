@@ -9,8 +9,8 @@
 // عمليات الكتابة (POST) للأدمن بس.
 // ============================================================
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import { isAdmin, getStudentAnyStatus, safeThumb, getYouTubeId, mediaIdFromPath } from '@/lib/video-guard'
+import { db, safeWrite } from '@/lib/db'
+import { isAdmin, getStudentAnyStatus, safeThumb, getYouTubeId, mediaIdFromPath, ensureVideoTable } from '@/lib/video-guard'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,6 +30,8 @@ function stripVideo(v: { id: string; thumbnail: string; url: string; filePath: s
 
 export async function GET(request: NextRequest) {
   try {
+    /* (و45) ترميم دفاعي لجدول Video — أي عمود ناقص في الإنتاج بيفشل القايمة كلها */
+    await ensureVideoTable()
     const { searchParams } = new URL(request.url)
     const grade = searchParams.get('grade')
     const keyword = searchParams.get('keyword')
@@ -112,22 +114,28 @@ export async function GET(request: NextRequest) {
     })
   } catch (error: any) {
     console.error('Videos fetch error:', error)
-    return NextResponse.json({ error: 'Server error: ' + (error.message || String(error)) }, { status: 500 })
+    return NextResponse.json({ error: 'قائمة الفيديوهات ما قدرتش تتحمل — السبب التقني: ' + String((error && error.message) || error).slice(0, 160) }, { status: 500 })
   }
 }
 
 export async function POST(request: NextRequest) {
+  /* (و45) رسالة خطأ عربية وصفية — المستر لازم يعرف السبب الحقيقي،
+     مفيش «في مشكلة» من غير سبب */
+  const errOut = (msg: string, status = 500) => NextResponse.json({ error: msg }, { status })
   try {
     const body = await request.json()
     const { title, url, grade, filePath, fileType, thumbnail, price, adminId } = body
 
     // الكتابة للأدمن بس
     if (!(await isAdmin(adminId))) {
-      return NextResponse.json({ error: 'غير مسموح' }, { status: 401 })
+      return errOut('مسموح للأدمن بس — سجل الدخول من الأول', 401)
     }
 
-    if (!title || !grade) {
-      return NextResponse.json({ error: 'Title and grade are required' }, { status: 400 })
+    if (!title || !String(title).trim()) {
+      return errOut('لازم تكتب عنوان الدرس الأول', 400)
+    }
+    if (!grade) {
+      return errOut('لازم تختار الصف الدراسي الأول', 400)
     }
 
     // (ملغاة 2026-و4) ميزة «إضافة فيديو من كود HTML» اتلغت بطلب المستر
@@ -135,24 +143,61 @@ export async function POST(request: NextRequest) {
     const finalUrl = String(url || '').trim()
 
     if (!finalUrl && !filePath) {
-      return NextResponse.json({ error: 'URL or file is required' }, { status: 400 })
+      return errOut('لازم لينك فيديو (يوتيوب أو أي موقع) أو ملف فيديو مرفوع — دوس واحدة منهم الأول', 400)
     }
 
-    const video = await db.video.create({
-      data: {
-        title,
-        url: finalUrl,
-        grade,
-        filePath: filePath || '',
-        fileType: fileType || '',
-        thumbnail: thumbnail || '',
-        price: Number(price) || 0,
-      },
-    })
+    /* (و45) الصورة المصغرة الأوتوماتيكية — لو الأدمن ماحطش صورة وفيه لينك
+       يوتيوب: بنخزّن صورة الفيديو من i.ytimg.com على السيرفر كمان
+       (hqdefault) عشان تظهر في كل الشاشات من غير خطوة إضافية */
+    let finalThumb = String(thumbnail || '').trim()
+    if (!finalThumb) {
+      const ytId = getYouTubeId(finalUrl)
+      if (ytId) finalThumb = 'https://i.ytimg.com/vi/' + ytId + '/hqdefault.jpg'
+    }
+
+    /* (و45) ترميم دفاعي لجدول Video قبل الكتابة — درس و43: أي عمود ناقص
+       في الإنتاج بيفشل الـ INSERT بصمت، فبنضمن الجدول كامل الأول */
+    await ensureVideoTable()
+
+    let video: any = null
+    try {
+      video = await safeWrite(function () {
+        return db.video.create({
+          data: {
+            title: String(title).trim(),
+            url: finalUrl,
+            grade,
+            filePath: filePath || '',
+            fileType: fileType || '',
+            thumbnail: finalThumb,
+            price: Number(price) || 0,
+          },
+        })
+      })
+    } catch (createErr: any) {
+      /* (و45) ترجمة أخطاء Prisma/Turso لأسباب عربية مفهومة */
+      const code = String(createErr && createErr.code ? createErr.code : '')
+      const raw = String((createErr && createErr.message) || createErr || '')
+      console.error('Video create error:', raw)
+      if (code === 'P2021') {
+        return errOut('جدول الفيديوهات مش موجود في قاعدة البيانات — دوس حفظ تاني بعد ثانية (الترميم الأوتوماتيك هيشتغل)، ولو فضلت المشكلة كلمني', 500)
+      }
+      if (code === 'P2022' || raw.indexOf('no such column') !== -1) {
+        return errOut('في عمود ناقص في جدول الفيديوهات بالقاعدة — جرب تاني بعد ثانية (الترميم الأوتوماتيك بيتكفل)، ولو فضلت المشكلة كلمني', 500)
+      }
+      if (raw.indexOf('database is locked') !== -1 || raw.indexOf('SQLITE_BUSY') !== -1) {
+        return errOut('قاعدة البيانات كانت مشغولة لحظة الحفظ — جرب تاني كام ثانية وهتنجح', 503)
+      }
+      return errOut('الفيديو ما اتضافش — السبب التقني: ' + (raw.slice(0, 160) || 'غير معروف'), 500)
+    }
 
     return NextResponse.json({ message: 'Video added', video }, { status: 201 })
   } catch (error: any) {
-    console.error('Video create error:', error)
-    return NextResponse.json({ error: 'Server error: ' + (error.message || String(error)) }, { status: 500 })
+    const raw = String((error && error.message) || error || '')
+    console.error('Video create error:', raw)
+    if (raw.indexOf('JSON') !== -1 || raw.indexOf('json') !== -1) {
+      return errOut('البيانات المتبعتة مش سليمة — جرب تحمّل الصفحة تاني وتعبّي الفورم من الأول', 400)
+    }
+    return errOut('الفيديو ما اتضافش — السبب التقني: ' + raw.slice(0, 160), 500)
   }
 }

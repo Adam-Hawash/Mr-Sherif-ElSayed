@@ -45,6 +45,7 @@ export function verifyVideoToken(token: string | null | undefined, mediaId: stri
 
 export function getYouTubeId(url: string): string | null {
   if (!url) return null
+  /* (و45) دعم كل الصيغ: watch?v= و youtu.be و shorts و live و embed و v/ */
   const m = String(url).match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/|live\/))([\w-]{11})/)
   return m ? m[1] : null
 }
@@ -79,6 +80,41 @@ export async function ensurePlayTicketTable(force = false): Promise<void> {
     _ticketTableReady = true
   } catch (e) {
     console.error('ensurePlayTicketTable error:', e)
+  }
+}
+
+/* ============================================================
+ * (و45) ترميم دفاعي لجدول Video — درس و43 الموثق: الـ heal الرئيسي
+ * (بصمة ensure-schema) مش مضمون يتشغّل على كل نشر، وأي عمود ناقص
+ * في جدول Video بيبوّظ كل قراية/كتابة Prisma (لأن Prisma بيختار كل
+ * الأعمدة) → «الفيديو ما بيتضفش» من غير سبب واضح. الدالة دي بتشتغل
+ * قبل الكتابة في /api/videos: CREATE TABLE IF NOT EXISTS + ALTER
+ * متسامح لكل عمود — مرة واحدة لكل instance، وفشلها ما يمنعش المحاولة.
+ * ============================================================ */
+var _videoTableReady = false
+export async function ensureVideoTable(force = false): Promise<void> {
+  if (_videoTableReady && !force) return
+  try {
+    await db.$executeRawUnsafe(
+      'CREATE TABLE IF NOT EXISTS Video (id TEXT PRIMARY KEY, title TEXT NOT NULL, url TEXT DEFAULT "", filePath TEXT DEFAULT "", fileType TEXT DEFAULT "", thumbnail TEXT DEFAULT "", grade TEXT NOT NULL, price REAL DEFAULT 0, createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)'
+    )
+    var cols = [
+      ['url', 'TEXT', "DEFAULT ''"],
+      ['filePath', 'TEXT', "DEFAULT ''"],
+      ['fileType', 'TEXT', "DEFAULT ''"],
+      ['thumbnail', 'TEXT', "DEFAULT ''"],
+      ['price', 'REAL', 'DEFAULT 0'],
+    ]
+    for (var i = 0; i < cols.length; i++) {
+      try {
+        await db.$executeRawUnsafe('ALTER TABLE Video ADD COLUMN ' + cols[i][0] + ' ' + cols[i][1] + ' ' + cols[i][2])
+      } catch (eCol) {
+        /* duplicate column = تمام — أي خطأ تاني بيتتجاهل والمحاولة الجاية تقول */
+      }
+    }
+    _videoTableReady = true
+  } catch (e) {
+    console.error('ensureVideoTable error:', e)
   }
 }
 

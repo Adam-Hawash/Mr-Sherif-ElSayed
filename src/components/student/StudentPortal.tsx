@@ -26,7 +26,11 @@ import BidiText from '@/components/BidiText'
 import { FigurePointEditor } from '@/components/student/FigurePointEditor'
 /* (2026-و44) جرس الإشعارات + بادج المجتمع — أي حاجة جديدة توصل للطالب */
 import { NotificationsBell } from '@/components/student/NotificationsBell'
+/* (2026-و45) شيرين — المساعدة الشخصية العائمة (تحت على الشمال) */
+import { SherineChat } from '@/components/student/SherineChat'
 import { normalizeCorrectKey } from '@/lib/correct-key'
+/* (و45) تصنيف موحّد: سؤال له اختيارات صور/رسومات = اختياري مش مقالي */
+import { isWritingQuestion } from '@/lib/question-figures'
 import { BooksTab } from '@/components/student/BooksTab'
 /* (2026-و40-w) ورقة العمل: جداول قابلة للكتابة + رسومات مقصوصة + تجميع صفحات المصدر */
 import {
@@ -36,6 +40,17 @@ import {
 } from '@/components/worksheet/WorksheetParts'
 
 export function StudentPortal() {
+  return (
+    <>
+      <StudentPortalInner />
+      {/* (2026-و45) شيرين — مركّبة مرة واحدة فوق البورتال كله (الداشبورد + الشوز)،
+         بتقفل نفسها لو مفيش طالب مسجل */}
+      <SherineChat />
+    </>
+  )
+}
+
+function StudentPortalInner() {
   const { currentStudent, logout } = useAppStore()
   const [dashboardData, setDashboardData] = useState<{
     videos: VideoType[]
@@ -1416,7 +1431,7 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
           <div className="mx-4 space-y-3">
             <p className="text-sm font-semibold text-foreground">مراجعة الأسئلة:</p>
             {sDisplayQuestions.map(function(q: any, di: number) {
-              var qType = q.type === 'writing' || q.type === 'essay' || (!q.options || q.options.length === 0) || (Array.isArray(q.options) && q.options.length > 0 && q.options.every(function(o: string) { return !o || o === 'N/A' || o === 'لا يوجد' || o.trim() === '' })) ? 'writing' : 'mcq'
+              var qType = isWritingQuestion(q) ? 'writing' : 'mcq'
               /* (2026-و32) المطابقة بالفهرس الأصلي بدل نص السؤال — نقلًا من جينيوس:
                  نصين متطابقين كانوا بيخليوا السؤال اللي اتحل صح ياخد حكم السؤال الغلط
                  («بحل صح وبيظهرلي غلط»). النص فضل احتياط للنتايج القديمة */
@@ -1668,17 +1683,11 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
         var writingQuestions: any[] = []
         if (hasQuestions) {
           allQuestions.forEach(function(q: any) {
-            // Detect writing: type field, OR options are empty/N/A
-            var isWriting = q.type === 'writing' || q.type === 'essay'
-            // Also detect if all options are N/A or empty → treat as writing
-            if (!isWriting && Array.isArray(q.options)) {
-              var allNA = q.options.length > 0 && q.options.every(function(o: string) { return !o || o === 'N/A' || o === 'لا يوجد' || o.trim() === '' })
-              if (allNA) isWriting = true
-            }
-            // Also detect if options array is empty
-            if (!isWriting && (!q.options || q.options.length === 0)) {
-              isWriting = true
-            }
+            /* (و45) الحكم الموحد — سؤال له اختيارات (نص أو صور/رسومات في
+               optionFigures) = اختياري دايمًا. الحقائق القديمة (type/كله N/A)
+               جوه isWritingQuestion نفسها — ممنوع أي override بعدها عشان
+               سؤال اختياراته صور ما يتحولش مقالي تاني. */
+            var isWriting = isWritingQuestion(q)
             if (isWriting) {
               writingQuestions.push(q)
             } else {
@@ -1706,7 +1715,7 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
           var mcqOrigIdx: number[] = []
           var writingOrigIdx: number[] = []
           allQuestions.forEach(function(q: any, i: number) {
-            var isW = q.type === 'writing' || q.type === 'essay' || (!q.options || q.options.length === 0) || (Array.isArray(q.options) && q.options.length > 0 && q.options.every(function(o: string) { return !o || o === 'N/A' || o === 'لا يوجد' || o.trim() === '' }))
+            var isW = isWritingQuestion(q)
             if (isW) writingOrigIdx.push(i)
             else mcqOrigIdx.push(i)
           })
@@ -1740,7 +1749,7 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
           var mcqOriginalIndices: number[] = []
           var writingOriginalIndices: number[] = []
           allQuestions.forEach(function(q: any, i: number) {
-            var isW = q.type === 'writing' || q.type === 'essay' || (!q.options || q.options.length === 0) || (Array.isArray(q.options) && q.options.length > 0 && q.options.every(function(o: string) { return !o || o === 'N/A' || o === 'لا يوجد' || o.trim() === '' }))
+            var isW = isWritingQuestion(q)
             if (isW) writingOriginalIndices.push(i)
             else mcqOriginalIndices.push(i)
           })
@@ -1838,7 +1847,7 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                             {g.items.map(function(item, ii) {
                               var q = item.q
                               var displayIdx = item.idx
-                              var qIsWriting = q.type === 'writing' || q.type === 'essay' || (!q.options || q.options.length === 0) || (Array.isArray(q.options) && q.options.length > 0 && q.options.every(function(o: string) { return !o || o === 'N/A' || o === 'لا يوجد' || o.trim() === '' }))
+                              var qIsWriting = isWritingQuestion(q)
                               var pts = (typeof q.points === 'number' && q.points > 0) ? q.points : (qIsWriting ? 5 : 1)
                               var tVals = hwTableMap[displayIdx] || (q.table ? emptyTableValues(q.table) : undefined)
                               return (
@@ -2983,7 +2992,7 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
     var mcqQs: any[] = []
     var writingQs: any[] = []
     examQuestions.forEach(function(q: any, idx: number) {
-      var isWriting = q.type === 'writing' || q.type === 'essay' || (!q.options || q.options.length === 0) || (Array.isArray(q.options) && q.options.length > 0 && q.options.every(function(o: string) { return !o || o === 'N/A' || o === 'لا يوجد' || String(o).trim() === '' }))
+      var isWriting = isWritingQuestion(q)
       if (isWriting) writingQs.push({ q: q, displayIdx: idx })
       else mcqQs.push({ q: q, displayIdx: idx })
     })
@@ -3053,7 +3062,7 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
                   {g.items.map(function(item, ii) {
                     var q = item.q
                     var displayIdx = item.idx
-                    var qIsWriting = q.type === 'writing' || q.type === 'essay' || (!q.options || q.options.length === 0) || (Array.isArray(q.options) && q.options.length > 0 && q.options.every(function(o: string) { return !o || o === 'N/A' || o === 'لا يوجد' || String(o).trim() === '' }))
+                    var qIsWriting = isWritingQuestion(q)
                     var pts = (typeof q.points === 'number' && q.points > 0) ? q.points : (qIsWriting ? 5 : 1)
                     var tVals = examTableAnswers[displayIdx] || (q.table ? emptyTableValues(q.table) : undefined)
                     return (

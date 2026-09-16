@@ -22,6 +22,8 @@ var MAX_IMAGES = 4
 var MAX_B64_LENGTH = 7000000 // ~5MB binary after base64
 var DATA_URL_RE = /^data:(image\/[a-zA-Z0-9.+-]+);base64,([\s\S]+)$/
 var MAX_HISTORY = 10 // آخر 10 رسائل (5 أدوار) بتبني سياق المحادثة
+/* (و45) حارس طول الرسالة — طلب الحزمة: مفيش رسالة أطول من 2000 حرف */
+var MAX_MESSAGE = 2000
 
 /* ============================================================
  * الشكاوى التلقائية — لو الطالب قال للمساعد إن فيه مشكلة، الشكوى
@@ -98,14 +100,31 @@ function buildHistory(rawHistory: any): any[] {
   return out
 }
 
-/* ===== البرومبت الأساسي — أقوى بكتير: شخصية ثابتة + ردود نضيفة ===== */
-function buildSystemPrompt(platformName: string, subjectLine: string): string {
+/* (و45) هل النداء ده لشخصية شيرين؟ */
+function isSherinePersona(persona: string): boolean {
+  return String(persona || '').trim() === 'sherine'
+}
+
+/* ===== البرومبت الأساسي — أقوى بكتير: شخصية ثابتة + ردود نضيفة =====
+ * (و45) شخصية «شيرين» — مدرّبة الرياضيات الشخصية (persona: 'sherine'):
+ * نفس القواعد الرياضية والرموز والمصطلحات بالظبط، بس الشخصية بقى بنت مصرية
+ * ودودة بتشرح بالعامية البسيطة وتشجّع الطالب — بدل «المساعد الذكي» الجاف. */
+function buildSystemPrompt(platformName: string, subjectLine: string, persona: string): string {
+  var isSherine = String(persona || '').trim() === 'sherine'
+  var assistantName = isSherine ? 'شيرين' : 'المساعد الذكي'
+  var opener = isSherine
+    ? 'أنتي "شيرين" — مدرّبة الرياضيات الشخصية والودودة في ' + platformName + '. ' + subjectLine
+    : 'أنت "' + assistantName + '" الرسمي لـ' + platformName + '. ' + subjectLine
   return [
-    'أنت "المساعد الذكي" الرسمي لـ' + platformName + '. ' + subjectLine,
+    opener,
     '',
     '## شخصيتك وقواعد الكتابة (أهم حاجة):',
-    '- بتكتب عربي مصري سليم وواضح ومقروء — ممنوع نهائيًا تكلمات مش موجودة في العربي أو حروف متلخبطة أو كلام مش مفهوم.',
-    '- لو مش عارف أو مش متأكد، قول ببساطة: "مش متأكد، اسأل المستر في الحصة" — بدل ما تخترع معلومة.',
+    isSherine
+      ? '- إنتي شيرين: بتتكلمي عامية مصرية دافية وقريبة من الطالب («يلا بينا»، «برافو عليك»، «بص يا بطل») — وممنوع نهائيًا حروف متلخبطة أو كلام مش مفهوم أو فصحى جافة.'
+      : '- بتكتب عربي مصري سليم وواضح ومقروء — ممنوع نهائيًا تكلمات مش موجودة في العربي أو حروف متلخبطة أو كلام مش مفهوم.',
+    isSherine
+      ? '- لو مش متأكدة من حاجة، قولي ببساطة: «مش متأكدة، اسأل المستر في الحصة» — بدل ما تخترعي معلومة.'
+      : '- لو مش عارف أو مش متأكد، قول ببساطة: "مش متأكد، اسأل المستر في الحصة" — بدل ما تخترع معلومة.',
     '- ردودك قصيرة ومنظمة: نقاط أو خطوات مرقمة لما الموضوع يستحق، وإيموجي بسيط (✅ 💡 📚) من غير مبالغة.',
     '- ممنوع تبدأ ردك بترحيب طويل كل مرة — ادخل في الجواب على طول.',
     '',
@@ -122,7 +141,7 @@ function buildSystemPrompt(platformName: string, subjectLine: string): string {
     ...ENGLISH_TERMS_RULE.split('\n'),
     '',
     '## معلومات عنك وعن المنصة:',
-    '- اسمك: المساعد الذكي. وأنت جزء من المنصة نفسها — شغال 24 ساعة.',
+    '- اسمك: ' + assistantName + (isSherine ? ' — صاحبة الطالب في الرياضيات، شغالة 24 ساعة.' : '. وأنت جزء من المنصة نفسها — شغال 24 ساعة.'),
     '- بتساعد الطلاب في: شرح أي جزئية رياضيات، مراجعة حل الواجبات من الصور، أسئلة الامتحانات، وتنظيم المذاكرة.',
     '- المنصة فيها: فيديوهات الشرح، واجبات، امتحانات، نقاط وتقييمات، ومناقشات.',
     '',
@@ -174,6 +193,7 @@ export async function POST(request: Request) {
     var body = await request.json()
     var message = (body.message || '').trim()
     var context = body.context || {}
+    var persona = String(body.persona || '') /* (و45) 'sherine' = شخصية شيرين */
     var useStream = body.stream !== false
     var imageParts = buildImageParts(body.images)
     var history = buildHistory(body.history)
@@ -182,13 +202,22 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'مفيش رسالة' }, { status: 400 })
     }
 
+    /* (و45) حارس الطول — رسالة أطول من الحد مرفوضة برسالة عربية ودودة */
+    if (message.length > MAX_MESSAGE) {
+      return NextResponse.json({ error: 'الرسالة طويلة أوي 😅 اكتبلي سؤالك في ' + MAX_MESSAGE + ' حرف أو أقل وهرد عليك فورًا.' }, { status: 400 })
+    }
+
     // الصور اتبعتت لكن كلها غير صالحة → نقول للطالب بوضوح
     var sentImages = Array.isArray(body.images) ? body.images.length : 0
     if (sentImages > 0 && imageParts.length === 0) {
       return NextResponse.json({ reply: 'الصور اللي بعتها مش مقبولة 😅 جرب تبعت صورة PNG أو JPG عادية.' })
     }
 
-    var systemPrompt = buildSystemPrompt('منصة مستر شريف السيد', 'مدرّب رياضيات شاطر بيساعد الطلاب في الـ Math.')
+    var systemPrompt = buildSystemPrompt(
+      'منصة مستر شريف السيد',
+      isSherinePersona(persona) ? 'مدرّبة رياضيات شاطرة بتشرح بالعامية وبتساعد الطلاب في الـ Math.' : 'مدرّب رياضيات شاطر بيساعد الطلاب في الـ Math.',
+      persona
+    )
     if (context.page) systemPrompt += '\nالصفحة اللي الطالب واقف فيها: ' + context.page
     if (context.studentId) {
       try {
