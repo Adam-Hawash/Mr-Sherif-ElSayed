@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Settings, Save, Upload, Loader2, Image as ImageIcon, Trash2, Link2, Type, Layout, GraduationCap, Compass, Lightbulb, BookOpen, Smartphone, Globe, CalendarClock } from 'lucide-react'
+import { Settings, Save, Upload, Loader2, Image as ImageIcon, Trash2, Link2, Type, Layout, GraduationCap, Compass, Lightbulb, BookOpen, Smartphone, Globe, CalendarClock, PlusCircle, Plus } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 import type { SiteConfig } from '@/stores/app-store'
@@ -299,6 +299,208 @@ export function CMSPanel() {
     setPreviews(function(prev) { var n = Object.assign({}, prev); n[configKey] = url; return n })
   }
 
+  /* ============================================================
+   * (و78) إضافة نصائح ومميزات ديناميكية — custom_tips / custom_features
+   * JSON strings: [{"titleAr","titleEn","descAr","descEn"}]
+   * كل تعديل بيبقى في local config state — وزراير الإضافة/الحذف والحفظ
+   * الصغير بترفع فورًا بنفس آلية handleSave (PUT /api/config)
+   * ============================================================ */
+  var parseCustomItems = function(key: string) {
+    var raw = config[key]
+    if (typeof raw !== 'string' || raw.trim() === '') return []
+    try {
+      var parsed = JSON.parse(raw)
+      if (!Array.isArray(parsed)) return []
+      var out: Array<{ titleAr: string; titleEn: string; descAr: string; descEn: string }> = []
+      for (var i = 0; i < parsed.length; i++) {
+        var it = parsed[i]
+        if (!it || typeof it !== 'object') continue
+        out.push({
+          titleAr: typeof it.titleAr === 'string' ? it.titleAr : '',
+          titleEn: typeof it.titleEn === 'string' ? it.titleEn : '',
+          descAr: typeof it.descAr === 'string' ? it.descAr : '',
+          descEn: typeof it.descEn === 'string' ? it.descEn : '',
+        })
+      }
+      return out
+    } catch (e) { return [] }
+  }
+
+  var persistConfig = async function(newConfig: Record<string, string>, okMsg: string) {
+    try {
+      var cleanConfig: Record<string, string> = {}
+      var keys = Object.keys(newConfig)
+      for (var i = 0; i < keys.length; i++) {
+        if (keys[i] === 'error' || keys[i] === 'defaults') continue
+        cleanConfig[keys[i]] = newConfig[keys[i]]
+      }
+      var res = await fetch('/api/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cleanConfig),
+      })
+      if (res.ok) {
+        toast.success(okMsg)
+        var storeState = await (await import('@/stores/app-store')).useAppStore.getState()
+        storeState.setSiteConfig(cleanConfig)
+      } else {
+        var errText = ''
+        try { errText = await res.text() } catch(x) {}
+        toast.error('خطأ في الحفظ: ' + res.status + ' ' + errText.substring(0, 150))
+      }
+    } catch (e) { toast.error('خطأ في الاتصال') }
+  }
+
+  var handleAddCustomItem = function(key: string, okMsg: string) {
+    var items = parseCustomItems(key)
+    items.push({ titleAr: '', titleEn: '', descAr: '', descEn: '' })
+    var newConfig = Object.assign({}, config)
+    newConfig[key] = JSON.stringify(items)
+    setConfig(newConfig)
+    persistConfig(newConfig, okMsg)
+  }
+
+  var handleDeleteCustomItem = function(key: string, idx: number, okMsg: string) {
+    var items = parseCustomItems(key)
+    if (!items[idx]) return
+    items.splice(idx, 1)
+    var newConfig = Object.assign({}, config)
+    newConfig[key] = JSON.stringify(items)
+    setConfig(newConfig)
+    persistConfig(newConfig, okMsg)
+  }
+
+  var handleEditCustomItem = function(key: string, idx: number, field: string, value: string) {
+    var items = parseCustomItems(key)
+    if (!items[idx]) return
+    items[idx] = Object.assign({}, items[idx])
+    items[idx][field] = value
+    var newConfig = Object.assign({}, config)
+    newConfig[key] = JSON.stringify(items)
+    setConfig(newConfig)
+  }
+
+  var handleSaveCustom = function() {
+    persistConfig(Object.assign({}, config), 'تم حفظ الإضافات بنجاح | Custom content saved')
+  }
+
+  var renderCustomItemBox = function(key: string, idx: number, itemLabel: string) {
+    var items = parseCustomItems(key)
+    var item = items[idx]
+    if (!item) return null
+    return (
+      <div key={key + '-' + idx} className="border border-border rounded-lg p-4 space-y-3 bg-muted/20">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-semibold text-muted-foreground">{itemLabel} #{idx + 1}</p>
+          <div className="flex items-center gap-1.5">
+            <Button variant="outline" size="sm" onClick={handleSaveCustom} className="h-7">
+              <Save className="h-3 w-3" />
+              <span className="text-[10px] mr-1">حفظ</span>
+            </Button>
+            <Button variant="ghost" size="sm" onClick={function() { handleDeleteCustomItem(key, idx, 'تم حذف العنصر (اضغط تم إن لم يُحفظ بعد)') }} className="h-7">
+              <Trash2 className="h-3.5 w-3.5 text-destructive" />
+            </Button>
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <Label className="text-xs mb-1 block">عنوان عربي</Label>
+            <Input
+              value={item.titleAr}
+              onChange={function(e) { handleEditCustomItem(key, idx, 'titleAr', e.target.value) }}
+              placeholder="مثال: راجع قبل النوم"
+            />
+          </div>
+          <div>
+            <Label className="text-xs mb-1 block">Title EN</Label>
+            <Input
+              value={item.titleEn}
+              dir="ltr"
+              onChange={function(e) { handleEditCustomItem(key, idx, 'titleEn', e.target.value) }}
+              placeholder="Review before bed"
+            />
+          </div>
+          <div>
+            <Label className="text-xs mb-1 block">وصف عربي</Label>
+            <Textarea
+              value={item.descAr}
+              onChange={function(e) { handleEditCustomItem(key, idx, 'descAr', e.target.value) }}
+              rows={3}
+              placeholder="الوصف بالعربي..."
+            />
+          </div>
+          <div>
+            <Label className="text-xs mb-1 block">Description EN</Label>
+            <Textarea
+              value={item.descEn}
+              dir="ltr"
+              onChange={function(e) { handleEditCustomItem(key, idx, 'descEn', e.target.value) }}
+              rows={3}
+              placeholder="English description..."
+            />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  var renderCustomContentSection = function() {
+    var customTipsItems = parseCustomItems('custom_tips')
+    var customFeaturesItems = parseCustomItems('custom_features')
+    return (
+      <div className="space-y-6">
+        {/* نصائح إضافية | Custom Tips */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center justify-between">
+              <span className="flex items-center gap-2"><Lightbulb className="h-5 w-5" />نصائح إضافية | Custom Tips</span>
+              <Button size="sm" variant="outline" onClick={function() { handleAddCustomItem('custom_tips', 'تمت إضافة نصيحة جديدة — املأ البيانات واضغط حفظ') }}>
+                <Plus className="h-4 w-4" />
+                إضافة نصيحة جديدة
+              </Button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {customTipsItems.length === 0 && (
+              <p className="text-sm text-muted-foreground">مفيش نصائح إضافية لسه — اضغط «إضافة نصيحة جديدة» وهتظهر مع النصائح الأساسية في الصفحة الرئيسية.</p>
+            )}
+            {customTipsItems.map(function(_item, idx) {
+              return renderCustomItemBox('custom_tips', idx, 'نصيحة إضافية')
+            })}
+          </CardContent>
+        </Card>
+
+        {/* مميزات إضافية | Custom Features */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center justify-between">
+              <span className="flex items-center gap-2"><PlusCircle className="h-5 w-5" />مميزات إضافية | Custom Features</span>
+              <Button size="sm" variant="outline" onClick={function() { handleAddCustomItem('custom_features', 'تمت إضافة ميزة جديدة — املأ البيانات واضغط حفظ') }}>
+                <Plus className="h-4 w-4" />
+                إضافة ميزة جديدة
+              </Button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {customFeaturesItems.length === 0 && (
+              <p className="text-sm text-muted-foreground">مفيش مميزات إضافية لسه — اضغط «إضافة ميزة جديدة» وهتظهر بعد المميزات الأساسية في الصفحة الرئيسية.</p>
+            )}
+            {customFeaturesItems.map(function(_item, idx) {
+              return renderCustomItemBox('custom_features', idx, 'ميزة إضافية')
+            })}
+          </CardContent>
+        </Card>
+
+        <div className="flex justify-end">
+          <Button onClick={handleSaveCustom} disabled={saving}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin ml-1" /> : <Save className="h-4 w-4 ml-1" />}
+            {saving ? 'جاري الحفظ...' : 'حفظ الإضافات | Save Custom Content'}
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   if (loading) return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
 
   return (
@@ -381,7 +583,21 @@ export function CMSPanel() {
             </Button>
           )
         })}
+        {/* (و78) تاب إضافة نصائح ومميزات ديناميكية */}
+        <Button
+          key="custom-content"
+          variant={activeSection === 'custom-content' ? 'default' : 'outline'}
+          size="sm"
+          onClick={function() { setActiveSection('custom-content') }}
+          className="text-xs"
+        >
+          <PlusCircle className="h-3.5 w-3.5 mr-1.5" />
+          إضافة نصائح ومميزات
+        </Button>
       </div>
+
+      {/* (و78) Custom Tips & Features — إضافة نصائح ومميزات جديدة ديناميكيًا */}
+      {activeSection === 'custom-content' && renderCustomContentSection()}
 
       {/* Active Section Fields */}
       {TEXT_SECTIONS.map(function(section) {

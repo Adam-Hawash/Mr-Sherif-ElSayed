@@ -103,7 +103,7 @@ export function Navbar() {
               title="Developer Portfolio"
               className="flex items-center justify-center py-1.5 text-[11px] text-muted-foreground hover:text-foreground hover:underline underline-offset-2 transition-colors"
             >
-              <span dir="ltr">{cfg.footer_made_by_label || 'Developed by Adam Hawash'}</span>
+              <span dir="ltr">{cfg.footer_made_by_label || 'Developed by Adham Hawash'}</span>
             </a>
           </div>
         )}

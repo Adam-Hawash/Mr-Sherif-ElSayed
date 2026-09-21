@@ -453,7 +453,7 @@ export function AdminDashboard() {
                       </Button>
                     </div>
                     <Input value={heroDevUrl} onChange={(e) => setHeroDevUrl(e.target.value)} placeholder="https://hero-developer-portfolio-11.vercel.app" dir="ltr" type="url" className="font-mono text-xs" />
-                    <p className="text-[10px] text-muted-foreground">الرابط يظهر في الهيدر (Hero Developer) والفوتر (Developed by Adam Hawash). غيّره في أي وقت وبيتنعكس فوراً.</p>
+                    <p className="text-[10px] text-muted-foreground">الرابط يظهر في الهيدر (Hero Developer) والفوتر (Developed by Adham Hawash). غيّره في أي وقت وبيتنعكس فوراً.</p>
                   </div>
                   {/* Payment Numbers */}
                   <div className="border-t pt-4 space-y-3">

@@ -73,10 +73,43 @@ export default function TipsSection() {
     },
   ]
 
+  /* (و78) النصائح الإضافية من الأدمن — مفتاح custom_tips فيه JSON:
+     [{"titleAr":"...","titleEn":"...","descAr":"...","descEn":"..."}]
+     بيتقرأ بأمان (try/catch + فحص Array.isArray + تجاهل العناصر التالفة)
+     وبتتضاف بعد النصائح الافتراضية الأربعة بنفس شكل الكارت تمامًا —
+     الأيقونة واللون بيلفوا على المصفوفات الموجودة بالاندكس (i % length) */
+  var customTips: any[] = []
+  try {
+    var rawCustomTips = cfg.custom_tips
+    if (typeof rawCustomTips === 'string' && rawCustomTips.trim() !== '') {
+      var parsedCustomTips = JSON.parse(rawCustomTips)
+      if (Array.isArray(parsedCustomTips)) {
+        for (var cti = 0; cti < parsedCustomTips.length; cti++) {
+          var ct = parsedCustomTips[cti]
+          if (!ct || typeof ct !== 'object') continue
+          var ctTitleAr = typeof ct.titleAr === 'string' ? ct.titleAr : ''
+          var ctTitleEn = typeof ct.titleEn === 'string' ? ct.titleEn : ''
+          var ctDescAr = typeof ct.descAr === 'string' ? ct.descAr : ''
+          var ctDescEn = typeof ct.descEn === 'string' ? ct.descEn : ''
+          if (!ctTitleAr && !ctTitleEn && !ctDescAr && !ctDescEn) continue
+          customTips.push({
+            _uid: 'custom-tip-' + cti,
+            icon: TIP_ICONS[cti % TIP_ICONS.length],
+            titleAr: ctTitleAr || ctTitleEn,
+            titleEn: ctTitleEn,
+            description: [ctDescAr, ctDescEn].filter(Boolean).join(' '),
+            color: TIP_COLORS[cti % TIP_COLORS.length],
+          })
+        }
+      }
+    }
+  } catch (e) {}
+  var allTips: any[] = tips.concat(customTips)
+
   function renderTipCard(tip, idx) {
     return (
       <Card
-        key={tip.titleEn}
+        key={tip._uid || tip.titleEn}
         className="group hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5 border-border/50 bg-card"
       >
         <CardContent className="p-4 sm:p-5 flex gap-4 items-start">
@@ -154,7 +187,7 @@ export default function TipsSection() {
         <div className="grid grid-cols-1 lg:grid-cols-[2fr_3fr] gap-6 lg:gap-8 items-start">
           {/* Tips column - on mobile: order 2 (below), on desktop: LEFT (order 2 in RTL) */}
           <div className="order-2 lg:order-2 space-y-4">
-            {tips.map(function(tip, idx) {
+            {allTips.map(function(tip, idx) {
               return renderTipCard(tip, idx)
             })}
           </div>
