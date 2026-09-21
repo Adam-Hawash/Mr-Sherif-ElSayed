@@ -162,7 +162,7 @@ export default function HeroSection() {
               </Button>
             </div>
 
-            {/* Hero Developer / Adam Hawash branding */}
+            {/* Hero Developer / Adham Hawash branding */}
             <div className="pt-3 flex flex-col items-center lg:items-start gap-1">
               <a
                 href={cfg.hero_developer_url || 'https://prime-developer-portfolio-11.vercel.app'}
@@ -179,7 +179,7 @@ export default function HeroSection() {
                 rel="noopener noreferrer"
                 className="text-xs text-white/35 font-light tracking-wider hover:text-[#FB923C] transition-colors"
               >
-                {cfg.footer_made_by_label || 'Developed by Adam Hawash'}
+                {cfg.footer_made_by_label || 'Developed by Adham Hawash'}
               </a>
             </div>
 
