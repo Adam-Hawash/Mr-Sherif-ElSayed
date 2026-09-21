@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { callGemini, callGeminiStream, hasGeminiKey } from '@/lib/gemini'
+import { callGemini, streamGemini, hasGeminiKey } from '@/lib/gemini'
 import ZAI from 'z-ai-web-dev-sdk'
 /* (2026-و33) منقّي الرموز المشترك — نفس المكتبة اللي بتنضّف ملاحظات المصحح */
 import { sanitizeMathText, ENGLISH_TERMS_RULE } from '@/lib/math-sanitize'
@@ -25,52 +25,14 @@ var MAX_HISTORY = 10 // آخر 10 رسائل (5 أدوار) بتبني سياق 
 /* (و45) حارس طول الرسالة — طلب الحزمة: مفيش رسالة أطول من 2000 حرف */
 var MAX_MESSAGE = 2000
 
-/* ============================================================
- * الشكاوى التلقائية — لو الطالب قال للمساعد إن فيه مشكلة، الشكوى
- * بتتسجل في قسم الشكاوي تلقائي وبتوصل للمستر.
- *  1) المصدر الأساسي: وسم [[شكوى: ...]] اللي المساعد بيكتبه في آخر رده.
- *  2) احتياطي: كلمات مشاكل قوية واضحة في رسالة الطالب نفسها.
- * ============================================================ */
-var COMPLAINT_MARKER_RE = /\[\[شكوى[:：]([\s\S]*?)\]\]/
-var HARD_ISSUE_RE = /(فيديو|الفيديو|الفيدو|الوتيو)[^\n]{0,30}(مش ?(بيفتح|شغال|راضي|باين|موجود|نازل)|ما ?بيفتح|مقفول)|مش ?شغال|مش ?راضي ?(ي?فتح)?|مش ?باين|مش ?نازل|مش ?موجود|الباسورد مش|كلمة السر مش|الحساب (اتقفل|مقفول|اتسرق)|اتسرق حسابي|عاوز ?كلم ?المستر|عايز ?كلم ?المستر|مطلوب ?المستر|شكوى/
+/* (و77) الشكاوى بقى يدويًا بس — المساعد عمره ما بيسجل شكوى بنفسه.
+   لو الطالب حكى عن مشكلة تقنية، المساعد بيجاوبه بالتفاهم ويوجهه
+   يكتب الشكوى بنفسه من تاب «الشكاوى» (قاعدة في buildSystemPrompt تحت)
+   عشان الشكاوى توصل للمستر من صاحبها فقط.
 
-function extractComplaint(text: string): { clean: string; summary: string } {
-  var m = COMPLAINT_MARKER_RE.exec(text || '')
-  var clean = String(text || '').replace(COMPLAINT_MARKER_RE, '').replace(/\n{3,}/g, '\n\n').trim()
-  return { clean: clean, summary: m ? String(m[1] || '').trim().slice(0, 300) : '' }
-}
-
-/* (2026-و33) منقّي رموز الرياضيات اتنقل للمكتبة المشتركة src/lib/math-sanitize.ts
+   (2026-و33) منقّي رموز الرياضيات في المكتبة المشتركة src/lib/math-sanitize.ts
    (sanitizeMathText مستورد فوق) — بيتنفذ على رد الموديل قبل العرض
    فالطالب ما يشوفش غير رموز المنصة النضيفة: كسور رأسية وأُس وجُذور */
-
-async function logAutoComplaint(studentId: string, studentMessage: string, summary: string) {
-  try {
-    if (!summary) return
-    var name = '', phone = '', grade = ''
-    if (studentId) {
-      var rows = await db.$queryRawUnsafe('SELECT name, phone, grade FROM Student WHERE id = ? LIMIT 1', studentId)
-      if (rows && rows.length > 0) { name = String(rows[0].name || ''); phone = String(rows[0].phone || ''); grade = String(rows[0].grade || '') }
-    }
-    var id = 'cmp_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
-    try {
-      await db.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS Complaint (
-        id TEXT PRIMARY KEY, studentId TEXT DEFAULT '', studentName TEXT DEFAULT '', phone TEXT DEFAULT '',
-        grade TEXT DEFAULT '', message TEXT NOT NULL, summary TEXT DEFAULT '', source TEXT NOT NULL DEFAULT 'student',
-        status TEXT NOT NULL DEFAULT 'new', reply TEXT DEFAULT '', reviewedAt DATETIME,
-        createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`)
-    } catch (e) {}
-    await db.$executeRawUnsafe(
-      `INSERT INTO Complaint (id, studentId, studentName, phone, grade, message, summary, source, status, reply, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'ai', 'new', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-      id, studentId, name, phone, grade,
-      String(studentMessage || '').slice(0, 4000), String(summary).slice(0, 300)
-    )
-    console.log('[AI Assistant] complaint auto-logged for', name || studentId, ':', summary)
-  } catch (e: any) {
-    console.error('[AI Assistant] logAutoComplaint failed:', String((e && e.message) || e))
-  }
-}
 
 function buildImageParts(images: string[]): any[] {
   var parts: any[] = []
@@ -157,10 +119,7 @@ function buildSystemPrompt(platformName: string, subjectLine: string, persona: s
     '- الصورة مش رياضيات؟ ساعده عادي وباختصار.',
     '',
     '## قاعدة الشكاوى والمشاكل التقنية (مهمة جدًا):',
-    '- لو الطالب قال أو واضح إن فيه مشكلة في المنصة نفسها — فيديو مش بيفتح أو مش شغال، واجب/امتحان مش باين أو مش نازل، حساب مقفول أو باسورد مش شغال، مشكلة في المشتريات أو الفلوس، أو أي عطل تقني أو شكوى من حاجة — واسيه بجد في كلامك، وقل له إن شكواه اتسجلت للمستر هيشوفها بإذن الله.',
-    '- وبعدها في **آخر ردك** اكتب في سطر لوحده الوسم ده للنظام بالظبط (مرة واحدة بس ولو فيه مشكلة حقيقية بس):',
-    '[[شكوى: وصف قصير للمشكلة في أقل من 15 كلمة]]',
-    '- متكتبش الوسم ده أبدًا لو الطالب بس بيسأل سؤال دراسي عادي أو يستفسر — بس لو فيه مشكلة حقيقية اكتبه من غير تفريط.',
+    '- لو الطالب حكى لك عن مشكلة تقنية في المنصة (فيديو مش بيفتح، واجب أو امتحان مش باين، حساب مقفول، مشكلة في الفلوس أو المشتريات أو أي عطل) — تعاطف معاه ووجّهه بلطف إنه يكتب الشكوى بنفسه من تاب «الشكاوى» في بوابته أو صفحة الشكاوى عشان توصل للمستر فورًا. ممنوع تقول له إن الشكوى اتسجلت منك.',
   ].join('\n')
 }
 
@@ -214,7 +173,7 @@ export async function POST(request: Request) {
     }
 
     var systemPrompt = buildSystemPrompt(
-      'منصة مستر شريف السيد',
+      'منصة مستر شريف السيد (Mr. Sherif ElSayed)',
       isSherinePersona(persona) ? 'مدرّبة رياضيات شاطرة بتشرح بالعامية وبتساعد الطلاب في الـ Math.' : 'مدرّب رياضيات شاطر بيساعد الطلاب في الـ Math.',
       persona
     )
@@ -270,11 +229,34 @@ export async function POST(request: Request) {
             if (closed) return
             try { controller.enqueue(encoder.encode('data: ' + JSON.stringify(obj) + '\n\n')) } catch (e) {}
           }
+
+          /* (و77) السرعة: طلبات النص بس بتبث لايف من أول حرف من Gemini
+             (streamGenerateContent alt=sse) — بدل ما كنا مستنيين الرد كله
+             وبعدين نعمله typewriter مزيف. الصور بتفضل buffered زي ما هي. */
+          var acc = '' /* النص اللي اتبعت فعلًا للطالب لايف */
+          var sEngines: Array<() => Promise<{ ok: boolean; text: string; error?: string }>> = []
+          if (imageParts.length > 0) {
+            sEngines = engines
+          } else {
+            if (hasGeminiKey()) {
+              sEngines.push(function () {
+                return streamGemini({
+                  parts: [{ text: systemPrompt + '\n\nرسالة الطالب: ' + message }],
+                  generationConfig: { temperature: 0.3, maxOutputTokens: 4096 },
+                  timeoutMs: timeoutMs,
+                  thinking: 'low',
+                  onDelta: function (t: string) { acc += t; send({ delta: t }) },
+                })
+              })
+            }
+            sEngines.push(function () { return zaiChat(systemPrompt, history, message, timeoutMs) })
+          }
+
           var result: any = null
           var lastErr = ''
-          for (var ei = 0; ei < engines.length; ei++) {
+          for (var ei = 0; ei < sEngines.length; ei++) {
             try {
-              var r = await engines[ei]()
+              var r = await sEngines[ei]()
               if (r && r.ok && r.text) { result = r; break }
               lastErr = (r && r.error) || 'failed'
               console.error('[AI Assistant] engine ' + ei + ' failed:', lastErr)
@@ -284,26 +266,27 @@ export async function POST(request: Request) {
             }
           }
           if (result) {
-            // تسجيل الشكوى التلقائية لو المساعد اكتشف مشكلة (وسم أو كلمات قوية)
-            var complaintInfo = extractComplaint(result.text)
-            result.text = sanitizeMathText(complaintInfo.clean)
-            var autoSummary = complaintInfo.summary || (HARD_ISSUE_RE.test(message) ? ('مشكلة من كلام الطالب: ' + message.slice(0, 120)) : '')
-            if (autoSummary) { try { await logAutoComplaint(String(context.studentId || ''), message, autoSummary) } catch (e) {} }
-
-            // بنبعت الرد كقطع صغيرة (typewriter) — نفس شكل الاستريمينج الحقيقي
-            var chars = Array.from(result.text)
-            var idx = 0
-            await new Promise<void>(function (resolve) {
-              var step = function () {
-                if (closed) { resolve(); return }
-                if (idx >= chars.length) { send({ done: true }); resolve(); return }
-                var chunk = chars.slice(idx, idx + 5).join('')
-                idx += 5
-                send({ delta: chunk })
-                setTimeout(step, 8)
-              }
-              step()
-            })
+            /* (و77) الشكاوى يدويًا بس من تاب الشكاوى — المساعد ما بيسجلش حاجة */
+            result.text = sanitizeMathText(result.text)
+            if (acc && acc.trim()) {
+              /* البث الحقيقي وصل للطالب من أول حرف — خلاص، مفيش typewriter */
+              send({ done: true })
+            } else {
+              /* مفيش دلتا اتبعتت (احتياطي ZAI أو رد بدون بث) — typewriter زي ما هو */
+              var chars = Array.from(result.text)
+              var idx = 0
+              await new Promise<void>(function (resolve) {
+                var step = function () {
+                  if (closed) { resolve(); return }
+                  if (idx >= chars.length) { send({ done: true }); resolve(); return }
+                  var chunk = chars.slice(idx, idx + 5).join('')
+                  idx += 5
+                  send({ delta: chunk })
+                  setTimeout(step, 8)
+                }
+                step()
+              })
+            }
           } else {
             var busyMsg = 'المساعد مشغول دلوقتي جداً، جرب تاني بعد شوية 🙏'
             if (lastErr.indexOf('429') >= 0) busyMsg = 'الحصة اليومية للمساعد الذكي خلصت، جرب بكرة أو بعدين بشوية 🙏'
@@ -327,10 +310,8 @@ export async function POST(request: Request) {
       try {
         var r2 = await engines[ei2]()
         if (r2 && r2.ok && r2.text) {
-          var ci = extractComplaint(r2.text)
-          r2.text = sanitizeMathText(ci.clean)
-          var autoSummary2 = ci.summary || (HARD_ISSUE_RE.test(message) ? ('مشكلة من كلام الطالب: ' + message.slice(0, 120)) : '')
-          if (autoSummary2) { try { await logAutoComplaint(String(context.studentId || ''), message, autoSummary2) } catch (e) {} }
+          /* (و77) من غير تسجيل شكاوى تلقائي — تنظيف الرموز بس */
+          r2.text = sanitizeMathText(r2.text)
           return NextResponse.json({ reply: r2.text })
         }
       } catch (e) {}

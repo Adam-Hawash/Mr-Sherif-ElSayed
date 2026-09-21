@@ -18,6 +18,76 @@
 
 export var GEMINI_MODELS = ['gemini-3.6-flash', 'gemini-flash-latest']
 
+/* (و77) كاش الموديل الشغال في قاعدة البيانات — عشان الكولد ستارت ما يعيدش
+   محاولات فاشلة على موديلات راجعة (404). جداول/قرايات كلها try/catch —
+   الكاش ده self-contained: أي فشل فيه ما يبوّظش أي نداء AI أبدًا. */
+import { db } from '@/lib/db'
+
+var aiCacheReady = false
+var aiCacheLoading: Promise<void> | null = null
+
+function ensureAiCache(): Promise<void> {
+  if (aiCacheReady) return Promise.resolve()
+  if (aiCacheLoading) return aiCacheLoading
+  aiCacheLoading = (async function () {
+    try {
+      await db.$executeRawUnsafe('CREATE TABLE IF NOT EXISTS AiModelCache (key TEXT PRIMARY KEY, value TEXT)')
+      aiCacheReady = true
+    } catch (e) {}
+  })()
+  return aiCacheLoading
+}
+
+async function cacheGet(key: string): Promise<string> {
+  try {
+    await ensureAiCache()
+    if (!aiCacheReady) return ''
+    var rows: any = await db.$queryRawUnsafe('SELECT value FROM AiModelCache WHERE key = ? LIMIT 1', key)
+    if (rows && rows.length > 0) return String(rows[0].value || '')
+  } catch (e) {}
+  return ''
+}
+
+async function cacheSet(key: string, value: string): Promise<void> {
+  try {
+    await ensureAiCache()
+    if (!aiCacheReady) return
+    await db.$executeRawUnsafe('INSERT OR REPLACE INTO AiModelCache (key, value) VALUES (?, ?)', key, value)
+  } catch (e) {}
+}
+
+/* مرايا في الميموري — بتتملي مرة واحدة في حياة العملية (فوق كده getStaticChain
+   التزامنية بتشوف الكاش من غير ما تتنظر حاجة) */
+var memWorkingModel = ''
+var memModelsJson: string[] = []
+var memLoaded = false
+
+async function loadModelCache(): Promise<void> {
+  if (memLoaded) return
+  memLoaded = true
+  var wm = await cacheGet('working_model')
+  if (wm) { memWorkingModel = wm }
+  var mj = await cacheGet('models_json')
+  if (mj) {
+    try {
+      var arr = JSON.parse(mj)
+      if (Array.isArray(arr)) {
+        var clean: string[] = []
+        for (var i = 0; i < arr.length; i++) if (typeof arr[i] === 'string' && arr[i]) clean.push(arr[i])
+        memModelsJson = clean
+      }
+    } catch (e) {}
+  }
+}
+
+/* بتنادى قبل أول محاولة — بس بسقف زمني بسيط: لو القاعدة بطيئة (Turso كولد)
+   مكمنّطش الرد الأول، والكاش يكمّل تحميل في الخلفية للنداءات الجاية */
+async function warmModelCache(): Promise<void> {
+  try {
+    await Promise.race([loadModelCache(), new Promise(function (r) { setTimeout(r, 1500) })])
+  } catch (e) {}
+}
+
 // Optional API base override (proxy/self-host testing). Defaults to Google's
 // official endpoint — production/Vercel behavior is unchanged.
 var GEMINI_BASE = (process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com').replace(/\/$/, '')
@@ -137,6 +207,9 @@ async function discoverModels(): Promise<string[]> {
       discoveredModels = rankModels(found)
       discoveredAt = Date.now()
       try { console.log('[Gemini] Available models for this key:', discoveredModels.slice(0, 8).join(', ')) } catch (e) {}
+      /* (و77) خزّن اللستة في القاعدة — الكولد ستارت الجاي يبدأ بيها فورًا
+         من غير ما يستنى ListModels تاني (fire-and-forget) */
+      try { cacheSet('models_json', JSON.stringify(discoveredModels)) } catch (e) {}
     }
     return discoveredModels
   })()
@@ -155,9 +228,22 @@ async function discoverModels(): Promise<string[]> {
 // ============================================================
 function getStaticChain(): string[] {
   var chain: string[] = []
+  /* (و77) الموديل اللي نجح آخر مرة (من قاعدة البيانات) بيتقدم السلسلة —
+     أسرع بداية وأقل محاولات فاشلة */
+  if (memWorkingModel && chain.indexOf(memWorkingModel) < 0) chain.push(memWorkingModel)
   for (var i = 0; i < GEMINI_MODELS.length; i++) if (chain.indexOf(GEMINI_MODELS[i]) < 0) chain.push(GEMINI_MODELS[i])
   for (var j = 0; j < discoveredModels.length; j++) if (chain.indexOf(discoveredModels[j]) < 0) chain.push(discoveredModels[j])
+  for (var k = 0; k < memModelsJson.length; k++) if (chain.indexOf(memModelsJson[k]) < 0) chain.push(memModelsJson[k])
   return chain
+}
+
+/* (و77) أي محاولة ناجحة (callGemini / streamGemini) بتحط الموديل في الكاش —
+   fire-and-forget: مش بتنطّل نجاح الطلب الحالي ولا بتفشل لو القاعدة واقفة */
+function rememberWorkingModel(model: string): void {
+  try {
+    memWorkingModel = model
+    cacheSet('working_model', model)
+  } catch (e) {}
 }
 
 /* ============================================================
@@ -298,6 +384,9 @@ export async function callGemini(opts: {
   var sawQuota = false
   var attemptIndex = 0
 
+  // (و77) حط كاش الموديل الشغال في السلسلة قبل أول محاولة — محلي/سريع وبسقف 1.5ث
+  await warmModelCache()
+
   // background refresh (cached 10 min) — never awaited on the fast path
   var discoveryPromise = discoverModels()
   var staticModels = getStaticChain()
@@ -315,7 +404,7 @@ export async function callGemini(opts: {
           var t = timeoutMs
           if (attemptIndex === 1 && opts.fastFailFirstMs) t = opts.fastFailFirstMs
           var result = await attempt(models[mi], keys[ki], opts.parts, generationConfig, t, thinkingMode)
-          if (result.ok) return result
+          if (result.ok) { rememberWorkingModel(models[mi]); return result }
           lastError = result.error || ''
           if (result.status === 429) {
             sawQuota = true
@@ -441,7 +530,7 @@ async function streamAttempt(model: string, apiKey: string, parts: any[], genera
   return first
 }
 
-export async function callGeminiStream(opts: {
+export async function streamGemini(opts: {
   parts: any[]
   generationConfig?: any
   timeoutMs?: number
@@ -452,6 +541,8 @@ export async function callGeminiStream(opts: {
   if (keys.length === 0) {
     return { ok: false, error: 'GEMINI_API_KEY not found — أضف المفتاح في Vercel Environment Variables أو ملف .env.local' }
   }
+  // (و77) كاش الموديل الشغال قبل أول محاولة — نفس callGemini بالظبط
+  await warmModelCache()
   var generationConfig = opts.generationConfig || { temperature: 0.3, maxOutputTokens: 2048 }
   var timeoutMs = opts.timeoutMs || 30000
   var thinkingMode = opts.thinking || 'low'
@@ -465,7 +556,7 @@ export async function callGeminiStream(opts: {
     for (var mi = 0; mi < models.length; mi++) {
       for (var ki = 0; ki < keys.length; ki++) {
         var result = await streamAttempt(models[mi], keys[ki], opts.parts, generationConfig, timeoutMs, thinkingMode, opts.onDelta)
-        if (result.ok) return result
+        if (result.ok) { rememberWorkingModel(models[mi]); return result }
         lastError = result.error || ''
         if (result.status === 429) {
           sawQuota = true
@@ -495,6 +586,17 @@ export async function callGeminiStream(opts: {
 
   if (sawQuota) lastError = QUOTA_HINT + ' [' + lastError + ']'
   return { ok: false, error: lastError, status: sawQuota ? 429 : undefined }
+}
+
+/* (و77) اسم قديم — بقى غلاف رقيق فوق streamGemini (نفس التوقيع والسلوك) */
+export async function callGeminiStream(opts: {
+  parts: any[]
+  generationConfig?: any
+  timeoutMs?: number
+  thinking?: 'low' | 'off' | 'default'
+  onDelta?: (delta: string) => void
+}): Promise<GeminiResult> {
+  return streamGemini(opts)
 }
 
 // Extract first JSON object from an AI text response
