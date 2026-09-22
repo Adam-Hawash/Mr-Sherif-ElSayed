@@ -390,6 +390,8 @@ model Book {
   fileType    String   @default("application/pdf")
   sizeBytes   Int      @default(0)
   grade       String   @default("")
+  /* (2026-و79) تصنيف الكتاب: واجب (homework) / أسئلة (questions) / الاتنين (both) */
+  usage       String   @default("both")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }

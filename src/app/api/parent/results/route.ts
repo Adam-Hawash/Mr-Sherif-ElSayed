@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { resolveParentStudent } from '@/lib/parent-students'
 
 /* (2026-و38) شفاء ذاتي لجدول Parent — نفس حماية مسارَي التسجيل والدخول */
 var parentDdlDone: Promise<void> | null = null
@@ -29,6 +30,8 @@ export async function GET(request: NextRequest) {
   try {
     var searchParams = new URL(request.url).searchParams
     var parentId = searchParams.get('parentId') || ''
+    /* (2026-و79) ولي الأمر بعدة أبناء — اختيار الابن من الـ query */
+    var studentIdParam = searchParams.get('studentId') || ''
     if (!parentId) {
       return NextResponse.json({ error: 'طلب ناقص' }, { status: 400 })
     }
@@ -40,22 +43,25 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'جلسة ولي الأمر منتهية — سجل دخول تاني' }, { status: 401 })
     }
 
-    var student: any = null
-    try { student = await db.student.findUnique({ where: { id: parent.studentId } }) } catch (sErr) {}
+    /* (2026-و79) كل أبناء ولي الأمر + الابن المختار */
+    var resolved = await resolveParentStudent(parent, studentIdParam)
+    var students = resolved.students
+    var student: any = resolved.selected
+    var studentsOut = students.map(function (s: any) {
+      return { id: s.id, name: s.name, grade: s.grade, status: s.status, isPaidAccess: !!s.isPaidAccess }
+    })
     if (!student) {
       return NextResponse.json({
         parent: { id: parent.id, name: parent.name, phone: parent.phone },
+        students: studentsOut,
         student: null,
-        videos: null,
         homeworks: [],
         exams: [],
+        videos: null,
       })
     }
 
-    /* ===== (2026-و39) نسبة متابعة الفيديوهات لولي الأمر =====
-       مجموع الثواني المتشاهدة ÷ مجموع أطوال الفيديوهات — واللي خلصه (completed)
-       بيتحسب كأنه اتشاهد لآخره. لو الفيديو بيتفشل التجيبها بنُل برضه عشان
-       الصفحة ماتبوظش — الفيديوهات بيانات ثانوية مش النتايج نفسها */
+    // ===== (2026-و39) نسبة فيديوهات الابن — من VideoProgress (نفس بيانات الطالب) =====
     var videos: any = null
     try {
       var vp: any[] = await db.videoProgress.findMany({ where: { studentId: student.id } })
@@ -130,6 +136,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       parent: { id: parent.id, name: parent.name, phone: parent.phone },
+      /* (2026-و79) قايمة كل الأبناء — البورتال بيعرض مبدّل بينهم */
+      students: studentsOut,
       student: {
         id: student.id,
         name: student.name,
