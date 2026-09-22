@@ -125,10 +125,10 @@ var SCHEMA_FIXES = [
   // أي قيمة الأدمن كتبها بعدها بمفتاح تاني.
   "UPDATE SiteConfig SET value = 'Mr. Sherif ElSayed' WHERE key IN ('navbar_brand', 'hero_title_line1', 'footer_brand', 'schedule_brand', 'instructor_name_en') AND (value LIKE '%مستر شريف%' OR value LIKE '%منصة مستر%' OR value = 'MR. Sherif ElSayed')",
   "UPDATE SiteConfig SET value = 'جميع الحقوق محفوظة — Mr. Sherif ElSayed' WHERE key = 'footer_copyright' AND (value LIKE '%مستر شريف%' OR value LIKE '%منصة مستر%')",
-  // ===== (و78) ترحيل اسم المطور «Adam Hawash» → «Adham Hawash» (idempotent) =====
+  // ===== تصحيح إملائي لاسم المطور «Adham Hawash» → «Adam Hawash» (idempotent) =====
   // المفاتيح المتأثرة (footer_made_by_label / hero_developer_label وغيرها)
-  // بتتصحح نهائيًا في الداتابيز — وGET /api/config بيعمل نفس الشفاء عند القراءة.
-  "UPDATE SiteConfig SET value = REPLACE(value, 'Adam Hawash', 'Adham Hawash') WHERE (key LIKE '%made_by%' OR key LIKE '%developer_label%') AND value LIKE '%Adam Hawash%'",
+  // بتتصحح نهائيًا في الداتابيز — وGET /api/config بيعمل نفس التصحيح عند القراءة.
+  "UPDATE SiteConfig SET value = REPLACE(value, 'Adham Hawash', 'Adam Hawash') WHERE (key LIKE '%made_by%' OR key LIKE '%developer_label%') AND value LIKE '%Adham Hawash%'",
   // ===== ترحيل لمرة واحدة (idempotent) =====
   // الحسابات الموجودة اللي ملهاش ربط إنشاء: نثبّت الربط الحالي كـ"جهاز إنشاء"
   // عشان مفيش حساب يتحجب فجأة بعد الترقية. الربط ده بعدها **ثابت** — أي جهاز

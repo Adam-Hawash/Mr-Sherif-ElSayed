@@ -20,7 +20,7 @@ var DEFAULTS = {
   hero_stat3_label: 'متابعة مستمرة',
   hero_developer_url: 'https://prime-developer-portfolio-11.vercel.app',
   hero_developer_label: 'Hero Developer',
-  footer_made_by_label: 'Developed by Adham Hawash',
+  footer_made_by_label: 'Developed by Adam Hawash',
   prime_developer_url: 'https://prime-developer-portfolio-11.vercel.app',
 
   // === Schedule Page ===
@@ -154,20 +154,20 @@ export async function GET() {
       if (c.key === 'favicon_reset_v1') continue
       map[c.key] = c.value
     }
-    /* (و41) توقيع المطور: القيمة القديمة الافتراضية «Made by Adam Hawash» المحفوظة
+    /* (و41) توقيع المطور: القيمة القديمة الافتراضية «Made by Adham Hawash» المحفوظة
        في الداتابيز كانت بتتجاوز الافتراضي الجديد — بتتعامل هنا كغير مضبوطة وترجع
-       «Developed by Adham Hawash» (الأدمن برضه يقدر يعدّلها عادي من لوحة التحكم) */
-    if (map.footer_made_by_label === 'Made by Adam Hawash') {
+       «Developed by Adam Hawash» (الأدمن برضه يقدر يعدّلها عادي من لوحة التحكم) */
+    if (map.footer_made_by_label === 'Made by Adham Hawash') {
       map.footer_made_by_label = DEFAULTS.footer_made_by_label
     }
-    /* (و78) شفاء ذاتي لاسم المطور: القيم المخزنة القديمة فيها «Adam Hawash»
-       والاسم الصحيح «Adham Hawash» — بتتصحح هنا عند القراءة (replace-all)،
+    /* تصحيح إملائي لاسم المطور: القيم المخزنة القديمة فيها «Adham Hawash»
+       والاسم الصحيح «Adam Hawash» — بيتصحح هنا عند القراءة (replace-all)،
        والإصلاح الدائم في الداتابيز بيحصل من ترحيلة ensure-schema (SCHEMA_FIXES) */
     var NAME_FIX_KEYS = ['footer_made_by_label', 'footer_made_by_label_en', 'hero_developer_label', 'hero_developer_label_en']
     for (var ni = 0; ni < NAME_FIX_KEYS.length; ni++) {
       var nv = map[NAME_FIX_KEYS[ni]]
-      if (typeof nv === 'string' && nv.indexOf('Adam Hawash') !== -1) {
-        map[NAME_FIX_KEYS[ni]] = nv.split('Adam Hawash').join('Adham Hawash')
+      if (typeof nv === 'string' && nv.indexOf('Adham Hawash') !== -1) {
+        map[NAME_FIX_KEYS[ni]] = nv.split('Adham Hawash').join('Adam Hawash')
       }
     }
     return NextResponse.json(map)

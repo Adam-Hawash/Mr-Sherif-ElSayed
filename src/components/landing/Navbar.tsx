@@ -1,8 +1,7 @@
 'use client'
 
-import { useState, useSyncExternalStore } from 'react'
+import { useState } from 'react'
 import Image from 'next/image'
-import { useTheme } from 'next-themes'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -14,8 +13,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAppStore } from '@/stores/app-store'
 import {
-  Sun,
-  Moon,
   LogOut,
   UserPlus,
   LogIn,
@@ -30,17 +27,18 @@ import {
   CalendarClock,
 } from 'lucide-react'
 import { toast } from 'sonner'
+/* زراير الثيم واللغة الموحدة في كل المنصة + نظام الترجمة */
+import { ThemeToggle, LangToggle } from '@/components/platform-toggles'
+import { useT } from '@/lib/i18n'
 /* (2026-و29) «أوائل الطلبة» في النافبار — طلب المستر: زرار جنب Geometry
    يفتح دايلوج بأول 3 طلاب — والقسم اتشال من الصفحة الرئيسية */
 import { TopStudentsDialog } from './TopStudentsDialog'
 
 export function Navbar() {
-  const { theme, setTheme } = useTheme()
-  const emptySubscribe = () => () => {}
-  const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false)
   const [mobileMenu, setMobileMenu] = useState(false)
   /* (2026-و29) دايلوج أوائل الطلبة */
   const [topStudentsOpen, setTopStudentsOpen] = useState(false)
+  const T = useT()
 
   const {
     currentView,
@@ -103,7 +101,7 @@ export function Navbar() {
               title="Developer Portfolio"
               className="flex items-center justify-center py-1.5 text-[11px] text-muted-foreground hover:text-foreground hover:underline underline-offset-2 transition-colors"
             >
-              <span dir="ltr">{cfg.footer_made_by_label || 'Developed by Adham Hawash'}</span>
+              <span dir="ltr">{cfg.footer_made_by_label || 'Developed by Adam Hawash'}</span>
             </a>
           </div>
         )}
@@ -146,7 +144,7 @@ export function Navbar() {
               className="inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-xl text-sm font-bold text-[#EA580C] dark:text-[#FB923C] hover:bg-[#EA580C]/10 transition-colors cursor-pointer"
             >
               <Trophy className="h-4 w-4" />
-              أوائل الطلبة
+              {T('أوائل الطلبة', 'Top Students')}
             </button>
             {/* (2026-و31) Geometry Laws — منقول من منصة مستر وائل طبق الأصل «هي هي»
                 (طلب المستر: «الـ geometry بالظبط هو هو بتاع منصة مستر وائل») */}
@@ -162,7 +160,7 @@ export function Navbar() {
             {currentStudent ? (
               <div className="flex items-center gap-3">
                 <span className="text-sm text-muted-foreground">
-                  مرحباً،{' '}
+                  {T('مرحباً', 'Welcome')},{' '}
                   <span className="font-semibold text-foreground">
                     {currentStudent.name}
                   </span>
@@ -174,7 +172,7 @@ export function Navbar() {
                   onClick={handleLogout}
                 >
                   <LogOut className="h-4 w-4 ml-1" />
-                  خروج
+                  {T('خروج', 'Logout')}
                 </Button>
               </div>
             ) : isAdminLoggedIn && currentAdmin ? (
@@ -186,7 +184,7 @@ export function Navbar() {
                   onClick={() => setView('admin-dashboard')}
                 >
                   <LayoutDashboard className="h-4 w-4 ml-1" />
-                  لوحة التحكم
+                  {T('لوحة التحكم', 'Dashboard')}
                 </Button>
                 <Button
                   variant="outline"
@@ -195,7 +193,7 @@ export function Navbar() {
                   onClick={handleLogout}
                 >
                   <LogOut className="h-4 w-4 ml-1" />
-                  خروج
+                  {T('خروج', 'Logout')}
                 </Button>
               </div>
             ) : (
@@ -207,7 +205,7 @@ export function Navbar() {
                   onClick={handleLoginClick}
                 >
                   <LogIn className="h-4 w-4 ml-1" />
-                  سجل دخولك
+                  {T('سجل دخولك', 'Login')}
                 </Button>
                 <Button
                   size="sm"
@@ -215,7 +213,7 @@ export function Navbar() {
                   onClick={handleRegisterClick}
                 >
                   <UserPlus className="h-4 w-4 ml-1" />
-                  اعمل حساب
+                  {T('اعمل حساب', 'Sign Up')}
                 </Button>
               </>
             )}
@@ -232,7 +230,7 @@ export function Navbar() {
               className="md:hidden flex items-center gap-1 min-h-[44px] px-2.5 rounded-xl text-[#EA580C] dark:text-[#FB923C] bg-[#EA580C]/10 border border-[#EA580C]/40 hover:bg-[#EA580C]/20 transition-colors cursor-pointer"
             >
               <Trophy className="h-5 w-5" />
-              <span className="text-xs font-bold">الأوائل</span>
+              <span className="text-xs font-bold">{T('الأوائل', 'Top')}</span>
             </button>
             {/* (2026-و31) Geometry جنب الأوائل في الموبايل — زي جينيوس بالظبط */}
             <a
@@ -256,21 +254,8 @@ export function Navbar() {
               </a>
             )}
 
-            {mounted && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="min-h-[44px] min-w-[44px]"
-                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                aria-label="Toggle theme"
-              >
-                {theme === 'dark' ? (
-                  <Sun className="h-5 w-5" />
-                ) : (
-                  <Moon className="h-5 w-5" />
-                )}
-              </Button>
-            )}
+            {/* زرار الثيم الموحد — شمس/قمر في كل المنصة */}
+            <ThemeToggle />
 
             {/* Mobile Hamburger */}
             <Button
@@ -278,7 +263,7 @@ export function Navbar() {
               size="icon"
               className="md:hidden min-h-[44px] min-w-[44px]"
               onClick={() => setMobileMenu(!mobileMenu)}
-              aria-label={mobileMenu ? 'إغلاق القائمة' : 'فتح القائمة'}
+              aria-label={mobileMenu ? T('إغلاق القائمة', 'Close menu') : T('فتح القائمة', 'Open menu')}
             >
               {mobileMenu ? (
                 <X className="h-5 w-5" />
@@ -286,6 +271,9 @@ export function Navbar() {
                 <Menu className="h-5 w-5" />
               )}
             </Button>
+            {/* سويتش اللغة EN|عربي — آخر عنصر في طرف النافبار
+                (بعد الهامبرجر) وباين على الموبايل والديسكتوب من غير ما تفتح القايمة */}
+            <LangToggle />
           </div>
         </div>
 
@@ -299,7 +287,7 @@ export function Navbar() {
               className="flex items-center gap-2 min-h-[44px] px-3 rounded-xl border border-[#EA580C]/40 bg-[#EA580C]/10 text-[#EA580C] dark:text-[#FB923C] font-bold text-sm cursor-pointer"
             >
               <Trophy className="h-4 w-4" />
-              أوائل الطلبة
+              {T('أوائل الطلبة', 'Top Students')}
             </button>
             {/* (2026-و31) Geometry Laws — منقولة من جينيوس طبق الأصل، ظاهرة للكل */}
             <a
@@ -308,7 +296,7 @@ export function Navbar() {
               className="flex items-center gap-2 min-h-[44px] px-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-bold text-sm"
             >
               <Shapes className="h-4 w-4" />
-              Geometry Laws — قوانين الهندسة
+              Geometry Laws — {T('قوانين الهندسة', 'Geometry Rules')}
             </a>
             {/* (و35) مواعيد السنتر في قايمة الموبايل */}
             <a
@@ -317,12 +305,12 @@ export function Navbar() {
               className="flex items-center gap-2 min-h-[44px] px-3 rounded-xl border border-border bg-muted/40 text-foreground font-bold text-sm"
             >
               <CalendarClock className="h-4 w-4" />
-              مواعيد السنتر — جدول الحصص
+              {T('مواعيد السنتر — جدول الحصص', 'Center Schedule')}
             </a>
             {currentStudent ? (
               <>
                 <p className="text-sm text-muted-foreground py-2">
-                  مرحباً،{' '}
+                  {T('مرحباً', 'Welcome')},{' '}
                   <span className="font-semibold text-foreground">
                     {currentStudent.name}
                   </span>
@@ -334,7 +322,7 @@ export function Navbar() {
                   onClick={handleLogout}
                 >
                   <LogOut className="h-4 w-4 ml-1" />
-                  خروج
+                  {T('خروج', 'Logout')}
                 </Button>
               </>
             ) : isAdminLoggedIn && currentAdmin ? (
@@ -349,7 +337,7 @@ export function Navbar() {
                   }}
                 >
                   <LayoutDashboard className="h-4 w-4 ml-2" />
-                  لوحة التحكم
+                  {T('لوحة التحكم', 'Dashboard')}
                 </Button>
                 <Button
                   variant="outline"
@@ -358,7 +346,7 @@ export function Navbar() {
                   onClick={handleLogout}
                 >
                   <LogOut className="h-4 w-4 ml-1" />
-                  خروج
+                  {T('خروج', 'Logout')}
                 </Button>
               </>
             ) : (
@@ -370,7 +358,7 @@ export function Navbar() {
                   onClick={handleLoginClick}
                 >
                   <LogIn className="h-4 w-4 ml-1" />
-                  سجل دخولك
+                  {T('سجل دخولك', 'Login')}
                 </Button>
                 <Button
                   size="sm"
@@ -378,7 +366,7 @@ export function Navbar() {
                   onClick={handleRegisterClick}
                 >
                   <UserPlus className="h-4 w-4 ml-1" />
-                  اعمل حساب
+                  {T('اعمل حساب', 'Sign Up')}
                 </Button>
               </>
             )}
@@ -403,6 +391,7 @@ function AdminLoginDialog() {
     setAdminLoggedIn,
     setView,
   } = useAppStore()
+  const T = useT()
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -459,18 +448,18 @@ function AdminLoginDialog() {
         <DialogHeader>
           <DialogTitle className="flex items-center justify-center gap-2 text-lg">
             <Shield className="h-5 w-5 text-primary" />
-            تسجيل دخول المشرفين
+            {T('تسجيل دخول المشرفين', 'Admin Login')}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 pt-2">
           <div className="space-y-2">
             <Label htmlFor="admin-dialog-email" className="text-foreground">
-              البريد الإلكتروني
+              {T('البريد الإلكتروني', 'Email')}
             </Label>
             <Input
               id="admin-dialog-email"
               type="email"
-              placeholder="البريد الإلكتروني"
+              placeholder={T('البريد الإلكتروني', 'Email')}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && !loading && handleLogin()}
@@ -482,12 +471,12 @@ function AdminLoginDialog() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="admin-dialog-password" className="text-foreground">
-              كلمة المرور
+              {T('كلمة المرور', 'Password')}
             </Label>
             <Input
               id="admin-dialog-password"
               type="password"
-              placeholder="كلمة المرور"
+              placeholder={T('كلمة المرور', 'Password')}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && !loading && handleLogin()}
@@ -508,10 +497,10 @@ function AdminLoginDialog() {
             {loading ? (
               <>
                 <Loader2 className="h-4 w-4 ml-2 animate-spin" />
-                جاري تسجيل الدخول...
+                {T('جاري تسجيل الدخول...', 'Logging in...')}
               </>
             ) : (
-              'دخول لوحة التحكم'
+              T('دخول لوحة التحكم', 'Login to Dashboard')
             )}
           </Button>
         </div>
