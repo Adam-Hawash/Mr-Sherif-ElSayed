@@ -56,6 +56,8 @@ export async function POST(request: NextRequest) {
       ['Discussion', 'studentId IS NULL OR studentId NOT IN (SELECT id FROM Student)'],
       /* الشكاوى وتذاكر التشغيل ممكن تكون من غير طالب ("") — دي مش يتامى */
       ['Complaint', "studentId IS NOT NULL AND studentId != '' AND studentId NOT IN (SELECT id FROM Student)"],
+      /* (2026-و84) الشكوى بعد حلها تتمسح من صفحة الأدمن — القاعدة دي بتلم المخزون القديم */
+      ['Complaint (شكاوى اتحلت)', "status = 'resolved'"],
       ['PlayTicket (studentId)', "studentId IS NOT NULL AND studentId != '' AND studentId NOT IN (SELECT id FROM Student)"],
       ['PlayTicket (videoId)', 'videoId IS NULL OR videoId NOT IN (SELECT id FROM Video)'],
       /* ===== أولياء الأمور وروابط الأبوة ===== */

@@ -57,7 +57,26 @@ export async function PATCH(request: Request, ctx: any) {
         try { await notifyStudent(cid, 'complaint_reply', nTitle, String(reply || '').slice(0, 240) || 'افتح تاب الشكاوى وشوف الرد') } catch (nE2) {}
       }
     } catch (nErr) {}
-    return NextResponse.json({ complaint: rows[0], message: 'تم الحفظ ✅' })
+    /* (2026-و84) طلب المستر حرفيًا: «الشكاوي بعد ما احل الشكوى عاوزها
+       تتمسح من صفحة الادمن» — أول ما الحالة بتبقى resolved الشكوى تتمسح
+       نهائيًا من الداتابيز (الطالب واخد إشعار الحل والرد فوق) — مبتفضلش
+       متراكة في صفحة الأدمن للأبد زي ما كانت */
+    var deleted = false
+    if (status === 'resolved') {
+      try {
+        await safeWrite(function () {
+          return db.$executeRawUnsafe('DELETE FROM Complaint WHERE id = ?', id)
+        })
+        deleted = true
+      } catch (dErr) {
+        console.error('[Complaints] حذف الشكوى المحلولة فشل:', dErr)
+      }
+    }
+    return NextResponse.json({
+      complaint: rows[0],
+      deleted: deleted,
+      message: deleted ? 'تم حل الشكوى وتمسح من القايمة ✅' : 'تم الحفظ ✅',
+    })
   } catch (error) {
     console.error('[Complaints] PATCH error:', error)
     return NextResponse.json({ error: 'حصلت مشكلة في السيرفر' }, { status: 500 })
