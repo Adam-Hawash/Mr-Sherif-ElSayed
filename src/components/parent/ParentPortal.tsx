@@ -29,6 +29,8 @@ import { UserCheck, Loader2, RefreshCw, LogOut, BookOpenCheck, ClipboardList, Al
 import { toast } from 'sonner'
 import FractionText, { hasMathMarkup } from '@/components/FractionText'
 import BidiText from '@/components/BidiText'
+/* (2026-و87) كارت إشعارات ولي الأمر — بالاسم والدرجة لحظة التسليم */
+import ParentNotificationsCard from '@/components/parent/ParentNotificationsCard'
 
 interface ResultRow {
   id: string
@@ -348,6 +350,9 @@ export function ParentPortal() {
             </CardContent>
           </Card>
         </div>
+
+        {/* (2026-و87) إشعارات ولي الأمر — أول حاجة يشوفها بعد الهيدر */}
+        <ParentNotificationsCard parentId={currentParent && currentParent.id ? currentParent.id : ''} />
 
         {/* كارت الطالب */}
         {student ? (

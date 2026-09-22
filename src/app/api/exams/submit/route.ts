@@ -31,6 +31,8 @@ import { checkExamSequential } from '@/lib/sequential-guard'
 import { parseQuestions, resolveQuestionsForStudent } from '@/lib/exam-models'
 /* (و45) تصنيف موحّد اختياري/مقالي — سؤال له اختيارات صور = اختياري مش مقالي */
 import { isWritingQuestion } from '@/lib/question-figures'
+/* (2026-و87) إشعار ولي الأمر بعد التسليم — القوالب من lib/parent-notify */
+import { notifyParentsOfResult } from '@/lib/parent-notify'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -595,6 +597,26 @@ export async function POST(request) {
 
       // 3ج) الحكم النهائي — كل اللي ماتصححش بياخد fallback حاسم (مش pending)
       await persistExamGrades(true)
+
+      /* (2026-و87) إشعار ولي الأمر بالدرجة النهائية — طلب المستر: «لما الطالب
+         يسلّم الامتحان ولي الأمر ياخد إشعار بالاسم والدرجة» — بنستنى اكتمال
+         التصحيح كله عشان الرقم يكون نهائي وصادق. أي فشل ما يبوّظش حاجة. */
+      try {
+        var exFin: any = await db.$queryRawUnsafe('SELECT score, maxScore FROM ExamResult WHERE id = ? LIMIT 1', resultId)
+        exFin = exFin || []
+        if (exFin.length > 0) {
+          await notifyParentsOfResult({
+            studentId: studentId,
+            kind: 'exam',
+            title: String((exam as any).title || 'امتحان'),
+            score: Number(exFin[0].score) || 0,
+            maxScore: Number(exFin[0].maxScore) || 0,
+          })
+        }
+      } catch (pnErr) {
+        console.error('[exam-submit] parent notify error (ignored):', pnErr)
+      }
+
       console.log('[exam-submit] background AI grading done:', resultId)
     })
 

@@ -395,3 +395,23 @@ model Book {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+// ============================================================
+// (2026-و87) إشعارات أولياء الأمور — طلب المستر: لما الطالب يسلّم
+// امتحان أو واجب → إشعار لولي الأمر (اسم الطالب + العنوان + الدرجة)
+// parent_id = رقم موبايل ولي الأمر مطبّع (010xxxxxxxx) أو id حسابه
+// is_read: 0 غير مقروء | 1 مقروء — القوالب في src/lib/parent-notify.ts
+// (في الإنتاج الجدول بيتعمل تلقائيًا من ensureParentNotificationsTable)
+// ============================================================
+model ParentNotification {
+  id          Int      @id @default(autoincrement())
+  parentId    String   @default("") @map("parent_id")
+  studentName String   @default("") @map("student_name")
+  message     String
+  isRead      Int      @default(0) @map("is_read")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([parentId, isRead])
+  @@index([createdAt])
+  @@map("parent_notifications")
+}

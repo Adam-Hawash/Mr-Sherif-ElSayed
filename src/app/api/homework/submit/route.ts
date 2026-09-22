@@ -22,6 +22,8 @@ import { pruneHomeworkAnswerMedia } from '@/lib/auto-clean'
 import { checkHwSequential } from '@/lib/sequential-guard'
 /* (و45) تصنيف موحّد اختياري/مقالي — سؤال له اختيارات صور = اختياري مش مقالي */
 import { isWritingQuestion } from '@/lib/question-figures'
+/* (2026-و87) إشعار ولي الأمر بعد التسليم — القوالب من lib/parent-notify */
+import { notifyParentsOfResult } from '@/lib/parent-notify'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -356,6 +358,23 @@ export async function POST(request) {
 
     var hasWriting = writingAnswers.length > 0
 
+    /* (2026-و87) إشعار ولي الأمر — واجب من غير أسئلة مقالية: الدرجة نهائية
+       فورًا فالإشعار بيتبعت حالًا (اللي فيه مقالي بيتبعت بعد اكتمال تصحيحه
+       من backgroundGrading تحت) — أي فشل ما يبوّظش التسليم */
+    if (inserted && !hasWriting) {
+      try {
+        await notifyParentsOfResult({
+          studentId: studentId,
+          kind: 'homework',
+          title: String((homework as any).title || 'واجب'),
+          score: Number(score) || 0,
+          maxScore: Number(maxScore) || 0,
+        })
+      } catch (pnErr) {
+        console.error('w-submit] parent notify error (ignored):', pnErr)
+      }
+    }
+
     // Respond INSTANTLY — the student is out of here in <1s
     var responsePayload = {
       success: true,
@@ -636,6 +655,20 @@ export async function POST(request) {
         }
       }
       await persistPartial()
+
+      /* (2026-و87) إشعار ولي الأمر بالدرجة النهائية — بعد اكتمال تصحيح المقالي */
+      try {
+        await notifyParentsOfResult({
+          studentId: studentId,
+          kind: 'homework',
+          title: String((homework as any).title || 'واجب'),
+          score: mcqScore + writingScore,
+          maxScore: Number(maxScore) || 0,
+        })
+      } catch (pnErr) {
+        console.error('w-submit] parent notify bg error (ignored):', pnErr)
+      }
+
       console.log('[HW BG] Grading done for', resultId, '— final score', (mcqScore + writingScore) + '/' + maxScore)
     }
 
