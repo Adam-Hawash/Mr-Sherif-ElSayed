@@ -8,7 +8,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, Flag, CheckCircle2, Clock3, RefreshCw, User, Phone, GraduationCap, Bot, MessageSquareReply, RotateCcw, UserRound } from 'lucide-react'
+import { Loader2, Flag, CheckCircle2, Clock3, RefreshCw, User, Phone, GraduationCap, Bot, MessageSquareReply, UserRound } from 'lucide-react'
 import { toast } from 'sonner'
 
 type Complaint = {
@@ -28,7 +28,9 @@ type Complaint = {
 export function AdminComplaints() {
   const [items, setItems] = useState<Complaint[]>([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<'all' | 'new' | 'resolved'>('all')
+  /* (2026-و85) الشكوى أول ما تتحل بتتمسح نهائيًا — مفيش «محلولة» تتفلتر
+     ولا «رجعه للجديد» — القايمة فيها الجديدة والمفتوحة بس */
+  const [filter, setFilter] = useState<'all' | 'new'>('all')
   const [busyId, setBusyId] = useState('')
   const [replyFor, setReplyFor] = useState('')
   const [replyText, setReplyText] = useState('')
@@ -73,7 +75,6 @@ export function AdminComplaints() {
 
   const filtered = items.filter(function (c) {
     if (filter === 'new') return c.status === 'new'
-    if (filter === 'resolved') return c.status === 'resolved'
     return true
   })
   const newCount = items.filter(function (c) { return c.status === 'new' }).length
@@ -101,7 +102,6 @@ export function AdminComplaints() {
           {([
             ['all', 'الكل'],
             ['new', 'الجديدة'],
-            ['resolved', 'المحلولة'],
           ] as const).map(function (f) {
             const active = filter === f[0]
             return (
@@ -117,6 +117,11 @@ export function AdminComplaints() {
             )
           })}
         </div>
+
+        {/* (2026-و85) توضيح: الحل = مسح نهائي */}
+        <p className="text-[11px] text-muted-foreground leading-relaxed">
+          أول ما تعلّم «تم الحل» الشكوى بتتمسح من القايمة نهائيًا (الطالب بياخد إشعار بالحل والرد قبل المسح) — فالقايمة فيها الشكاوى الجديدة والمفتوحة بس.
+        </p>
 
         {loading ? (
           <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
@@ -196,17 +201,13 @@ export function AdminComplaints() {
                         <Button size="sm" variant="outline" onClick={function () { setReplyFor(c.id); setReplyText(c.reply || '') }}>
                           <MessageSquareReply className="h-3.5 w-3.5 ml-1" />رد
                         </Button>
-                        {!resolved ? (
+                        {/* (2026-و85) «تم الحل» بتمسح الشكوى نهائيًا — مفيش رجوع للجديد */}
+                        {!resolved && (
                           <Button size="sm" variant="outline" className="text-emerald-600 border-emerald-300 hover:bg-emerald-50 dark:text-emerald-400"
                             disabled={busyId === c.id}
                             onClick={function () { patch(c.id, { status: 'resolved' }) }}>
                             {busyId === c.id ? <Loader2 className="h-3.5 w-3.5 ml-1 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5 ml-1" />}
-                            تم الحل
-                          </Button>
-                        ) : (
-                          <Button size="sm" variant="ghost" className="text-muted-foreground" disabled={busyId === c.id}
-                            onClick={function () { patch(c.id, { status: 'new' }) }}>
-                            <RotateCcw className="h-3.5 w-3.5 ml-1" />رجعه للجديد
+                            تم الحل (وتمسح)
                           </Button>
                         )}
                       </>

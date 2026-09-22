@@ -134,7 +134,7 @@ export default function HeroSection() {
             <div className="flex flex-col sm:flex-row gap-3 justify-center lg:justify-start pt-1">
               <Button
                 size="lg"
-                className="gloss-btn text-base px-8 py-6 min-h-[52px] text-white font-bold rounded-2xl border-0"
+                className="gloss-btn text-sm sm:text-base px-6 sm:px-8 py-3.5 sm:py-6 min-h-[52px] text-white font-bold rounded-2xl border-0"
                 onClick={() => setView('auth-login')}
               >
                 <LogIn className="h-5 w-5 ml-2" />
@@ -143,7 +143,7 @@ export default function HeroSection() {
               <Button
                 variant="outline"
                 size="lg"
-                className="text-base px-8 py-6 min-h-[52px] border-[#F97316]/45 text-[#FDBA74] hover:bg-[#F97316]/10 hover:text-[#FDBA74] hover:border-[#F97316]/70 transition-all duration-200 rounded-2xl bg-white/[0.03]"
+                className="text-sm sm:text-base px-6 sm:px-8 py-3.5 sm:py-6 min-h-[52px] border-[#F97316]/45 text-[#FDBA74] hover:bg-[#F97316]/10 hover:text-[#FDBA74] hover:border-[#F97316]/70 transition-all duration-200 rounded-2xl bg-white/[0.03]"
                 onClick={() => setView('auth-register')}
               >
                 <UserPlus className="h-5 w-5 ml-2" />
