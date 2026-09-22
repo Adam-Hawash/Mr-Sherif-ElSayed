@@ -18,6 +18,7 @@ import { runGradePool } from '@/lib/grade-pool'
 /* (2026-و33) مصدر واحد لمفتاح الإجابة — نفس الدالة اللي شاشة المراجعة بتستخدمها على العميل */
 import { normalizeCorrectKey } from '@/lib/correct-key'
 import { gradeFallbackDecisive, quickSmartMatch } from '@/lib/smart-grader'
+import { pruneHomeworkAnswerMedia } from '@/lib/auto-clean'
 import { checkHwSequential } from '@/lib/sequential-guard'
 /* (و45) تصنيف موحّد اختياري/مقالي — سؤال له اختيارات صور = اختياري مش مقالي */
 import { isWritingQuestion } from '@/lib/question-figures'
@@ -642,6 +643,10 @@ export async function POST(request) {
       // after() runs when the response has been sent — same invocation, same runtime
       after(backgroundGrading)
     }
+
+    /* (2026-و86) تفضية المساحات: ملفات حلول الواجبات أقدم من أسبوع بتنضف تلقائي
+       (الدرجات نفسها HomeworkResult مش بتتلمس خالص) */
+    try { await pruneHomeworkAnswerMedia() } catch (e) {}
 
     return NextResponse.json(responsePayload)
   } catch (error) {

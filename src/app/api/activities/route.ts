@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { pruneStudentActivity, ACTIVITY_KEEP } from '@/lib/auto-clean'
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const studentId = searchParams.get('studentId')
     const action = searchParams.get('action')
-    const pageSize = parseInt(searchParams.get('pageSize') || '50')
+    /* (2026-و86) طلب المستر: «أول 20 متابعة بس... ما تزودش أكتر من كده» — سقف نهائي 20 */
+    const pageSize = Math.min(parseInt(searchParams.get('pageSize') || '20') || 20, ACTIVITY_KEEP)
 
     const where: Record<string, unknown> = {}
     if (studentId) where.studentId = studentId
@@ -38,6 +40,9 @@ export async function POST(request: NextRequest) {
     const activity = await db.studentActivity.create({
       data: { studentId, action, details: details || '' },
     })
+
+    /* (2026-و86) التنظيف التلقائي: النهارده بس + حد 20/طالب */
+    try { await pruneStudentActivity() } catch (e) {}
 
     return NextResponse.json({ activity }, { status: 201 })
   } catch (error) {
