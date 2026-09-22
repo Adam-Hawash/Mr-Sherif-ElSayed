@@ -48,6 +48,8 @@ function mcqChoiceList(q: any): { text: string; figUrl: string }[] {
   return out
 }
 import { BooksTab } from '@/components/student/BooksTab'
+/* نظام الترجمة (عربي/إنجليزي) — التابات والواجهة */
+import { useT } from '@/lib/i18n'
 /* (2026-و40-w) ورقة العمل: جداول قابلة للكتابة + رسومات مقصوصة + تجميع صفحات المصدر */
 import {
   WorksheetQuestionBadge, WorksheetPageChip, WorksheetTableEditable, WorksheetTableReadonly,
@@ -61,6 +63,7 @@ export function StudentPortal() {
 
 function StudentPortalInner() {
   const { currentStudent, logout } = useAppStore()
+  const T = useT()
   const [dashboardData, setDashboardData] = useState<{
     videos: VideoType[]
     homework: Homework[]
@@ -260,18 +263,18 @@ function StudentPortalInner() {
                     <User className="h-6 w-6 text-primary" />
                   </div>
                   <div className="min-w-0">
-                    <h1 className="text-lg font-bold truncate">أهلاً يا {currentStudent?.name?.split(' ')[0]} 👋</h1>
-                    <p className="text-xs text-muted-foreground">كل حاجتك هنا في مكان واحد</p>
+                    <h1 className="text-lg font-bold truncate">{T('أهلاً يا', 'Welcome') + ' ' + (currentStudent?.name?.split(' ')[0] || '') + ' 👋'}</h1>
+                    <p className="text-xs text-muted-foreground">{T('كل حاجتك هنا في مكان واحد', 'Everything you need in one place')}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <Button variant="outline" size="sm" onClick={() => setShowGuide(true)} className="gap-1.5 h-11 sm:h-8">
                     <HelpCircle className="h-4 w-4" />
-                    <span className="hidden sm:inline">دليل التعامل</span>
+                    <span className="hidden sm:inline">{T('دليل التعامل', 'Guide')}</span>
                   </Button>
                   <Button variant="ghost" size="sm" onClick={logout} className="text-destructive hover:text-destructive hover:bg-destructive/10 h-11 sm:h-8 shrink-0">
                     <LogOut className="h-4 w-4 ml-1" />
-                    <span className="hidden sm:inline">خروج</span>
+                    <span className="hidden sm:inline">{T('خروج', 'Logout')}</span>
                   </Button>
                 </div>
               </div>
@@ -281,7 +284,7 @@ function StudentPortalInner() {
                 className="w-full mt-4 min-h-[48px] font-bold text-base gap-2"
               >
                 <Rocket className="h-5 w-5" />
-                يلا ندخل صفحتنا
+                {T('يلا ندخل صفحتنا', "Let's Go")}
               </Button>
             </CardContent>
           </Card>
@@ -289,10 +292,10 @@ function StudentPortalInner() {
           {/* Quick Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
-              { icon: Video, label: 'الدروس', value: totalVideos, sub: watchedCount + ' اتفرجت', color: 'text-purple-600 bg-purple-100 dark:bg-purple-900/30' },
-              { icon: ClipboardList, label: 'الواجبات', value: pendingHomework, sub: pendingHomework > 0 ? 'محتاجة تتسلم' : 'كله تمام', color: 'text-blue-600 bg-blue-100 dark:bg-blue-900/30' },
-              { icon: FileText, label: 'الامتحانات', value: pendingExams, sub: pendingExams > 0 ? 'لسه متقدمتش' : 'خلصت كلها', color: 'text-orange-600 bg-orange-100 dark:bg-orange-900/30' },
-              { icon: TrendingUp, label: 'المشاهدة', value: avgProgress + '%', sub: progressCount + ' فيديو', color: 'text-emerald-600 bg-emerald-100 dark:bg-emerald-900/30' },
+              { icon: Video, label: T('الدروس', 'Lessons'), value: totalVideos, sub: watchedCount + ' ' + T('اتفرجت', 'watched'), color: 'text-purple-600 bg-purple-100 dark:bg-purple-900/30' },
+              { icon: ClipboardList, label: T('الواجبات', 'Homework'), value: pendingHomework, sub: pendingHomework > 0 ? T('محتاجة تتسلم', 'to submit') : T('كله تمام', 'All done'), color: 'text-blue-600 bg-blue-100 dark:bg-blue-900/30' },
+              { icon: FileText, label: T('الامتحانات', 'Exams'), value: pendingExams, sub: pendingExams > 0 ? T('لسه متقدمتش', 'not taken yet') : T('خلصت كلها', 'All done'), color: 'text-orange-600 bg-orange-100 dark:bg-orange-900/30' },
+              { icon: TrendingUp, label: T('المشاهدة', 'Watching'), value: avgProgress + '%', sub: progressCount + ' ' + T('فيديو', 'videos'), color: 'text-emerald-600 bg-emerald-100 dark:bg-emerald-900/30' },
             ].map((s, i) => (
               <Card key={i} className="hover:shadow-md transition-shadow">
                 <CardContent className="p-4">
@@ -317,8 +320,8 @@ function StudentPortalInner() {
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <ListTodo className="h-5 w-5 text-amber-600" />
-                  <h2 className="font-bold text-sm">اللي لازم تعمله دلوقتي</h2>
-                  <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-600 mr-auto">{pendingHomework + pendingExams} حاجة</Badge>
+                  <h2 className="font-bold text-sm">{T('اللي لازم تعمله دلوقتي', 'To Do Now')}</h2>
+                  <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-600 mr-auto">{pendingHomework + pendingExams} {T('حاجة', 'items')}</Badge>
                 </div>
                 <div className="space-y-2">
                   {pendingHwList.slice(0, 3).map(function(hw) {
@@ -335,9 +338,9 @@ function StudentPortalInner() {
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="text-xs font-medium truncate">{hw.title}</p>
-                          <p className="text-[10px] text-muted-foreground">واجب {hasMCQ ? '· ' + JSON.parse((hw as any).questions || '[]').length + ' أسئلة' : ''}</p>
+                          <p className="text-[10px] text-muted-foreground">{T('واجب', 'Homework')} {hasMCQ ? '· ' + JSON.parse((hw as any).questions || '[]').length + ' ' + T('أسئلة', 'questions') : ''}</p>
                         </div>
-                        <Badge variant="outline" className="text-[9px] border-blue-500/30 text-blue-500">واجب</Badge>
+                        <Badge variant="outline" className="text-[9px] border-blue-500/30 text-blue-500">{T('واجب', 'Homework')}</Badge>
                         <ChevronLeft className="h-3 w-3 text-muted-foreground shrink-0" />
                       </button>
                     )
@@ -354,9 +357,9 @@ function StudentPortalInner() {
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="text-xs font-medium truncate">{exam.title}</p>
-                          <p className="text-[10px] text-muted-foreground">امتحان</p>
+                          <p className="text-[10px] text-muted-foreground">{T('امتحان', 'Exam')}</p>
                         </div>
-                        <Badge variant="outline" className="text-[9px] border-orange-500/30 text-orange-500">امتحان</Badge>
+                        <Badge variant="outline" className="text-[9px] border-orange-500/30 text-orange-500">{T('امتحان', 'Exam')}</Badge>
                         <ChevronLeft className="h-3 w-3 text-muted-foreground shrink-0" />
                       </button>
                     )
@@ -371,10 +374,10 @@ function StudentPortalInner() {
             <div className="flex items-center justify-between mb-3">
               <h2 className="font-bold text-sm flex items-center gap-2">
                 <Video className="h-4 w-4 text-purple-600" />
-                الدروس ({watchedCount}/{totalVideos} اتفرجت)
+                {T('الدروس', 'Lessons')} ({watchedCount}/{totalVideos} {T('اتفرجت', 'watched')})
               </h2>
               <Button variant="link" size="sm" className="text-xs p-0 h-auto" onClick={() => setShowFullPortal(true)}>
-                بص على الكل
+                {T('بص على الكل', 'See All')}
               </Button>
             </div>
             <VideosTab videos={initialData.videos} watchedIds={initialData.watchedIds} approvedVideoIds={initialData.approvedVideoIds} studentId={studentId} grade={grade} videoProgress={initialData.videoProgress} studentStatus={currentStudent?.status} isPaidAccess={currentStudent?.isPaidAccess} studentName={currentStudent?.name || ''} studentPhone={currentStudent?.phone || ''} />
@@ -391,14 +394,14 @@ function StudentPortalInner() {
   if (!dashboardData) return null
 
   const tabs = [
-    { id: 'videos', label: 'الدروس', icon: Video },
-    { id: 'homework', label: 'الواجبات', icon: ClipboardList },
-    { id: 'exams', label: 'الامتحانات', icon: FileText },
+    { id: 'videos', label: T('الدروس', 'Lessons'), icon: Video },
+    { id: 'homework', label: T('الواجبات', 'Homework'), icon: ClipboardList },
+    { id: 'exams', label: T('الامتحانات', 'Exams'), icon: FileText },
     /* (2026-و40) الكتب والملازم — مكتبة PDF الطالب يفتحها/يحملها */
-    { id: 'books', label: 'الكتب والملازم', icon: BookOpen },
-    { id: 'announcements', label: 'التنبيهات', icon: Megaphone },
-    { id: 'discussions', label: 'المجتمع', icon: MessageSquare },
-    { id: 'complaints', label: 'الشكاوي', icon: Flag },
+    { id: 'books', label: T('الكتب والملازم', 'Books'), icon: BookOpen },
+    { id: 'announcements', label: T('التنبيهات', 'Alerts'), icon: Megaphone },
+    { id: 'discussions', label: T('المجتمع', 'Community'), icon: MessageSquare },
+    { id: 'complaints', label: T('الشكاوي', 'Complaints'), icon: Flag },
   ]
 
   return (
@@ -408,7 +411,7 @@ function StudentPortalInner() {
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" onClick={() => setShowFullPortal(false)} className="gap-1 h-11 sm:h-8 shrink-0">
             <ArrowLeft className="h-4 w-4" />
-            <span className="hidden sm:inline text-xs">رجوع</span>
+            <span className="hidden sm:inline text-xs">{T('رجوع', 'Back')}</span>
           </Button>
           <h1 className="font-bold text-sm sm:text-base truncate">{currentStudent?.name?.split(' ')[0]}</h1>
           <Badge variant="outline" className="text-[10px] hidden sm:inline-flex">{grade}</Badge>
@@ -418,7 +421,7 @@ function StudentPortalInner() {
           <NotificationsBell studentId={studentId} />
           <Button variant="ghost" size="sm" onClick={logout} className="text-destructive hover:text-destructive hover:bg-destructive/10">
             <LogOut className="h-4 w-4 ml-1" />
-            <span className="hidden sm:inline">خروج</span>
+            <span className="hidden sm:inline">{T('خروج', 'Logout')}</span>
           </Button>
         </div>
       </div>
@@ -437,7 +440,7 @@ function StudentPortalInner() {
             {tab.label}
             {/* (2026-و44) بادج رسايل جديدة فوق على القسم — طلب المستر حرفيًا */}
             {tab.id === 'discussions' && communityNewCount > 0 && (
-              <span className="ml-1 min-w-[16px] h-[16px] px-1 rounded-full bg-red-500 text-white text-[9px] font-bold inline-flex items-center justify-center">جديد</span>
+              <span className="ml-1 min-w-[16px] h-[16px] px-1 rounded-full bg-red-500 text-white text-[9px] font-bold inline-flex items-center justify-center">{T('جديد', 'New')}</span>
             )}
           </button>
         ))}

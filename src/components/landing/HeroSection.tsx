@@ -2,6 +2,7 @@
 
 import { Button } from '@/components/ui/button'
 import { useAppStore } from '@/stores/app-store'
+import { useT } from '@/lib/i18n'
 import { useEffect, useState } from 'react'
 import { Users, BookOpen, Clock, CalendarClock, LogIn, UserPlus, Sparkles } from 'lucide-react'
 
@@ -15,6 +16,7 @@ export default function HeroSection() {
   } = useAppStore()
 
   const [fallbackPhotoExists, setFallbackPhotoExists] = useState(false)
+  const T = useT()
 
   var initialCfg = (typeof window !== 'undefined' && (window as any).__INITIAL_CONFIG__) || {}
   var cfg = configLoaded ? siteConfig : (Object.keys(siteConfig).length > 0 ? siteConfig : initialCfg)
@@ -136,7 +138,7 @@ export default function HeroSection() {
                 onClick={() => setView('auth-login')}
               >
                 <LogIn className="h-5 w-5 ml-2" />
-                ادخل لحسابك دلوقتي
+                {T('ادخل لحسابك دلوقتي', 'Have an account? Log in')}
               </Button>
               <Button
                 variant="outline"
@@ -145,7 +147,7 @@ export default function HeroSection() {
                 onClick={() => setView('auth-register')}
               >
                 <UserPlus className="h-5 w-5 ml-2" />
-                اعمل حساب جديد
+                {T('اعمل حساب جديد', 'Create Account')}
               </Button>
             </div>
 
@@ -158,7 +160,7 @@ export default function HeroSection() {
                 onClick={() => window.location.href = '/schedule'}
               >
                 <CalendarClock className="h-4 w-4" />
-                مواعيد السنتر
+                {T('مواعيد السنتر', 'Center Schedule')}
               </Button>
             </div>
 
@@ -179,7 +181,7 @@ export default function HeroSection() {
                 rel="noopener noreferrer"
                 className="text-xs text-white/35 font-light tracking-wider hover:text-[#FB923C] transition-colors"
               >
-                {cfg.footer_made_by_label || 'Developed by Adham Hawash'}
+                {cfg.footer_made_by_label || 'Developed by Adam Hawash'}
               </a>
             </div>
 

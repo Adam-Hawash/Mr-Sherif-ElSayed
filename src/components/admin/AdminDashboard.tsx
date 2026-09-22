@@ -42,6 +42,8 @@ import { openPdf, renderPageToJpeg } from '@/lib/pdf-pages'
 /* (2026-و40-w) ورقة العمل: قص رسومات الأسئلة + عرض الجداول/الرسومات في المراجعة */
 import { ensureFigureUrls, isWritingQuestion } from '@/lib/question-figures'
 import BidiText from '@/components/BidiText'
+/* نظام الترجمة (عربي/إنجليزي) — تابات اللوحة والواجهة */
+import { useT } from '@/lib/i18n'
 import { WorksheetTableReadonly, WorksheetFigure, parseTableValuesFromText } from '@/components/worksheet/WorksheetParts'
 /* (2026-و40) الكتب والملازم — تاب مكتبة الكتب للطالب */
 import { BooksManager } from './BooksManager'
@@ -158,6 +160,7 @@ function ImageModal({ imageSrc, onClose }: { imageSrc: string | null; onClose: (
 
 export function AdminDashboard() {
   const { adminTab, setAdminTab, logout, currentAdmin, setCurrentAdmin } = useAppStore()
+  const T = useT()
   const [stats, setStats] = useState<Stats | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [imageModalSrc, setImageModalSrc] = useState<string | null>(null)
@@ -313,48 +316,48 @@ export function AdminDashboard() {
       <div className="mx-auto max-w-7xl">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold">لوحة التحكم | Admin Dashboard</h1>
-            <p className="text-sm text-muted-foreground mt-1">إدارة المنصة التعليمية بالكامل</p>
+            <h1 className="text-xl sm:text-2xl font-bold">{T('لوحة التحكم', 'Admin Dashboard')}</h1>
+            <p className="text-sm text-muted-foreground mt-1">{T('إدارة المنصة التعليمية بالكامل', 'Manage the full education platform')}</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={fetchStats}><RefreshCw className="h-4 w-4 ml-1" />تحديث</Button>
-            <Button variant="outline" size="sm" onClick={openSettings}><Settings className="h-4 w-4 ml-1" />الإعدادات</Button>
-            <Button variant="outline" size="sm" onClick={logout}><LogOut className="h-4 w-4 ml-1" />خروج</Button>
+            <Button variant="outline" size="sm" onClick={fetchStats}><RefreshCw className="h-4 w-4 ml-1" />{T('تحديث', 'Refresh')}</Button>
+            <Button variant="outline" size="sm" onClick={openSettings}><Settings className="h-4 w-4 ml-1" />{T('الإعدادات', 'Settings')}</Button>
+            <Button variant="outline" size="sm" onClick={logout}><LogOut className="h-4 w-4 ml-1" />{T('خروج', 'Logout')}</Button>
           </div>
         </div>
 
         {stats && (
           <div className="grid gap-4 grid-cols-2 lg:grid-cols-5 mb-6">
-            <StatCard icon={Users} label="إجمالي الطلاب" value={stats.totalStudents} color="bg-[#EA580C]/10 text-[#EA580C]" />
-            <StatCard icon={Clock} label="بانتظار الموافقة" value={stats.pendingStudents} color="bg-amber-500/10 text-amber-600 dark:text-amber-400" />
-            <StatCard icon={UserCheck} label="طلاب مفعلين" value={stats.approvedStudents} color="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" />
-            <StatCard icon={VideoIcon} label="إجمالي الفيديوهات" value={stats.totalVideos} color="bg-purple-500/10 text-purple-600 dark:text-purple-400" />
-            <StatCard icon={Wallet} label="مدفوعات معلقة" value={(stats as any).pendingPayments || 0} color="bg-amber-500/10 text-amber-600 dark:text-amber-400" />
+            <StatCard icon={Users} label={T('إجمالي الطلاب', 'Total Students')} value={stats.totalStudents} color="bg-[#EA580C]/10 text-[#EA580C]" />
+            <StatCard icon={Clock} label={T('بانتظار الموافقة', 'Pending Approval')} value={stats.pendingStudents} color="bg-amber-500/10 text-amber-600 dark:text-amber-400" />
+            <StatCard icon={UserCheck} label={T('طلاب مفعلين', 'Active Students')} value={stats.approvedStudents} color="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" />
+            <StatCard icon={VideoIcon} label={T('إجمالي الفيديوهات', 'Total Videos')} value={stats.totalVideos} color="bg-purple-500/10 text-purple-600 dark:text-purple-400" />
+            <StatCard icon={Wallet} label={T('مدفوعات معلقة', 'Pending Payments')} value={(stats as any).pendingPayments || 0} color="bg-amber-500/10 text-amber-600 dark:text-amber-400" />
           </div>
         )}
 
         <Tabs value={adminTab} onValueChange={setAdminTab} className="space-y-6">
           <TabsList className="flex flex-wrap h-auto gap-1 bg-muted/50 p-1">
-            <TabsTrigger value="students" className="text-xs sm:text-sm gap-1"><Users className="h-4 w-4" /><span className="hidden sm:inline">الطلاب</span></TabsTrigger>
+            <TabsTrigger value="students" className="text-xs sm:text-sm gap-1"><Users className="h-4 w-4" /><span className="hidden sm:inline">{T('الطلاب', 'Students')}</span></TabsTrigger>
             {/* (2026-و29) تاب المجموعات — طلب المستر: تقسيم الطلاب مجموعات بأسماء الأيام */}
-            <TabsTrigger value="groups" className="text-xs sm:text-sm gap-1"><UsersRound className="h-4 w-4" /><span className="hidden sm:inline">المجموعات</span></TabsTrigger>
-            <TabsTrigger value="my-students" className="text-xs sm:text-sm gap-1"><BarChart3 className="h-4 w-4" /><span className="hidden sm:inline">طلابي</span></TabsTrigger>
-            <TabsTrigger value="videos" className="text-xs sm:text-sm gap-1"><VideoIcon className="h-4 w-4" /><span className="hidden sm:inline">الفيديوهات</span></TabsTrigger>
-            <TabsTrigger value="homework" className="text-xs sm:text-sm gap-1"><ClipboardList className="h-4 w-4" /><span className="hidden sm:inline">الواجبات</span></TabsTrigger>
-            <TabsTrigger value="exams" className="text-xs sm:text-sm gap-1"><FileText className="h-4 w-4" /><span className="hidden sm:inline">الامتحانات</span></TabsTrigger>
+            <TabsTrigger value="groups" className="text-xs sm:text-sm gap-1"><UsersRound className="h-4 w-4" /><span className="hidden sm:inline">{T('المجموعات', 'Groups')}</span></TabsTrigger>
+            <TabsTrigger value="my-students" className="text-xs sm:text-sm gap-1"><BarChart3 className="h-4 w-4" /><span className="hidden sm:inline">{T('طلابي', 'My Students')}</span></TabsTrigger>
+            <TabsTrigger value="videos" className="text-xs sm:text-sm gap-1"><VideoIcon className="h-4 w-4" /><span className="hidden sm:inline">{T('الفيديوهات', 'Videos')}</span></TabsTrigger>
+            <TabsTrigger value="homework" className="text-xs sm:text-sm gap-1"><ClipboardList className="h-4 w-4" /><span className="hidden sm:inline">{T('الواجبات', 'Homework')}</span></TabsTrigger>
+            <TabsTrigger value="exams" className="text-xs sm:text-sm gap-1"><FileText className="h-4 w-4" /><span className="hidden sm:inline">{T('الامتحانات', 'Exams')}</span></TabsTrigger>
             {/* (2026-و38) تحليلات الأسئلة — أكتر سؤال الطلاب غلطت فيه + أساميهم — طلب المستر */}
-            <TabsTrigger value="item-analytics" className="text-xs sm:text-sm gap-1 text-violet-600 dark:text-violet-400"><PieChart className="h-4 w-4" /><span className="hidden sm:inline">تحليلات الأسئلة</span></TabsTrigger>
+            <TabsTrigger value="item-analytics" className="text-xs sm:text-sm gap-1 text-violet-600 dark:text-violet-400"><PieChart className="h-4 w-4" /><span className="hidden sm:inline">{T('تحليلات الأسئلة', 'Analytics')}</span></TabsTrigger>
             {/* (2026-و40) الكتب والملازم — مكتبة PDF الطالب يفتحها/يحملها */}
-            <TabsTrigger value="books" className="text-xs sm:text-sm gap-1 text-sky-600 dark:text-sky-400"><BookOpen className="h-4 w-4" /><span className="hidden sm:inline">الكتب والملازم</span></TabsTrigger>
-            <TabsTrigger value="announcements" className="text-xs sm:text-sm gap-1"><Megaphone className="h-4 w-4" /><span className="hidden sm:inline">الإعلانات</span></TabsTrigger>
-            <TabsTrigger value="community" className="text-xs sm:text-sm gap-1"><MessageSquare className="h-4 w-4" /><span className="hidden sm:inline">المجتمعات</span>{newCommunityCount > 0 && <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-emerald-500 text-white text-[10px] font-bold">{newCommunityCount > 99 ? '99+' : newCommunityCount}</span>}</TabsTrigger>
-            <TabsTrigger value="activity" className="text-xs sm:text-sm gap-1"><Activity className="h-4 w-4" /><span className="hidden sm:inline">المتابعة</span></TabsTrigger>
-            <TabsTrigger value="gallery" className="text-xs sm:text-sm gap-1"><Camera className="h-4 w-4" /><span className="hidden sm:inline">معرض الصور</span></TabsTrigger>
-            <TabsTrigger value="cms" className="text-xs sm:text-sm gap-1"><Settings className="h-4 w-4" /><span className="hidden sm:inline">المحتوى</span></TabsTrigger>
-            <TabsTrigger value="social" className="text-xs sm:text-sm gap-1"><Link2 className="h-4 w-4" /><span className="hidden sm:inline">الروابط</span></TabsTrigger>
-            <TabsTrigger value="payments" className="text-xs sm:text-sm gap-1 text-amber-600 dark:text-amber-400"><Wallet className="h-4 w-4" /><span className="hidden sm:inline">المدفوعات</span></TabsTrigger>
-            <TabsTrigger value="ai-extract" className="text-xs sm:text-sm gap-1 text-purple-600 dark:text-purple-400"><Sparkles className="h-4 w-4" /><span className="hidden sm:inline">استخراج AI</span></TabsTrigger>
-            <TabsTrigger value="complaints" className="text-xs sm:text-sm gap-1 text-red-600 dark:text-red-400"><Flag className="h-4 w-4" /><span className="hidden sm:inline">الشكاوي</span>{newComplaints > 0 && <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold">{newComplaints}</span>}</TabsTrigger>
+            <TabsTrigger value="books" className="text-xs sm:text-sm gap-1 text-sky-600 dark:text-sky-400"><BookOpen className="h-4 w-4" /><span className="hidden sm:inline">{T('الكتب والملازم', 'Books')}</span></TabsTrigger>
+            <TabsTrigger value="announcements" className="text-xs sm:text-sm gap-1"><Megaphone className="h-4 w-4" /><span className="hidden sm:inline">{T('الإعلانات', 'Announcements')}</span></TabsTrigger>
+            <TabsTrigger value="community" className="text-xs sm:text-sm gap-1"><MessageSquare className="h-4 w-4" /><span className="hidden sm:inline">{T('المجتمعات', 'Communities')}</span>{newCommunityCount > 0 && <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-emerald-500 text-white text-[10px] font-bold">{newCommunityCount > 99 ? '99+' : newCommunityCount}</span>}</TabsTrigger>
+            <TabsTrigger value="activity" className="text-xs sm:text-sm gap-1"><Activity className="h-4 w-4" /><span className="hidden sm:inline">{T('المتابعة', 'Activity')}</span></TabsTrigger>
+            <TabsTrigger value="gallery" className="text-xs sm:text-sm gap-1"><Camera className="h-4 w-4" /><span className="hidden sm:inline">{T('معرض الصور', 'Gallery')}</span></TabsTrigger>
+            <TabsTrigger value="cms" className="text-xs sm:text-sm gap-1"><Settings className="h-4 w-4" /><span className="hidden sm:inline">{T('المحتوى', 'Content')}</span></TabsTrigger>
+            <TabsTrigger value="social" className="text-xs sm:text-sm gap-1"><Link2 className="h-4 w-4" /><span className="hidden sm:inline">{T('الروابط', 'Links')}</span></TabsTrigger>
+            <TabsTrigger value="payments" className="text-xs sm:text-sm gap-1 text-amber-600 dark:text-amber-400"><Wallet className="h-4 w-4" /><span className="hidden sm:inline">{T('المدفوعات', 'Payments')}</span></TabsTrigger>
+            <TabsTrigger value="ai-extract" className="text-xs sm:text-sm gap-1 text-purple-600 dark:text-purple-400"><Sparkles className="h-4 w-4" /><span className="hidden sm:inline">{T('استخراج AI', 'AI Extract')}</span></TabsTrigger>
+            <TabsTrigger value="complaints" className="text-xs sm:text-sm gap-1 text-red-600 dark:text-red-400"><Flag className="h-4 w-4" /><span className="hidden sm:inline">{T('الشكاوي', 'Complaints')}</span>{newComplaints > 0 && <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold">{newComplaints}</span>}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="students"><StudentsManager onStatsRefresh={fetchStats} onViewImage={setImageModalSrc} /></TabsContent>
@@ -453,7 +456,7 @@ export function AdminDashboard() {
                       </Button>
                     </div>
                     <Input value={heroDevUrl} onChange={(e) => setHeroDevUrl(e.target.value)} placeholder="https://hero-developer-portfolio-11.vercel.app" dir="ltr" type="url" className="font-mono text-xs" />
-                    <p className="text-[10px] text-muted-foreground">الرابط يظهر في الهيدر (Hero Developer) والفوتر (Developed by Adham Hawash). غيّره في أي وقت وبيتنعكس فوراً.</p>
+                    <p className="text-[10px] text-muted-foreground">الرابط يظهر في الهيدر (Hero Developer) والفوتر (Developed by Adam Hawash). غيّره في أي وقت وبيتنعكس فوراً.</p>
                   </div>
                   {/* Payment Numbers */}
                   <div className="border-t pt-4 space-y-3">
