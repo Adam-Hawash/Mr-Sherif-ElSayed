@@ -131,45 +131,22 @@ var DEFAULTS = {
 
 export async function GET() {
   try {
-    /* إعادة ضبط لمرة واحدة (favicon_reset_v1): أي قيمة favicon_url قديمة
-       مخزنة بتتشال — عشان أيقونة التبويب تبقى صورة المستر الرسمية (/favicon.png
-       = البرواز الدهبي) زي ما المستر طلب حرفيًا. الأدمن بعدها يقدر يغيرها
-       عادي من لوحة التحكم (هتتخزن من جديد لو غيّرها). */
-    try {
-      var flag = await db.siteConfig.findUnique({ where: { key: 'favicon_reset_v1' } })
-      if (!flag) {
-        await db.siteConfig.deleteMany({ where: { key: 'favicon_url' } })
-        await db.siteConfig.upsert({
-          where: { key: 'favicon_reset_v1' },
-          update: { value: '1', updatedAt: new Date() },
-          create: { key: 'favicon_reset_v1', value: '1' },
-        })
-      }
-    } catch (e) {}
-
     var configs = await db.siteConfig.findMany()
     var map = Object.assign({}, DEFAULTS)
     for (var i = 0; i < configs.length; i++) {
       var c = configs[i]
+      /* مفتاح بصمة ترميم قديم (favicon_reset_v1) مش من الكونفج — بيتساب بره الرد */
       if (c.key === 'favicon_reset_v1') continue
       map[c.key] = c.value
     }
-    /* (و41) توقيع المطور: القيمة القديمة الافتراضية «Made by Adham Hawash» المحفوظة
-       في الداتابيز كانت بتتجاوز الافتراضي الجديد — بتتعامل هنا كغير مضبوطة وترجع
-       «Developed by Adam Hawash» (الأدمن برضه يقدر يعدّلها عادي من لوحة التحكم) */
-    if (map.footer_made_by_label === 'Made by Adham Hawash') {
-      map.footer_made_by_label = DEFAULTS.footer_made_by_label
-    }
-    /* تصحيح إملائي لاسم المطور: القيم المخزنة القديمة فيها «Adham Hawash»
-       والاسم الصحيح «Adam Hawash» — بيتصحح هنا عند القراءة (replace-all)،
-       والإصلاح الدائم في الداتابيز بيحصل من ترحيلة ensure-schema (SCHEMA_FIXES) */
-    var NAME_FIX_KEYS = ['footer_made_by_label', 'footer_made_by_label_en', 'hero_developer_label', 'hero_developer_label_en']
-    for (var ni = 0; ni < NAME_FIX_KEYS.length; ni++) {
-      var nv = map[NAME_FIX_KEYS[ni]]
-      if (typeof nv === 'string' && nv.indexOf('Adham Hawash') !== -1) {
-        map[NAME_FIX_KEYS[ni]] = nv.split('Adham Hawash').join('Adam Hawash')
-      }
-    }
+    /* (و80) إصلاح جذري لعلة «عدّل حاجة في الأدمن وبعد الـ reload بترجع زي ما كانت»:
+     * القراءة هنا بقت **زي ما هي من قاعدة البيانات من غير أي تعديل أو تصحيح مفروض** —
+     * مفيش: إعادة ضبط favicon وقت القراءة، ولا إجبار قيمة التوقيع القديمة
+     * «Made by Adham Hawash» على الافتراضي، ولا تصحيح Adham→Adam على القراءة —
+     * كل التصحيحات دي اتعملت مرة واحدة في ترحيلات ensure-schema على قاعدة البيانات
+     * نفسها، فمش محتاجين نكررها هنا. التكرار على القراءة كان بيلغي أي تعديل
+     * يعمله الأدمن فورًا فيظهرله إن «التغييرات بترجع» رغم إنها متخزنة فعلًا.
+     * أي تعديل من الأدمن دلوقتي بيتخزن وبيترجع زي ما هو. */
     return NextResponse.json(map)
   } catch (error) {
     console.error('Config fetch error:', error)

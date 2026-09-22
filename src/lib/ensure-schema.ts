@@ -121,15 +121,16 @@ var SCHEMA_FIXES = [
   'UPDATE Student SET creationDeviceFp = \'\' WHERE creationDeviceFp IS NULL',
   'UPDATE Student SET deviceTraits = \'\' WHERE deviceTraits IS NULL',
   'UPDATE Student SET deviceType = \'\' WHERE deviceType IS NULL',
-  // ===== ترحيل اسم المنصة بالإنجليزي (لمرة واحدة — idempotent) =====
-  // المستر طلب اسم "Mr. Sherif ElSayed" بالإنجليزي في كل أماكن الهوية —
-  // الترحيل ده يصحح القيم المخزنة في SiteConfig من النشر الأول بدون ما يلمس
-  // أي قيمة الأدمن كتبها بعدها بمفتاح تاني.
-  "UPDATE SiteConfig SET value = 'Mr. Sherif ElSayed' WHERE key IN ('navbar_brand', 'hero_title_line1', 'footer_brand', 'schedule_brand', 'instructor_name_en') AND (value LIKE '%مستر شريف%' OR value LIKE '%منصة مستر%' OR value = 'MR. Sherif ElSayed')",
-  "UPDATE SiteConfig SET value = 'جميع الحقوق محفوظة — Mr. Sherif ElSayed' WHERE key = 'footer_copyright' AND (value LIKE '%مستر شريف%' OR value LIKE '%منصة مستر%')",
+  // ===== (و80) شيل ترحيلات القيم الإجبارية على SiteConfig (اسم المنصة/حقوق الفوتر) =====
+  // كانت بتفرض نصًا محددًا في مفاتيح البراند كل ما بصمة السكيما تتغير (كل نشر)
+  // فبتلغي أي تعديل يعمله الأدمن من لوحة التحكم — وده سبب «التغييرات بترجع بعد
+  // الـ reload». التصحيحات القديمة اتنفذت فعلًا على قاعدة الإنتاج من النشرات السابقة
+  // فمش محتاجين نكررها — والقراءة في /api/config بقت ترجع قيم الداتابيز زي ما هي.
   // ===== تصحيح إملائي لاسم المطور «Adham Hawash» → «Adam Hawash» (idempotent) =====
   // المفاتيح المتأثرة (footer_made_by_label / hero_developer_label وغيرها)
-  // بتتصحح نهائيًا في الداتابيز — وGET /api/config بيعمل نفس التصحيح عند القراءة.
+  // بتتصحح نهائيًا في الداتابيز — والقراءة في /api/config بترجع القيم زي ما هي.
+  // التصحيح ده بيشتغل بس على القيم القديمة اللي فيها التهجئة الغلط «Adham» —
+  // التهجئة الصحيحة «Adam Hawash» (أو أي تعديل للأدمن) مش بتتلمس خالص.
   "UPDATE SiteConfig SET value = REPLACE(value, 'Adham Hawash', 'Adam Hawash') WHERE (key LIKE '%made_by%' OR key LIKE '%developer_label%') AND value LIKE '%Adham Hawash%'",
   // ===== ترحيل لمرة واحدة (idempotent) =====
   // الحسابات الموجودة اللي ملهاش ربط إنشاء: نثبّت الربط الحالي كـ"جهاز إنشاء"
