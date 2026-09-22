@@ -1,6 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { pruneStudentActivity } from '@/lib/auto-clean'
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,6 +23,9 @@ export async function POST(request: NextRequest) {
     await db.studentActivity.create({
       data: { studentId, action: 'login', details: `Login #${student.loginCount}` },
     })
+
+    /* (2026-و86) التنظيف التلقائي: النشاط النهارده بس (كل يوم بيومه) + حد 20/طالب */
+    try { await pruneStudentActivity() } catch (e) {}
 
     return NextResponse.json({ message: 'Login tracked', student })
   } catch (error) {

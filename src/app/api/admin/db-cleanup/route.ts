@@ -95,6 +95,23 @@ export async function POST(request: NextRequest) {
       totalDeleted += deleted
     }
 
+    // ===== (2026-و86) ملفات حلول واجبات أقدم من أسبوع — طلب المستر «تفضية
+    // المساحات»: ملفات الطلاب المرفوعة بتراكم سريعًا فبتعيش أسبوع للمذاكرة
+    // والتقييم وبعدها بتنضف تلقائيًا من auto-clean، والقاعدة دي للمخزون
+    // القديم من الأدمن. الدرجات (HomeworkResult) مش بتتلمس خالص.
+    try {
+      var hwCut = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+      var hwCount = await db.media.count({ where: { category: 'homework-answers', createdAt: { lt: hwCut } } })
+      var hwDeleted = 0
+      if (!dryRun && hwCount > 0) {
+        var hwRes = await db.media.deleteMany({ where: { category: 'homework-answers', createdAt: { lt: hwCut } } })
+        hwDeleted = hwRes.count || 0
+      }
+      results.push({ table: 'Media (حلول واجبات أقدم من أسبوع)', found: hwCount, deleted: hwDeleted })
+    } catch (e: any) {
+      results.push({ table: 'Media (حلول واجبات أقدم من أسبوع)', found: 0, deleted: 0, error: String((e && e.message) || e).slice(0, 200) })
+    }
+
     /* ===== تذاكر التشغيل المنتهية (expiresAt < دلوقتي) =====
        مقارنة التواريخ في JS مش في SQL — تخزين DateTime بيتفاوت بين
        CURRENT_TIMESTAMP و ISO، والـ JS بيفهم الاتنين صح. */
