@@ -20,7 +20,8 @@ import {
   Link2, Activity, Eye, ImagePlus, Trophy, UserX, Camera,
   PlayCircle, Pause, Film, Search, FileDown, PictureInPicture2, Save, Sparkles, Wallet,
   Video as VideoIcon, LinkIcon,
-  ChevronLeft, CheckCircle2, Smartphone, RotateCcw, ShieldCheck, Monitor, Tablet, Flag, GraduationCap, UsersRound, PieChart, BookOpen, ChevronDown
+  ChevronLeft, CheckCircle2, Smartphone, RotateCcw, ShieldCheck, Monitor, Tablet, Flag, GraduationCap, UsersRound, PieChart, BookOpen, ChevronDown,
+  MessageCircle, Database
 } from 'lucide-react'
 import { AdminComplaints } from './AdminComplaints'
 import { CMSPanel } from './CMSPanel'
@@ -47,6 +48,9 @@ import { useT } from '@/lib/i18n'
 import { WorksheetTableReadonly, WorksheetFigure, parseTableValuesFromText } from '@/components/worksheet/WorksheetParts'
 /* (2026-و40) الكتب والملازم — تاب مكتبة الكتب للطالب */
 import { BooksManager } from './BooksManager'
+/* (و81) رسالة واتساب لولي الأمر — منقولة 1:1 من Maths-Genius (المودال مشترك
+   بين إدارة الطلاب وطلابي — الحل المجاني wa.me + إرسال اختياري عبر المنصة) */
+import { WhatsAppParentDialog } from './WhatsAppParentDialog'
 import { useState, useEffect, useRef, Fragment } from 'react'
 import Image from 'next/image'
 import { toast } from 'sonner'
@@ -177,6 +181,10 @@ export function AdminDashboard() {
   const [instapay, setInstapay] = useState('')
   const [fawry, setFawry] = useState('')
   const [paymentSaving, setPaymentSaving] = useState(false)
+  /* (و81) أداة تنظيف قاعدة البيانات — فحص/حذف البيانات اليتيمة + ضغط VACUUM */
+  const [cleanupBusy, setCleanupBusy] = useState<'' | 'check' | 'delete' | 'vacuum'>('')
+  const [cleanupResults, setCleanupResults] = useState<Array<{ table: string; found: number; deleted: number; error?: string }> | null>(null)
+  const [cleanupSummary, setCleanupSummary] = useState('')
   // عداد الشكاوى الجديدة — بيدور كل دقيقة عشان المستر يشوف الشكاوى أول بأول
   const [newComplaints, setNewComplaints] = useState(0)
   useEffect(function () {
@@ -309,6 +317,47 @@ export function AdminDashboard() {
       }
     } catch { toast.error('خطأ في الاتصال') }
     setSettingsSaving(false)
+  }
+
+  /* ===== (و81) تنظيف قاعدة البيانات =====
+     dryRun=true → فحص بالعدّ بس. dryRun=false → حذف نهائي لليتامى.
+     vacuum=1 → ضغط القاعدة بعد العدّ (بدون حذف). */
+  const runDbCleanup = async (mode: 'check' | 'delete' | 'vacuum') => {
+    if (cleanupBusy) return
+    if (mode === 'delete' && !window.confirm('هيتمسح نهائيًا كل الصفوف اليتيمة (نتايج طلاب اتحذفوا، فيديوهات وامتحانات وواجبات اتمسحت، تذاكر منتهية...). العملية دي ما بتتراجعش — متأكد؟')) return
+    if (mode === 'vacuum' && !window.confirm('ضغط قاعدة البيانات (VACUUM) ممكن ياخد وقت قصير — متأكد؟')) return
+    setCleanupBusy(mode)
+    setCleanupSummary('')
+    setCleanupResults(null)
+    try {
+      var qs = mode === 'vacuum' ? '?vacuum=1' : ''
+      var res = await fetch('/api/admin/db-cleanup' + qs, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminId: currentAdmin?.id || '', dryRun: mode !== 'delete' }),
+      })
+      var d = await res.json()
+      if (!res.ok || !d || !d.ok) {
+        toast.error((d && d.error) || 'فشل فحص قاعدة البيانات')
+        setCleanupBusy('')
+        return
+      }
+      setCleanupResults(d.results || [])
+      if (mode === 'check') {
+        setCleanupSummary('الفحص لقى ' + Number(d.totalFound || 0) + ' صف يتيم (مفيش حاجة اتمسحت)')
+        toast.info('الفحص خلص — لقى ' + Number(d.totalFound || 0) + ' صف يتيم')
+      } else if (mode === 'delete') {
+        setCleanupSummary('اتمسح نهائيًا ' + Number(d.totalDeleted || 0) + ' صف يتيم')
+        toast.success('تم حذف ' + Number(d.totalDeleted || 0) + ' صف يتيم نهائيًا')
+      } else {
+        setCleanupSummary(d.vacuum === 'ok' ? 'تم ضغط القاعدة (VACUUM) بنجاح — والفحص لقى ' + Number(d.totalFound || 0) + ' صف يتيم' : 'الضغط ما نجحش على القاعدة دي (' + String(d.vacuum || '') + ')')
+        if (d.vacuum === 'ok') toast.success('تم ضغط قاعدة البيانات (VACUUM)')
+        else toast.error('VACUUM ما نجحش — ' + String(d.vacuum || ''))
+      }
+    } catch (e) {
+      toast.error('خطأ في الاتصال')
+    }
+    setCleanupBusy('')
   }
 
   return (
@@ -488,6 +537,43 @@ export function AdminDashboard() {
                       {paymentSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
                     </Button>
                   </div>
+                  {/* (و81) تنظيف قاعدة البيانات — البيانات اليتيمة بتتلم بس وتتحذف نهائيًا من هنا */}
+                  <div className="border-t pt-4 space-y-3">
+                    <div className="flex items-center gap-1.5">
+                      <Database className="h-3.5 w-3.5 text-amber-600" />
+                      <p className="text-xs font-semibold text-muted-foreground">تنظيف قاعدة البيانات</p>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground leading-relaxed">بتلم الصفوف اللي بقت من غير أصل — نتايج طلاب اتحذفوا، فيديوهات/امتحانات/واجبات اتمسحت ودرجاتها فضلت، تذاكر تشغيل منتهية، وأولياء أمور لطلاب محذوفين — ودي اللي بتعمل تضخم في القاعدة مع الوقت.</p>
+                    <div className="flex gap-2 flex-wrap">
+                      <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => runDbCleanup('check')} disabled={!!cleanupBusy}>
+                        {cleanupBusy === 'check' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+                        فحص (بدون حذف)
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-8 text-xs border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20" onClick={() => runDbCleanup('delete')} disabled={!!cleanupBusy}>
+                        {cleanupBusy === 'delete' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                        حذف البيانات اليتيمة نهائيًا
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => runDbCleanup('vacuum')} disabled={!!cleanupBusy}>
+                        {cleanupBusy === 'vacuum' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Database className="h-3.5 w-3.5" />}
+                        ضغط قاعدة البيانات (VACUUM)
+                      </Button>
+                    </div>
+                    {cleanupSummary && <p className="text-[11px] font-medium text-foreground">{cleanupSummary}</p>}
+                    {cleanupResults && cleanupResults.length > 0 && (
+                      <div className="max-h-[160px] overflow-y-auto custom-scrollbar rounded-md border p-2 space-y-0.5">
+                        {cleanupResults.map(function (r, i) {
+                          return (
+                            <div key={i} className="flex items-center justify-between text-[10px]">
+                              <span className="text-muted-foreground">{r.table}</span>
+                              <span className={r.found > 0 ? 'font-bold text-foreground' : 'text-muted-foreground'} dir="ltr">
+                                {r.found > 0 ? (r.deleted > 0 ? r.found + ' → ' + (r.found - r.deleted) : String(r.found)) : '0'}{r.error ? ' ⚠️' : ''}
+                              </span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
                   <div className="flex gap-2 pt-2">
                     <Button onClick={saveSettings} disabled={settingsSaving || !settingsOldPass} className="flex-1">
                       {settingsSaving ? <Loader2 className="h-4 w-4 ml-1 animate-spin" /> : <Save className="h-4 w-4 ml-1" />}
@@ -528,6 +614,9 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null)
   const [studentProgress, setStudentProgress] = useState<any>(null)
   const [loadingProgress, setLoadingProgress] = useState(false)
+  /* (و81) رسالة واتساب لولي الأمر — المودال المشترك بيسحب نتايج الطالب
+     من /api/admin/reports?type=student وبيملأ القالب بالبلايسهولدرز */
+  const [waFor, setWaFor] = useState<Student | null>(null)
 
   const loadStudents = async (showLoader = true) => {
     if (showLoader) setLoading(true)
@@ -750,6 +839,11 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
                   <Button size="icon" variant="ghost" className="h-8 w-8 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20" onClick={() => loadStudentProgress(s.id)} title="تفاصيل"><BarChart3 className="h-4 w-4" /></Button>
+                  {/* (و81) رسالة واتساب لولي الأمر — نتايج الامتحانات والواجبات ونسبة المشاهدة في رسالة قابلة للتعديل */}
+                  <Button size="sm" variant="outline" className="h-8 px-2.5 text-xs gap-1 border-green-500 text-green-700 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/20" onClick={() => setWaFor(s)} title="رسالة واتساب لولي الأمر بنتايج الامتحانات والواجبات ونسبة المشاهدة">
+                    <MessageCircle className="h-3.5 w-3.5" />
+                    رسالة لولي الأمر
+                  </Button>
                   {/* فك الربط — التحكم الوحيد: بعد الفك أول جهاز يدخل بيبقى جهاز الحساب للأبد */}
                   {((s as any).deviceId || (s as any).creationDeviceId) && (s as any).allowAllDevices !== true && (
                     <Button size="sm" variant="outline" className="h-8 px-2.5 text-xs border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-900/20 dark:text-amber-400" onClick={() => handleUnbind(s.id)} title="فك ربط الجهاز — أول جهاز يسجل دخول بعد كده هيبقى هو جهاز الحساب الجديد للأبد"><RotateCcw className="h-3.5 w-3.5" />فك الربط</Button>
@@ -781,6 +875,8 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
           </div>
         )}
       </CardContent>
+      {/* (و81) رسالة واتساب لولي الأمر — نص جاهز قابل للتعديل + إرسال أو نسخ */}
+      <WhatsAppParentDialog student={waFor} onOpenChange={(v) => { if (!v) setWaFor(null) }} />
     </Card>
   )
 }
@@ -2509,6 +2605,8 @@ function MyStudentsPanel({ onViewImage }: { onViewImage?: (src: string) => void 
   const [summary, setSummary] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [selectedStudent, setSelectedStudent] = useState<StudentAnalytics | null>(null)
+  /* (و81) رسالة واتساب لولي الأمر — نفس مودال إدارة الطلاب بالظبط */
+  const [waFor, setWaFor] = useState<StudentAnalytics | null>(null)
   const [detail, setDetail] = useState<any>(null)
   const [loadingDetail, setLoadingDetail] = useState(false)
   /* 2026-و23 — خانة بحث الطلاب بالاسم أو الرقم (طلب المستر الحرفي:
@@ -2709,6 +2807,7 @@ function MyStudentsPanel({ onViewImage }: { onViewImage?: (src: string) => void 
                     <th className="text-center py-2 px-1 font-medium">النشاط</th>
                     <th className="text-center py-2 px-1 font-medium">آخر دخول</th>
                     <th className="text-center py-2 px-1 font-medium">تفاصيل</th>
+                    <th className="text-center py-2 px-1 font-medium">ولي الأمر</th>
                   </tr></thead>
                   <tbody>
                     {filteredStudents.map((s) => (
@@ -2741,6 +2840,10 @@ function MyStudentsPanel({ onViewImage }: { onViewImage?: (src: string) => void 
                         <td className="text-center py-2 px-1">
                           <Button size="icon" variant="ghost" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); loadDetail(s.id) }}><Eye className="h-3.5 w-3.5" /></Button>
                         </td>
+                        {/* (و81) رسالة واتساب لولي الأمر — من صف تحليلات «طلابي» كمان */}
+                        <td className="text-center py-2 px-1">
+                          <Button size="icon" variant="ghost" className="h-7 w-7 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20" onClick={(e) => { e.stopPropagation(); setWaFor(s) }} title="رسالة واتساب لولي الأمر بنتايج الامتحانات والواجبات ونسبة المشاهدة"><MessageCircle className="h-3.5 w-3.5" /></Button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -2750,6 +2853,9 @@ function MyStudentsPanel({ onViewImage }: { onViewImage?: (src: string) => void 
           )}
         </CardContent>
       </Card>
+
+      {/* (و81) مودال رسالة واتساب لولي الأمر — مشترك مع إدارة الطلاب */}
+      <WhatsAppParentDialog student={waFor} onOpenChange={(v) => { if (!v) setWaFor(null) }} />
 
       {/* Student Detail Panel */}
       {selectedStudent && (

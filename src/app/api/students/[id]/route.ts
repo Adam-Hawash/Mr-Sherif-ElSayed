@@ -133,9 +133,45 @@ export async function DELETE(
       return NextResponse.json({ error: 'Student not found' }, { status: 404 })
     }
 
+    /* ============================================================
+       (و81) حذف متسلسل — سبب تضخم قاعدة البيانات الجذري كان إن الطالب
+       بيتحذف وكل صفوفه بتفضل يتيمة للأبد (نتايج/تقدم/إشعارات/تذاكر...).
+       الفورين كيز مش مفروضة على داتابيز الإنتاج (اتعملت بـ raw SQL) فبنمسح
+       يدويًا من كل جدول مفتاحه studentId — كل جدول في try/catch لوحده
+       عشان فشل واحد ما يمنعش باقي التنضيف ولا حذف الطالب نفسه.
+       ============================================================ */
+    var cascadeCleanup: Array<[string, () => Promise<any>]> = [
+      ['StudentActivity', () => db.studentActivity.deleteMany({ where: { studentId: id } })],
+      ['ExamResult', () => db.examResult.deleteMany({ where: { studentId: id } })],
+      ['HomeworkResult', () => db.homeworkResult.deleteMany({ where: { studentId: id } })],
+      ['VideoProgress', () => db.videoProgress.deleteMany({ where: { studentId: id } })],
+      ['VideoAccess', () => db.videoAccess.deleteMany({ where: { studentId: id } })],
+      ['Notification', () => db.notification.deleteMany({ where: { studentId: id } })],
+      ['PlayTicket', () => db.playTicket.deleteMany({ where: { studentId: id } })],
+      ['Payment', () => db.payment.deleteMany({ where: { studentId: id } })],
+      ['Discussion', () => db.discussion.deleteMany({ where: { studentId: id } })],
+      ['Complaint', () => db.complaint.deleteMany({ where: { studentId: id } })],
+      /* ولي الأمر المرتبط بحساب الابن + روابط الأبوة (ParentStudent) —
+         وروابط الأبوة بتاعة أولياء الأمور دول كمان عشان ما يبقاش لليتامى */
+      ['ParentStudent', () => db.$executeRawUnsafe('DELETE FROM ParentStudent WHERE studentId = ? OR parentId IN (SELECT id FROM Parent WHERE studentId = ?)', id, id)],
+      ['Parent', () => db.parent.deleteMany({ where: { studentId: id } })],
+    ]
+    var cleaned: Record<string, number> = {}
+    for (var ci = 0; ci < cascadeCleanup.length; ci++) {
+      var tableName = cascadeCleanup[ci][0]
+      try {
+        var cnt = await cascadeCleanup[ci][1]()
+        cleaned[tableName] = typeof cnt === 'number' ? cnt : Number((cnt && cnt.count) || 0)
+      } catch (e: any) {
+        /* الجدول ممكن يكون مش موجود على قاعدة قديمة — بنكمل التنضيف عادي */
+        console.error('Student cascade cleanup failed for ' + tableName + ':', (e && e.message) || e)
+      }
+    }
+
+    /* صف الطالب نفسه لازم يتحذف في الآخر مهما حصل */
     await db.student.delete({ where: { id } })
 
-    return NextResponse.json({ message: 'Student deleted' })
+    return NextResponse.json({ message: 'Student deleted', cleaned })
   } catch (error) {
     console.error('Student delete error:', error)
     return NextResponse.json({ error: 'Failed to delete student' }, { status: 500 })
