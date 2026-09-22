@@ -96,10 +96,22 @@ export async function DELETE(
       return NextResponse.json({ error: "غير مسموح" }, { status: 401 });
     }
 
-    try {
-      await db.videoAccess.deleteMany({ where: { videoId: id } });
-      await db.videoProgress.deleteMany({ where: { videoId: id } });
-    } catch (e) {}
+    /* (و81) حذف متسلسل — كل الجداول المفتاحها videoId: من غيرها بتفضل
+       صفوف يتيمة للأبد (تقدم مشاهدة/صلاحيات/جدولة مجموعات/تذاكر تشغيل).
+       كل جدول في try/catch لوحده عشان التنضيف ما يبقاش سبب فشل الحذف. */
+    var videoCleanup: Array<[string, () => Promise<any>]> = [
+      ["VideoAccess", () => db.videoAccess.deleteMany({ where: { videoId: id } })],
+      ["VideoProgress", () => db.videoProgress.deleteMany({ where: { videoId: id } })],
+      ["VideoGroupSchedule", () => db.$executeRawUnsafe("DELETE FROM VideoGroupSchedule WHERE videoId = ?", id)],
+      ["PlayTicket", () => db.playTicket.deleteMany({ where: { videoId: id } })],
+    ];
+    for (var vi = 0; vi < videoCleanup.length; vi++) {
+      try {
+        await videoCleanup[vi][1]();
+      } catch (e: any) {
+        console.error("Video cascade cleanup failed for " + videoCleanup[vi][0] + ":", (e && e.message) || e);
+      }
+    }
     await db.video.delete({ where: { id } });
     return NextResponse.json({ success: true, message: "تم حذف الفيديو بنجاح" });
   } catch (error: any) {
