@@ -3,8 +3,6 @@
 // (2026-و40) إدارة الكتب والملازم — تاب «الكتب والملازم» في لوحة الأدمن.
 // الرفع نفسه بيتم من الكلينت بـ chunkedUpload('/api/upload/chunk' → Media)
 // وبعدها بنسجل صف Book فيه filePath = /api/files/<mediaId>.
-// (و43) وضع اللينك الخارجي: الكتاب الكبير (200MB+) مش بيتخزن في قاعدة
-// البيانات خالص — بنسجل sourceUrl بس والطالب بيحمل منه مباشرة.
 // DELETE بيشيل صف Book **و** صف Media اللي شايل الملف نفسه (لو لسه موجود).
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -22,9 +20,15 @@ function ensureBookTable() {
   if (!_bookTableReady) {
     _bookTableReady = (async function () {
       try {
-        await db.$executeRawUnsafe("CREATE TABLE IF NOT EXISTS Book (id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', filePath TEXT NOT NULL DEFAULT '', sourceUrl TEXT NOT NULL DEFAULT '', fileName TEXT NOT NULL DEFAULT '', fileType TEXT NOT NULL DEFAULT 'application/pdf', sizeBytes INTEGER NOT NULL DEFAULT 0, grade TEXT NOT NULL DEFAULT '', createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL)")
-        /* (و43) ترميم دفاعي للقواعد القديمة: عمود sourceUrl الناقص بيتضاف فورًا */
-        try { await db.$executeRawUnsafe("ALTER TABLE Book ADD COLUMN sourceUrl TEXT NOT NULL DEFAULT ''") } catch (e2) {}
+        await db.$executeRawUnsafe("CREATE TABLE IF NOT EXISTS Book (id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', filePath TEXT NOT NULL DEFAULT '', fileName TEXT NOT NULL DEFAULT '', sourceUrl TEXT NOT NULL DEFAULT '', fileType TEXT NOT NULL DEFAULT 'application/pdf', sizeBytes INTEGER NOT NULL DEFAULT 0, grade TEXT NOT NULL DEFAULT '', createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL)")
+      } catch (e) {}
+      /* (و43) قواعد قديمة اتعملت من غير sourceUrl — ALTER متسامح (بيفشل بصمت لو موجود) */
+      try {
+        await db.$executeRawUnsafe("ALTER TABLE Book ADD COLUMN sourceUrl TEXT NOT NULL DEFAULT ''")
+      } catch (e) {}
+      /* (2026-و79) تصنيف الكتاب: واجب / أسئلة / الاتنين — طلب المستر الحرفي */
+      try {
+        await db.$executeRawUnsafe("ALTER TABLE Book ADD COLUMN usage TEXT NOT NULL DEFAULT 'both'")
       } catch (e) {}
     })()
   }
@@ -48,6 +52,18 @@ export async function GET(request: NextRequest) {
   }
 }
 
+/* (و43) تحويل لينكات جوجل درايف للمشاركة إلى تحميل مباشر (direct download):
+   file/d/<id> أو open?id=<id> أو docs document/d/<id> → uc?export=download&id=<id> */
+function normalizeBookSourceUrl(raw: string): string | null {
+  var url = String(raw || '').trim()
+  if (!/^https?:\/\//i.test(url)) return null
+  var m = url.match(/drive\.google\.com\/file\/d\/([\w-]+)/)
+        || url.match(/drive\.google\.com\/open\?id=([\w-]+)/)
+        || url.match(/docs\.google\.com\/document\/d\/([\w-]+)/)
+  if (m && m[1]) return 'https://drive.google.com/uc?export=download&id=' + m[1]
+  return url
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -58,24 +74,46 @@ export async function POST(request: NextRequest) {
     }
     await ensureBookTable()
     const body = await request.json()
-    const { title, description, filePath, fileName, fileType, sizeBytes, grade, sourceUrl } = body || {}
+    /* (2026-و79) usage: واجب (homework) / أسئلة (questions) / الاتنين (both) */
+    const { title, description, filePath, fileName, fileType, sizeBytes, grade } = body || {}
+    var usageRaw = String((body && body.usage) || 'both')
+    var usage = usageRaw === 'homework' || usageRaw === 'questions' ? usageRaw : 'both'
 
     if (!title || !String(title).trim()) {
       return NextResponse.json({ error: 'العنوان مطلوب' }, { status: 400 })
     }
-    /* (و43) وضع اللينك الخارجي: sourceUrl صالح (http/https) بيكفي لوحده —
-       لينكات جوجل درايف بيتحولوا لتحميل مباشر، والمسار الخام بيفضل شغال
-       زي ما هو للملفات المرفوعة */
-    var link = String(sourceUrl || '').trim()
-    if (link) {
-      if (!/^https?:\/\//i.test(link)) {
-        return NextResponse.json({ error: 'لينك الكتاب لازم يبدأ بـ http:// أو https://' }, { status: 400 })
+
+    /* (و43) وضع اللينك الخارجي: sourceUrl موجود → من غير رفع ملف خالص
+       (الكتب الكبيرة 200MB+ مش بتتخزن في قاعدة البيانات — بنحفظ اللينك بس) */
+    var sourceUrlRaw = body && body.sourceUrl ? String(body.sourceUrl) : ''
+    if (sourceUrlRaw.trim()) {
+      var sourceUrl = normalizeBookSourceUrl(sourceUrlRaw)
+      if (!sourceUrl) {
+        return NextResponse.json({ error: 'اللينك غير صالح — لازم يبدأ بـ http:// أو https://' }, { status: 400 })
       }
-      var drv = link.match(/drive\.google\.com\/file\/d\/([\w-]+)/) || link.match(/drive\.google\.com\/open\?id=([\w-]+)/)
-      if (drv && drv[1]) link = 'https://drive.google.com/uc?export=download&id=' + drv[1]
+      const linkBook = await safeWrite(function () {
+        return db.book.create({
+          data: {
+            title: String(title).trim(),
+            description: String(description || ''),
+            filePath: '',
+            fileName: '',
+            sourceUrl: sourceUrl,
+            fileType: 'application/pdf',
+            sizeBytes: 0,
+            grade: String(grade || ''),
+            usage: usage,
+          },
+        })
+      })
+      /* (و44) إشعار للطلاب: كتاب جديد اتضاف */
+      /* (و45) await — الإشعار بيتكتب قبل الرد */
+      try { await notifyStudents({ grade: String(grade || ''), type: 'book', title: '📕 كتاب جديد اتضاف: ' + String(title).trim(), body: String(description || '').slice(0, 200) || 'تقدر تفتحه أو تحمله من تاب الكتب والملازم' }) } catch (nE) {}
+      return NextResponse.json({ message: 'تم إضافة الكتاب باللينك الخارجي', book: linkBook }, { status: 201 })
     }
-    if (!link && (!filePath || String(filePath).indexOf('/api/files/') !== 0)) {
-      return NextResponse.json({ error: 'مسار الملف مطلوب (ارفع الملف الأول أو ضيف لينك خارجي)' }, { status: 400 })
+
+    if (!filePath || String(filePath).indexOf('/api/files/') !== 0) {
+      return NextResponse.json({ error: 'مسار الملف مطلوب (ارفع الملف الأول)' }, { status: 400 })
     }
 
     var sizeNum = parseInt(String(sizeBytes == null ? 0 : sizeBytes), 10)
@@ -86,13 +124,12 @@ export async function POST(request: NextRequest) {
         data: {
           title: String(title).trim(),
           description: String(description || ''),
-          /* (و43) وضع اللينك: filePath فاضي والحجم صفر — الملف مش متخزن عندنا */
-          filePath: link ? '' : String(filePath),
-          sourceUrl: link,
+          filePath: String(filePath),
           fileName: String(fileName || ''),
           fileType: String(fileType || 'application/pdf'),
-          sizeBytes: link ? 0 : sizeNum,
+          sizeBytes: sizeNum,
           grade: String(grade || ''),
+          usage: usage,
         },
       })
     })

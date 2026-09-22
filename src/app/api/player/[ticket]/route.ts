@@ -7,20 +7,20 @@
 //     وبيتفك في الذاكرة لحظة التشغيل بس، فمفيش ID في مصدر الصفحة
 //     ولا في الـ DOM ولا في أي console.log.
 //  2) الملفات المرفوعة بتتخدم بتوكن موقّع قصير العمر مرتبط بالطالب.
-//  3) الووترمارك (رجوع المواصفات الأصلية + QR — 2026-و6): 6 كروت ثابتة
-//     (1 فوق في النص + 1 يمين + 1 شمال + 3 تحت) كل كارت: الاسم + الرقم
-//     + QR الطالب (بيتولد في السيرفر — مسح الكود بيحدد مين سجّل الفيديو)
-//     + الووترمارك الكبيرة الشفافة في النص بتظهر 10 ثواني وبتختفي 20 ثانية
-//     وقت التشغيل بس + بيرجع يرسم لوحه نفسه لو اتمسح + شغال جوه ملء الشاشة
-//     + مستطيلين سودة تحت يمين وشمال بيغطوا علامة الاشتراك/اللوجو يوتيوب
+//  3) الووترمارك (MG-2): كل حاجة بقيت متحكم فيها من لوحة الأدمن —
+//     كروت QR الطالب (فوق شمال / تحت يمين افتراضيًا) + عناصر اسم ورقم
+//     (فوق/تحت في النص افتراضيًا) + لوجو المنصة في النص — كل عنصر ليه
+//     مكان x%/y% (مركزه) + حجم (صغير/متوسط/كبير) + شفافية — بتتسحب
+//     في معاينة 16:9 من لوحة الأدمن وبتتحفظ في SiteConfig 'player_config'
+//     وبتتقري هنا عند كل رندر. لو مفيش كونفج → سلوك MG-1 بالظبط.
 //  4) حماية فحص: كليك يمين مقفول + F12/Ctrl+U/Ctrl+S + Ctrl+Shift+I/J/C/K
 //     + **كل زرار F1 لـ F12 وفيهم F10 صراحةً (event.key === 'F10' — طلب
 //     المستر الحرفي 2026-م: "explicitly intercept and prevent the F10 key")**
 //     بتنبيه لطيف + لو أدوات المطور اتفتحت الفيديو بيوقف مؤقتًا.
 //  5) التقدم بيتقال للأب بـ postMessage كل 5 ثواني (مفيش أي لينك).
 //  6) حماية الفيديو من يوتيوب (أحدث قرار 2026-ط2 — «اعمل blur على كل حاجة،
-//     وغطّي اسم القناة اللي فوق بالكامل — علامة سودة أو كلمة اسم المنصة»):
-//     **شريط علوي داكن + بلور بعرض الشاشة كلها مكتوب عليه اسم المنصة (Mr Sherif ElSayed)**
+//     وغطّي اسم القناة اللي فوق بالكامل — علامة سودة أو كلمة Mr Sherif ElSayed»):
+//     **شريط علوي داكن + بلور بعرض الشاشة كلها مكتوب عليه Mr Sherif ElSayed**
 //     دايمًا شغال بيغطي العنوان + اسم القناة + أزرار الشير تغطية 100%.
 //  7) الواجهة (القرار النهائي 2026-ؤ — طلب المستر الحرفي: «مش لاقي زرار
 //     الإعدادات.. خبي علامة اليوتيوب.. علامة الـ share والـ time دي لغيها»):
@@ -71,6 +71,7 @@ import crypto from 'crypto'
 import QRCode from 'qrcode'
 import { db } from '@/lib/db'
 import { getYouTubeId, mediaIdFromPath, signVideoToken, ensurePlayTicketTable } from '@/lib/video-guard'
+import { sanitizePlayerConfig } from '@/lib/player-config'
 
 /* ===== (و35) أي لينك فيديو بيتشغل — مش شرط يوتيوب أو امتداد مباشر =====
    طلب المستر: «لو رفعت أي لينك فيديو مش شرط من يوتيوب من أي موقع تاني
@@ -151,14 +152,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       await ensurePlayTicketTable(true)
       try { row = await db.playTicket.findUnique({ where: { id: ticket } }) } catch (e2) { row = null }
     }
-    if (!row) return pageError('تذكرة التشغيل مش موجودة — اقفل المشغل وافتح الفيديو من الأول.', 403)
-    // ===== (2026-ط) علاج جذري لـ"الفيديو مش بيفتح خالص" =====
-    // كانت التذكرة بتُستهلك من أول تحميل (single-use) — أي preFetch أو Retry
-    // أو إعادة تحميل للـ iframe قبل ما المشغل يرندر بيحرق التذكرة، والطالب
-    // يشوف "التذكرة اتاستخدمت" للأبد من غير أي حل. دلوقتي: التذكرة صالحة
-    // طوال دقيقتين مهما اتفتحت — الحماية زي ما هي (التذكرة مخصصة للطالب
-    // وبتنتهي تلقائيًا ومفيش أي معرف فيديو بيظهر نتيجة كده)
-    if (new Date(row.expiresAt).getTime() < Date.now()) return pageError('تذكرة التشغيل خلصت صلاحيتها — اقفل المشغل وافتح الفيديو من الأول وهيفتح عادي.', 403)
+    if (!row) return pageError('تذكرة التشغيل مش موجودة — اقفل المشغل وافتح الفيديو من الأول وهيفتح عادي.', 403)
+
+    // (MG-2) إعدادات شكل المشغل والووترمارك — بيتقري عند كل رندر عشان أي
+    // تغيير من لوحة الأدمن يبان فورًا. لو مفيش كونفج → null والمشغل يستخدم
+    // احتياطه الداخلي = سلوك MG-1 بالظبط. بيتقري قبل فرع المعرض عشان
+    // أطوال الشريط/الدرع تتطبق على كل المشغلات (معرض + طالب)
+    var pcfgRaw: any = null
+    try {
+      const pcRow = await db.siteConfig.findUnique({ where: { key: 'player_config' } })
+      if (pcRow && pcRow.value) pcfgRaw = JSON.parse(pcRow.value)
+    } catch (e) { pcfgRaw = null }
+    var pcfg = pcfgRaw ? sanitizePlayerConfig(pcfgRaw) : null
 
     // ===== فيديوهات المعرض (gal_...) =====
     if (row.videoId && row.videoId.indexOf('gal_') === 0) {
@@ -175,6 +180,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         kind: gYt ? 'youtube' : 'file',
         resume: 0,
         wm: { enabled: false, opacity: 0, interval: 14, name: '', phone: '' },
+        /* (MG-2) أطوال الشريط/الدرع بتتطبق على مشغل المعرض كمان (من غير
+           ووترمارك — فيديوهات المعرض ترويجية من غير اسم طالب) */
+        pcfg: pcfg,
       }
       if (gYt) { const gob = obfuscate(gYt); gCfg.blob = gob.b; gCfg.key = gob.k }
       else {
@@ -257,6 +265,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         phone: wmPhone,
         qr: wmQr,
       },
+      /* (MG-2) إعدادات الشكل المحفوظة — لو null المشغل يستخدم احتياطه */
+      pcfg: pcfg,
     }
     if (ytId) {
       const ob = obfuscate(ytId)
@@ -309,111 +319,93 @@ const PLAYER_PAGE = `<!doctype html>
   #wrap{position:relative;width:100%;max-width:100vw;background:#000;overflow:hidden}
   #wrap.fs{width:100vw;height:100vh;max-width:none}
   #yt,#fileVid{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000}
-  /* ===== الووترمارك (رجوع المواصفات الأصلية + QR — طلب المستر 2026-و6) =====
-     • 6 كروت ثابتة ظاهرة على طول: 1 فوق في النص + 1 يمين + 1 شمال
-       + 3 تحت (شمال/نص/يمين) — كل كارت: الاسم + الرقم + **QR الطالب**
-       (بيتولد في السيرفر باسمه ورقمه — لو الفيديو اتسرب مسح الكود يكشفه)
-     • الووترمارك الكبيرة الشفافة في النص رجعت: **بتظهر 10 ثواني وبتختفي
-       20 ثانية** (دورة 30 ثانية بتكرر لوحدها — keyframes wmBlink30) وقت التشغيل بس
-     • مستطيلين سودة تحت خالص (يمين وشمال) بيغطوا علامة الاشتراك/اللوجو
-       بتوع يوتيوب — طلب المستر الحرفي: «عايزك تداريها لي بمستطيل أسود كده يمين وشمال» */
+  /* ===== الووترمارك (MG-2 — كل حاجة من لوحة الأدمن) =====
+     كل عنصر بيتموضع بمركزه x%/y% من مستطيل الفيديو + حجم sm/md/lg
+     + شفافية خاصة بيه — الكونفج جاي من CFG.pcfg (لو مفيش → سلوك MG-1).
+     كل العناصر pointer-events:none — مبتمنعش أي تفاعل مع الفيديو */
   .wm{position:absolute;inset:0;z-index:40;pointer-events:none;user-select:none;overflow:hidden}
-  @keyframes wmBlink30{0%{opacity:0}1.5%{opacity:var(--wmo,.4)}31.5%{opacity:var(--wmo,.4)}33.5%{opacity:0}98.5%{opacity:0}100%{opacity:var(--wmo,.4)}}
-  #wmBig{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:41;direction:rtl;
-    text-align:center;max-width:94%;--wmo:.4;opacity:0;
-    animation:wmBlink30 30s linear infinite;
-    font-weight:900;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
-    /* 2026-و8 — المستر رجّع القرار: «اللي في النص الكبيرة دي رجّعلي مقاسها
-       زي ما كانت كبيرة شوية» — رجعت لمقاسها الأصلي 5.6vw/72px بنفس المكان
-       (التصغير بقى على الكروت الجانبية يمين وشمال بدلها) */
-    /* 2026-و40-w — «الووترمارك بتشوش الطلاب»: الكارت المركزي أصغر ~20%
-       وأشفّ شوية — بتظهر وبتختفي زي ما هي لكن أقل حجب للفيديو */
-    font-size:clamp(16px,4.5vw,58px);line-height:1.25;
-    unicode-bidi:plaintext;letter-spacing:0}
-  #wmBig .b1{display:block;color:rgba(0,0,0,.08);white-space:nowrap;
-    -webkit-text-stroke:1.1px rgba(0,0,0,.34);paint-order:stroke fill;
-    text-shadow:0 0 16px rgba(255,255,255,.14)}
-  #wmBig .b2{display:block;font-size:.5em;direction:ltr;unicode-bidi:plaintext;
-    margin-top:.14em;letter-spacing:0;white-space:nowrap;color:rgba(0,0,0,.08);
-    -webkit-text-stroke:.9px rgba(0,0,0,.32);paint-order:stroke fill;
-    text-shadow:0 0 12px rgba(255,255,255,.14)}
-  .wmCard{position:absolute;z-index:46}
-  .wmCardT{top:2.8%;left:50%;transform:translateX(-50%) scale(.95)}
-  /* 2026-و9 — الكروت اليمين والشمال طلعوا فوق: بقى 3 فوق (شمال/نص/يمين)
-     و3 تحت — بنفس تصغير ~18% — بطلب المستر: «اللي في النص دول تطلعهم فوق
-     يبقوا تلاتة فوق وتلاتة تحت» */
-  /* 2026-و11 — «في الطرف خالص، في طرف الشاشة» — الكروت الجانبية بقيت ملاصقة
-     للحافة بلا فاصل (كانت 2%) — يمين وشمال ملاصقين خالص */
-  /* 2026-و15 — «كبّر الووترمارك اللي فوق مش كتير أوي» — الكروت التلاتة فوق
-     كبروا شوية: النص 1.14x والجانبين من .82 لـ .92 */
-  /* 2026-و40-w — «صغّر الووترمارك ~35% وقلل ظهورها ~30% — بتشوش الطلاب»:
-     كل الكروت أصغر (خط+padding) وأخف (opacity أقل) — بس لسه ظاهرة للإثبات */
-  .wmCardMR{top:2.8%;right:0;transform:scale(.72);transform-origin:top right;opacity:.62}
-  .wmCardML{top:2.8%;left:0;transform:scale(.72);transform-origin:top left;opacity:.62}
-  /* 2026-و9 — كارتين صغيرين في نص الفيديو يمين وشمال على الطرف خالص —
-     فيهم رقم الطالب بس (من غير اسم ولا QR) — بطلب المستر */
-  .wmNumChip{position:absolute;z-index:46;transform:translateY(-50%)}
-  /* 2026-و16 — طلب المستر: «اليمين كمان مرتين زي الشمال + الاسم تحتهم صغير» —
-     كل جانب بقى: رقمين (44% و 56%) + اسم الطالب تحتهم (68%) صغير */
-  .wmNumR{right:0;top:44%;border-radius:7px 0 0 7px}
-  .wmNumR2{right:0;top:56%;border-radius:7px 0 0 7px}
-  .wmNumL{left:0;top:44%;border-radius:0 7px 7px 0}
-  .wmNumL2{left:0;top:56%;border-radius:0 7px 7px 0}
-  .wmNameChip{position:absolute;z-index:46;max-width:36vw;overflow:hidden}
-  .wmNameR{right:0;top:68%;border-radius:7px 0 0 7px}
-  .wmNameL{left:0;top:68%;border-radius:0 7px 7px 0}
-  .wmNameChip .in{display:inline-block;background:rgba(0,0,0,.5);color:#fff;
-    border:1px solid rgba(255,255,255,.16);border-left:0;border-right:0;padding:2px 6px;
-    font-size:clamp(6.5px,.65vw,7.5px);font-weight:700;direction:rtl;unicode-bidi:plaintext;
-    letter-spacing:0;white-space:nowrap;opacity:.6;max-width:36vw;overflow:hidden;
-    text-overflow:ellipsis}
-  .wmNumChip .in{display:inline-block;background:rgba(0,0,0,.5);color:#fff;
-    border:1px solid rgba(255,255,255,.16);border-left:0;border-right:0;padding:2px 6px;
-    font-size:clamp(6.5px,.65vw,7.5px);font-weight:700;direction:ltr;unicode-bidi:plaintext;
-    letter-spacing:0;white-space:nowrap;opacity:.6}
-  .wmCardB1{bottom:52px;left:0;opacity:.6}
-  .wmCardB2{bottom:52px;left:50%;transform:translateX(-50%);opacity:.6}
-  .wmCardB3{bottom:52px;right:0;opacity:.6}
-  .wmCard .in{display:inline-flex;align-items:center;gap:5px;background:rgba(0,0,0,.5);
-    border:1px solid rgba(255,255,255,.20);color:#fff;border-radius:8px;padding:2px 6px;
-    direction:rtl;white-space:nowrap}
-  .wmCard .qr{width:clamp(15px,1.9vw,22px);height:clamp(15px,1.9vw,22px);border-radius:3px;
-    background:#fff;padding:1.5px;display:block}
-  .wmCard .nm{font-size:clamp(7px,.72vw,8.5px);font-weight:800;unicode-bidi:plaintext;letter-spacing:0;white-space:nowrap}
-  .wmCard .sep{opacity:.55;font-size:clamp(6px,.65vw,7.5px)}
-  .wmCard .ph{font-size:clamp(6.5px,.68vw,8px);font-weight:700;direction:ltr;unicode-bidi:plaintext;letter-spacing:0;opacity:.92;white-space:nowrap}
+  .wmCard,.wmNm{position:absolute;z-index:46;pointer-events:none;transform:translate(-50%,-50%)}
+  .wmQr .in{display:inline-flex;flex-direction:column;align-items:center;gap:2px;
+    background:rgba(0,0,0,.66);border:1px solid rgba(255,255,255,.42);color:#fff;
+    border-radius:9px;padding:3px 4px;direction:rtl;white-space:nowrap;
+    width:clamp(52px,6vw,80px);box-shadow:0 2px 10px rgba(0,0,0,.5)}
+  .wmQr .qr{width:clamp(28px,3.4vw,44px);height:clamp(28px,3.4vw,44px);border-radius:4px;
+    background:#fff;padding:2px;display:block}
+  .wmQr .nm{font-size:clamp(7px,.85vw,10px);font-weight:800;unicode-bidi:plaintext;
+    letter-spacing:0;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+  .wmQr .sep{display:none}
+  .wmQr .ph{font-size:clamp(6.5px,.75vw,9px);font-weight:700;direction:ltr;
+    unicode-bidi:plaintext;letter-spacing:0;white-space:nowrap;max-width:100%;
+    overflow:hidden;text-overflow:ellipsis}
+  .wmQr.s-sm .in{width:clamp(40px,4.6vw,62px)}
+  .wmQr.s-sm .qr{width:clamp(20px,2.4vw,32px);height:clamp(20px,2.4vw,32px)}
+  .wmQr.s-sm .nm{font-size:clamp(6px,.7vw,8px)}
+  .wmQr.s-sm .ph{font-size:clamp(5.5px,.62vw,7px)}
+  .wmQr.s-lg .in{width:clamp(66px,8vw,104px)}
+  .wmQr.s-lg .qr{width:clamp(34px,4vw,52px);height:clamp(34px,4vw,52px)}
+  .wmQr.s-lg .nm{font-size:clamp(9px,1.1vw,13px)}
+  .wmQr.s-lg .ph{font-size:clamp(8px,.95vw,11px)}
+  /* شيب اسم الطالب + رقمه (MG-5 — اسم ثنائي فوق وتحتيه الرقم، سطرين واضحين) */
+  .wmNm .in{display:inline-block;background:rgba(0,0,0,.62);border:1px solid rgba(255,255,255,.4);color:#fff;
+    border-radius:9px;padding:3px 9px;direction:rtl;white-space:nowrap;
+    font-weight:800;unicode-bidi:plaintext;letter-spacing:0;box-shadow:0 2px 10px rgba(0,0,0,.45);text-align:center}
+  .wmNm.s-sm .in{font-size:clamp(8px,1vw,11px)}
+  .wmNm.s-md .in{font-size:clamp(11px,1.4vw,15px)}
+  .wmNm.s-lg .in{font-size:clamp(14px,1.9vw,20px)}
+  .wmNm .nm{display:block}
+  .wmNm .ph{display:block;direction:ltr;unicode-bidi:plaintext;font-weight:700;opacity:.85;font-size:.82em;margin-top:1px}
+  /* لوجو المنصة في نص الفيديو — نص أبيض بظل قوي يبان على أي مشهد */
+  .wmLogo{position:absolute;z-index:40;pointer-events:none;transform:translate(-50%,-50%);
+    font-weight:900;direction:ltr;white-space:nowrap;user-select:none;text-align:center;
+    font-family:system-ui,-apple-system,'Segoe UI',sans-serif;letter-spacing:.5px;
+    color:rgba(255,255,255,.95);
+    text-shadow:0 2px 14px rgba(0,0,0,.55),0 0 3px rgba(0,0,0,.45)}
+  /* (MG-3) اللوجو الوسطاني ممكن يظهر عليه اسم الطالب ورقمه تحت — «زي الأول» */
+  .wmLogo .in{display:block}
+  .wmLogo .over{display:block;font-size:.42em;font-weight:900;letter-spacing:.5px;margin-bottom:.18em;opacity:.9;direction:ltr}
+  .wmLogo .sub{display:block;font-size:.4em;font-weight:800;letter-spacing:0;margin-top:.2em;opacity:.95;direction:rtl;unicode-bidi:plaintext}
+  .wmLogo .sub.ph{direction:ltr;unicode-bidi:plaintext}
+  .wmLogo.s-sm{font-size:clamp(16px,2.5vw,34px)}
+  .wmLogo.s-md{font-size:clamp(24px,4vw,56px)}
+  .wmLogo.s-lg{font-size:clamp(36px,5.6vw,80px)}
   /* المستطيلات السودة تحت خالص يمين وشمال — تغطية علامة الاشتراك/اللوجو
      بتاعة يوتيوب تغطية كاملة + بتمنع الدوس عليها (فيه يوتيوب بس) */
   /* (2026-و9) الشريط السفلي بقى بنفس سمك العلوي بالظبط — طلب المستر:
      «تصغّر الشريط اللي تحت شوية، تقصّره، يكون بنفس سمك اللي فوق» —
-     نفس المعادلة 40–50px ونفس الطقم (أسود + بلور + اسم المنصة) */
-  #ytCoverR{position:absolute;z-index:45;bottom:0;right:0;width:min(215px,34%);height:max(40px,min(7.5%,50px));
-    background:#000;pointer-events:auto}
-  #ytCoverL{position:absolute;z-index:45;bottom:0;left:0;width:min(150px,26%);height:max(40px,min(7.5%,50px));
-    background:#000;pointer-events:auto}
+     نفس المعادلة 40–50px ونفس الطقم (أسود + بلور + Mr Sherif ElSayed) */
+  /* (MG-1) بدل المستطيلات السودة المعتمة — تدرجات شفافة ناعمة:
+     بتغطي علامة الاشتراك/اللوجو بتاعة يوتيوب من غير مربع أسود صريح
+     + pointer-events:auto زي ما هي — الدوس عليها ممنوعة لسه
+     (MG-2) الارتفاع بقى مربوط بارتفاع الشريط var(--mgBarH) */
+  #ytCoverR{position:absolute;z-index:45;bottom:0;right:0;width:min(215px,34%);height:calc(var(--mgBarH) + clamp(4px,0.7vw,10px));
+    background:linear-gradient(to top,rgba(0,0,0,.55),rgba(0,0,0,0));pointer-events:auto}
+  #ytCoverL{position:absolute;z-index:45;bottom:0;left:0;width:min(150px,26%);height:calc(var(--mgBarH) + clamp(4px,0.7vw,10px));
+    background:linear-gradient(to top,rgba(0,0,0,.55),rgba(0,0,0,0));pointer-events:auto}
   /* درع فوق كامل (2026-ط2 — طلب المستر: «اعمل blur على كل حاجة،
-     وغطّي اسم القناة اللي فوق بالكامل — علامة سودة أو كلمة اسم المنصة —
+     وغطّي اسم القناة اللي فوق بالكامل — علامة سودة أو كلمة Mr Sherif ElSayed —
      أي حاجة بس تكون مغطية»): شريط داكن + بلور بعرض الشاشة كلها، ثابت
      دايمًا، بيغطي عنوان يوتيوب + اسم القناة + أزرار الشير/Watch on YouTube
      تغطية 100% — مستحيل يبانوا ولا حد يقدر يدوس عليهم — ومكتوب عليه
-     اسم المنصة بدل أي برندنج يوتيوب.
+     Mr Sherif ElSayed بدل أي برندنج يوتيوب.
      **(2026-و3 — طلب المستر: «قصره شوية، ما تخليهوش نازل كده طويل»)** —
      الشريط بقى رفيع (40–50px بدل 96px) — التغطية زي ما هي بس من غير ماياخد
      مساحة كبيرة من الفيديو */
+  /* 2026-و60-b — «الخط اللي فوق ده كبّره نص سم» — الشريط العلوي بقى أنصه
+     (58–68px بدل 40–50px) وكلمة Mr Sherif ElSayed أكبر شوية */
   #topShield{position:absolute;top:0;left:0;right:0;z-index:22;pointer-events:auto;
-    height:max(40px,min(7.5%,50px));
-    /* 2026-و40-w — «وضّح الفيديو»: أفتح وأقل بلور — التغطية زي ما هي بس
-       الفيديو يبان واضح تحتها (الطلاب كانوا بيشكوا إن الووترمارك بتشتت) */
-    background:rgba(0,0,0,.60);
+    height:max(58px,min(10%,68px)); /* (MG-2) بيتطبق عليها ارتفاع محفوظ من الكونفج عبر JS */
+    /* (MG-1) بدل الخلفية المعتمة — تدرج شفاف نازل من فوق (from-black/40
+       to-transparent) + بلور خفيف: مفيش مربع أسود، والكلام الأبيض بظل واضح */
+    background:linear-gradient(to bottom,rgba(0,0,0,.40),rgba(0,0,0,0));
     -webkit-backdrop-filter:blur(10px) saturate(.9);backdrop-filter:blur(10px) saturate(.9);
     display:flex;align-items:center;justify-content:flex-start;
     padding-right:14px;
     border-bottom:1px solid rgba(255,255,255,.10)}
   #topShield::after{content:'';position:absolute;top:100%;left:0;right:0;height:12px;
     background:linear-gradient(to bottom,rgba(0,0,0,.45),rgba(0,0,0,0))}
-  #topShield .brand{color:rgba(255,255,255,.92);font-weight:900;
+  #topShield .brand{color:rgba(255,255,255,.95);font-weight:900;
     font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
-    font-size:clamp(12px,1.9vw,17px);letter-spacing:.5px;direction:ltr;white-space:nowrap;
+    font-size:clamp(15px,2.3vw,22px);letter-spacing:.5px;direction:ltr;white-space:nowrap;
     text-shadow:0 1px 3px rgba(0,0,0,.6);pointer-events:none}
   /* درع تحت كامل (2026-و7 — طلب المستر: «عاوزك تحط لي زي blur كده زي بتاع
      المستطيل الأسود اللي من فوق ومن تحت... يداري كل حاجة بس ما يكونش
@@ -428,9 +420,10 @@ const PLAYER_PAGE = `<!doctype html>
   /* 2026-و40-w — الشريط كله أصغر: mgBar 60→45px والدرع 66→45+5–8px
      (والكروت السفلية bottom:52px فوق حرفه بالظبط) — الفيديو أكبر وأوضح */
   #botShield{position:absolute;bottom:0;left:0;right:0;z-index:44;pointer-events:auto;
-    height:calc(45px + clamp(5px,0.7vw,8px));
-    background:rgba(0,0,0,.60);
-    -webkit-backdrop-filter:blur(10px) saturate(.9);backdrop-filter:blur(10px) saturate(.9);
+    /* (MG-2) ارتفاعه مربوط بارتفاع الشريط المحفوظ */
+    height:calc(var(--mgBarH) + clamp(4px,0.6vw,7px));
+    background:linear-gradient(to top,rgba(0,0,0,.50),rgba(0,0,0,0));
+    -webkit-backdrop-filter:blur(8px) saturate(.9);backdrop-filter:blur(8px) saturate(.9);
     display:flex;align-items:center;justify-content:flex-start;
     padding-right:14px;
     border-top:1px solid rgba(255,255,255,.10)}
@@ -461,40 +454,63 @@ const PLAYER_PAGE = `<!doctype html>
      الخلفية SOLID معتمة 100% (2026-ي) */
   /* 2026-و40-w — «صغّر الشريط السفلي ~25% — الفيديو يبان أكبر»:
      60px → 45px وكل العناصر جواه ×0.75 تقريبًا — كل الأزرار شغالة زي ما هي */
-  #mgBar{position:absolute;bottom:0;left:0;right:0;z-index:60;height:45px;
-    display:flex;align-items:center;gap:3px;direction:rtl;padding:0 8px;
-    background:#050509;
+  /* ===== شريط التحكم بتاعنا (تمليين 2026-و2 — طلب المستر الحرفي:
+     «شريط اللي بجر منه وعلامة التكبير والتصغير وعلامة الجودة بس») =====
+     كنترولز يوتيوب مقفولة خالص controls=0 — وشريطنا: ⚙ الجودة + شريط
+     التقدم بالسحب + زرار ملء الشاشة. التشغيل/الإيقاف بدوسة على الفيديو.
+     (MG-1 — طلب صاحب المنصة): شريط مدمج على كل الأجهزة (36px موبايل /
+     40px ديسكتوب) + خلفية تدرج شفاف بدل الصندوق الأسود المعتم
+     + أزرار وأيقونات أصغر (16-18px) + بار تقدم رفيع (h-1)
+     + أيقونات و نص أبيض بظل واضح (drop-shadow) عشان القراءة */
+  :root{--mgBarHm:40px;--mgBarHd:46px}
+  :root{--mgBarH:var(--mgBarHm)}
+  @media(min-width:768px){:root{--mgBarH:var(--mgBarHd)}}
+  #mgBar{position:absolute;bottom:0;left:0;right:0;z-index:60;height:var(--mgBarH);
+    display:flex;align-items:center;gap:2px;direction:rtl;padding:0 6px;
+    background:linear-gradient(to top,rgba(0,0,0,.50),rgba(0,0,0,.20) 55%,rgba(0,0,0,0));
     transition:opacity .3s ease;opacity:1}
+  @media(min-width:768px){#mgBar{gap:3px;padding:0 8px}}
   /* إخفاء تلقائي (2026-و3 — طلب المستر: الشريط يختفي أول ما الفيديو يمشي
      ويظهر لحظة الإيقاف — عشان ميفضلش مشتت الطالب طول المشاهدة) */
   #mgBar.hide{opacity:0;pointer-events:none}
   body.nocursor{cursor:none}
-  #mgBar .mBtn{flex:0 0 auto;width:33px;height:33px;border:0;border-radius:8px;
+  #mgBar .mBtn{flex:0 0 auto;width:26px;height:26px;border:0;border-radius:7px;
     background:transparent;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer}
   #mgBar .mBtn:hover{background:rgba(255,255,255,.12)}
-  /* زرار ملء الشاشة **الكبير** (2026-و2 — «حطلي علامة تصغير كبيرة») */
-  #mgBar .mBtn.big{width:44px;height:36px}
-  #mgTrackWrap{flex:1 1 auto;direction:ltr;height:33px;display:flex;align-items:center;cursor:pointer;padding:0 5px;min-width:70px}
-  #mgTrack{position:relative;width:100%;height:4px;border-radius:4px;background:rgba(255,255,255,.22);overflow:hidden}
+  /* (MG-1) الأيقونات 16-18px بأبيض وظل واضح — مقروءة على أي مشهد */
+  #mgBar .mBtn svg,#mgBar .mBtnWide svg{filter:drop-shadow(0 1px 2px rgba(0,0,0,.7))}
+  /* زرار ملء الشاشة — مدمج زي باقي الأزرار */
+  #mgBar .mBtn.big{width:30px;height:26px}
+  #mgTrackWrap{flex:1 1 auto;direction:ltr;height:26px;display:flex;align-items:center;cursor:pointer;padding:0 4px;min-width:60px}
+  #mgTrack{position:relative;width:100%;height:4px;border-radius:4px;background:rgba(255,255,255,.28);overflow:hidden}
   #mgBuf{position:absolute;top:0;left:0;bottom:0;width:0;background:rgba(255,255,255,.35)}
   #mgFill{position:absolute;top:0;left:0;bottom:0;width:0;background:#fff}
-  #mgBrand{flex:0 0 auto;color:rgba(255,255,255,.92);font-weight:900;font-size:9px;letter-spacing:.5px;
+  #mgBrand{flex:0 0 auto;color:rgba(255,255,255,.92);font-weight:900;font-size:12.5px;letter-spacing:.5px;
     direction:ltr;font-family:system-ui,sans-serif;margin-right:6px;text-shadow:0 1px 2px rgba(0,0,0,.6)}
   @media(max-width:420px){#mgBrand{display:none}}
+  /* (MG-2) YouTube mark in the bar — decorative, pointer-events:none */
+  #mgYtMark{flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;pointer-events:none;
+    margin-right:2px;opacity:.95;direction:ltr}
+  #mgYtMark svg{filter:drop-shadow(0 1px 2px rgba(0,0,0,.7));display:block}
+  #mgYtMark .lbl{font-size:var(--ytLbl,14px);font-weight:800;letter-spacing:.4px;color:#fff;
+    text-shadow:0 1px 2px rgba(0,0,0,.6);font-family:system-ui,sans-serif}
+  @media(max-width:520px){#mgYtMark .lbl{display:none}}
   /* ===== (المشغل العادي 2026-و) الوقت + زرار إعدادات الجودة ⚙ + القايمة =====
      طلب المستر الحرفي: «يكون فيه إعدادات بتاعت الجودة.. تعرف حاجات تكون شايفها» */
-  #mgTime{flex:0 0 auto;font-size:8.5px;font-weight:700;color:rgba(255,255,255,.85);
+  #mgTime{flex:0 0 auto;font-size:10.5px;font-weight:700;color:rgba(255,255,255,.85);
     direction:ltr;unicode-bidi:plaintext;letter-spacing:.2px;padding:0 6px;white-space:nowrap;
     font-variant-numeric:tabular-nums;text-shadow:0 1px 2px rgba(0,0,0,.6)}
   @media(max-width:620px){#mgTime{display:none}}
-  #mgBar .mBtnWide{flex:0 0 auto;min-width:33px;height:33px;border:0;border-radius:8px;
+  #mgBar .mBtnWide{flex:0 0 auto;min-width:26px;height:26px;border:0;border-radius:7px;
     background:transparent;color:#fff;display:flex;align-items:center;justify-content:center;
-    gap:5px;padding:0 8px;cursor:pointer}
+    gap:4px;padding:0 6px;cursor:pointer}
   #mgBar .mBtnWide:hover{background:rgba(255,255,255,.12)}
-  #mgQLabel{font-size:8.5px;font-weight:800;color:rgba(255,255,255,.9);letter-spacing:.3px;white-space:nowrap}
+  #mgQLabel{font-size:10.5px;font-weight:800;color:rgba(255,255,255,.9);letter-spacing:.3px;white-space:nowrap}
   @media(max-width:520px){#mgQLabel{display:none}}
-  #mgQMenu{position:absolute;bottom:52px;left:12px;z-index:72;min-width:170px;display:none;
-    background:#0b0b12;border:1px solid rgba(255,255,255,.18);border-radius:12px;padding:6px;
+  #mgQMenu{position:absolute;bottom:calc(var(--mgBarH) + 8px);left:12px;z-index:72;min-width:170px;display:none;
+    background:rgba(13,13,20,.92);
+    -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+    border:1px solid rgba(255,255,255,.18);border-radius:12px;padding:6px;
     box-shadow:0 14px 40px rgba(0,0,0,.6);direction:rtl}
   #mgQMenu.open{display:block}
   #mgQMenu .qHead{padding:5px 12px 7px;color:rgba(255,255,255,.55);font-size:11px;font-weight:800;
@@ -555,68 +571,186 @@ function deobfuscate(b64, key){
   }catch(e){ return ''; }
 }
 
-/* ===== الووترمارك (توزيع المستر النهائي — 2026-و9) =====
-   • 6 كروت QR: 3 فوق (شمال/نص/يمين) + 3 تحت (شمال/نص/يمين) — اللي كانوا
-     في النص طلعوا فوق بطلب المستر
-   • كارتين صغيرين في نص الفيديو يمين وشمال على الطرف خالص — رقم الطالب بس
-   • الووترمارك الكبيرة في النص زي ما هي: 10 ثواني ظاهرة / 20 مخفية (دورة 30 ث)
-     بتشتغل وقت التشغيل بس — عند الإيقاف بتقف */
+/* ===== الووترمارك (MG-2 — كل حاجة متحكم فيها من لوحة الأدمن) =====
+   الكونفج CFG.pcfg (محفوظ في SiteConfig 'player_config') بيتحكم في:
+   - ارتفاع الشريط (موبايل/ديسكتوب) وارتفاع الدرع العلوي
+   - كروت QR الطالب: تشغيل/إيقاف + مكان x%/y% (مركز العنصر) + حجم + شفافية
+   - عناصر اسم الطالب ورقمه (بتترسم ديناميكيًا لكل طالب): مكان/حجم/شفافية
+   - لوجو المنصة في نص الفيديو
+   لو مفيش كونفج محفوظ → الووترمارك زي MG-1 (كارتين QR بس) والشريط بالمقاسات الجديدة 40/46 */
 var wmName = String(CFG.wm.name || '').trim();
 var wmPhone = String(CFG.wm.phone || '').trim();
-/* الاسم الثنائي: أول كلمتين بس — سطر واحد في النص */
+
+/* احتياط لو مفيش كونفج محفوظ:
+   - الووترمارك = سلوك MG-1 بالظبط (كارتين QR بس — فوق شمال وتحت يمين)
+   - أطوال الشريط = المقاسات الجديدة (MG-2 طلب صاحب المنصة: الشريط يكبر
+     شوية ~15% — 40px موبايل / 46px ديسكتوب) — دي مش مربوطة بالكونفج،
+     دي الأساس الجديد حتى قبل ما صاحب المنصة يفتح لوحة الإعدادات */
+var PCFALLBACK = {
+  barHeightMobile: 40, barHeightDesktop: 46, topShieldHeight: 0,
+  /* (MG-4) الشفافيات اترفعت — «عللي أنت الشفافية من عندك» */
+  qrTL: { on: true, x: 6, y: 6, size: 'md', opacity: 0.55, blink: { on: false, show: 15, hide: 15 } },
+  qrBR: { on: true, x: 94, y: 84, size: 'md', opacity: 0.55, blink: { on: false, show: 15, hide: 15 } },
+  nameItems: [],
+  centerLogo: { on: false, x: 50, y: 46, size: 'lg', opacity: 0.42, content: 'name', blink: { on: false, show: 10, hide: 20 } },
+  ytMark: { on: true, size: 'lg' }
+};
+
+var PC = (function () {
+  var fb = PCFALLBACK, c = CFG.pcfg || {};
+  /* (MG-4) ترقية v:1 → v:2 — الكونفج القديم شفافياته كانت باهتة فبتترفع */
+  var savedVer = Number(c.v) || 1;
+  var upgrade = savedVer < 2;
+  function num(v, d, lo, hi) { var n = Number(v); if (!isFinite(n)) return d; return Math.min(hi, Math.max(lo, n)); }
+  function size(v, d) { return (v === 'sm' || v === 'md' || v === 'lg') ? v : d; }
+  function op(v, d, lo, hi) { var n = Number(v); if (!isFinite(n)) return d; return Math.min(hi, Math.max(lo, n)); }
+  /* (MG-3) دورة الظهور/الاختفاء — طلب المستر: «أتحكم في المدة بتاعة اختفائها» */
+  function blink(v, d) {
+    var s = (v && typeof v === 'object') ? v : {};
+    return { on: s.on === true, show: num(s.show, d.show, 1, 120), hide: num(s.hide, d.hide, 0, 120) };
+  }
+  function qr(v, d) {
+    var s = (v && typeof v === 'object') ? v : {};
+    var o = op(s.opacity, d.opacity, 0.05, 0.85);
+    if (upgrade && s.opacity !== undefined) o = Math.max(o, 0.55); /* القديم 0.26 كان مش باين */
+    return { on: s.on !== false, x: num(s.x, d.x, 0, 100), y: num(s.y, d.y, 0, 100), size: size(s.size, d.size), opacity: o, blink: blink(s.blink, d.blink) };
+  }
+  function logo(v, d) {
+    var s = (v && typeof v === 'object') ? v : {};
+    var content = (s.content === 'brand' || s.content === 'name' || s.content === 'both') ? s.content : d.content;
+    var o = op(s.opacity, d.opacity, 0.03, 0.6);
+    if (upgrade && s.opacity !== undefined && s.opacity <= 0.2) o = Math.max(o, 0.42); /* القديم 0.14 كان مختفي */
+    return { on: s.on === true, x: num(s.x, d.x, 0, 100), y: num(s.y, d.y, 0, 100), size: size(s.size, d.size), opacity: o, content: content, blink: blink(s.blink, d.blink) };
+  }
+  function ytm(v, d) {
+    var s = (v && typeof v === 'object') ? v : {};
+    return { on: s.on !== false, size: size(s.size, d.size) };
+  }
+  var items = [];
+  try {
+    var arr = Array.isArray(c.nameItems) ? c.nameItems : [];
+    /* (MG-5) الحد بقى 10 عناصر + كل عنصر له محتوى (اسم بس / رقم بس / الاتنين) */
+    for (var i = 0; i < arr.length && items.length < 10; i++) {
+      var it = arr[i]; if (!it || typeof it !== 'object') continue;
+      var no = op(it.opacity, 0.55, 0.05, 0.85);
+      if (upgrade) no = Math.max(no, 0.55);
+      items.push({ id: String(it.id || ('nm-' + i)), x: num(it.x, 50, 0, 100), y: num(it.y, 10, 0, 100), size: size(it.size, 'md'), opacity: no, content: (it.content === 'name' || it.content === 'number') ? it.content : 'both', blink: blink(it.blink, { on: false, show: 15, hide: 15 }) });
+    }
+  } catch (e) { items = []; }
+  return {
+    barHeightMobile: num(c.barHeightMobile, fb.barHeightMobile, 32, 64),
+    barHeightDesktop: num(c.barHeightDesktop, fb.barHeightDesktop, 36, 72),
+    topShieldHeight: num(c.topShieldHeight, fb.topShieldHeight, 0, 96),
+    qrTL: qr(c.qrTL, fb.qrTL), qrBR: qr(c.qrBR, fb.qrBR),
+    nameItems: items,
+    centerLogo: logo(c.centerLogo, fb.centerLogo),
+    ytMark: ytm(c.ytMark, fb.ytMark)
+  };
+})();
+
+/* تطبيق أطوال الشريط/الدرع على المتغيرات — بتشتغل قبل البناء وبعد أي بناء */
+function applyPlayerChrome(){
+  try{
+    var r = document.documentElement;
+    r.style.setProperty('--mgBarHm', PC.barHeightMobile + 'px');
+    r.style.setProperty('--mgBarHd', PC.barHeightDesktop + 'px');
+    var ts = document.getElementById('topShield');
+    if (ts && PC.topShieldHeight) ts.style.height = PC.topShieldHeight + 'px';
+  }catch(e){}
+}
+applyPlayerChrome();
+
+/* (MG-5) الاسم الثنائي — أول كلمتين بس (الرباعي ممنوع — طلب حرفي) */
 function wmShortName(){
-  var p = wmName.split(/\\s+/).filter(Boolean);
-  return p.slice(0, 2).join(' ');
+  var p = String(wmName||'').split(/\s+/).filter(Boolean);
+  return p.slice(0,2).join(' ');
 }
 function wmCardHtml(){
+  /* (MG-5) الاسم الثنائي فوق وتحتيه الرقم — من غير «•» ومن غير الاسم الرباعي */
+  var shortNm = wmShortName();
   var qr = CFG.wm.qr ? '<img class="qr" src="' + CFG.wm.qr + '" alt="">' : '';
-  return '<div class="in">' + qr + '<span class="nm">' + esc(wmName || wmPhone) + '</span>' +
-    ((wmName && wmPhone) ? '<span class="sep">•</span><span class="ph">' + esc(wmPhone) + '</span>' : '') + '</div>';
+  var lines = '';
+  if (shortNm) lines += '<span class="nm">' + esc(shortNm) + '</span>';
+  if (wmPhone) lines += '<span class="ph">' + esc(wmPhone) + '</span>';
+  if (!lines) lines = '<span class="nm">' + esc(wmName || wmPhone) + '</span>';
+  return '<div class="in">' + qr + lines + '</div>';
+}
+/* موضع أي عنصر ووترمارك من الكونفج: مركزه على x%/y% + شفافيته
+   (MG-3) + تسجيله في محرك الظهور/الاختفاء لو عليه دورة blink */
+var blinkReg = [];
+function regBlink(el, it){
+  try{
+    var b = it && it.blink;
+    if(!b || !b.on || !(b.hide > 0)) return;
+    blinkReg.push({ el: el, show: Math.max(1, b.show || 10), hide: Math.max(1, b.hide || 20), opacity: it.opacity, t: 0, hidden: false });
+  }catch(e){}
+}
+/* تيكتر الدورة — بيتقدم بس وقت التشغيل (زي دورة الووترمارك القديمة بالظبط) */
+var wmPlaying = false;
+setInterval(function(){
+  if(!wmPlaying || !blinkReg.length) return;
+  for(var i = 0; i < blinkReg.length; i++){
+    var b = blinkReg[i];
+    if(!b.el || !b.el.parentNode) continue;
+    b.t++;
+    if(!b.hidden && b.t >= b.show){ b.hidden = true; b.t = 0; b.el.style.opacity = '0'; }
+    else if(b.hidden && b.t >= b.hide){ b.hidden = false; b.t = 0; b.el.style.opacity = b.opacity; }
+  }
+}, 1000);
+function placeWm(el, it){
+  el.style.left = it.x + '%';
+  el.style.top = it.y + '%';
+  el.style.opacity = it.opacity;
+  el.style.transition = 'opacity .8s ease';
+  regBlink(el, it);
 }
 function buildWm(){
   if(!CFG.wm.enabled) return;
+  blinkReg = [];
   var old = document.getElementById('wm');
   if(old) old.parentNode.removeChild(old);
   var layer = document.createElement('div');
   layer.id = 'wm'; layer.className = 'wm';
-  /* 1) الووترمارك الكبيرة في النص — سطرين: الاسم الثنائي والرقم تحته —
-        بتظهر 10 ثواني وبتختفي 20 ثانية (دورة 30 ثانية متكررة) */
-  var big1 = wmShortName() || wmPhone;
-  if(big1){
-    var big = document.createElement('div');
-    big.id = 'wmBig';
-    big.innerHTML = '<span class="b1">' + esc(big1) + '</span>' +
-      ((wmName && wmPhone) ? '<span class="b2">' + esc(wmPhone) + '</span>' : '');
-    /* (2026-و40-w) شفافية أقل — الووترمارك المركزية أقل حجب للفيديو */
-    var wmo = Math.min(0.45, Math.max(0.22, (Number(CFG.wm.opacity) || 0.55) * 0.7));
-    big.style.setProperty('--wmo', String(wmo));
-    big.style.animationPlayState = 'paused';
-    layer.appendChild(big);
-  }
-  /* 2) الكروت الستة بالـ QR: تلاتة فوق (شمال/نص/يمين) + تلاتة تحت */
-  if(wmName || wmPhone){
+  var hasStudent = !!(wmName || wmPhone);
+  /* 1) + 2) كروت QR — فوق شمال وتحت يمين افتراضيًا (مكانهم من الكونفج) */
+  if(hasStudent){
     var ch = wmCardHtml();
-    var t  = document.createElement('div'); t.className  = 'wmCard wmCardT';  t.innerHTML  = ch; layer.appendChild(t);
-    var mr = document.createElement('div'); mr.className = 'wmCard wmCardMR'; mr.innerHTML = ch; layer.appendChild(mr);
-    var ml = document.createElement('div'); ml.className = 'wmCard wmCardML'; ml.innerHTML = ch; layer.appendChild(ml);
-    var b1 = document.createElement('div'); b1.className = 'wmCard wmCardB1'; b1.innerHTML = ch; layer.appendChild(b1);
-    var b2 = document.createElement('div'); b2.className = 'wmCard wmCardB2'; b2.innerHTML = ch; layer.appendChild(b2);
-    var b3 = document.createElement('div'); b3.className = 'wmCard wmCardB3'; b3.innerHTML = ch; layer.appendChild(b3);
+    var tl = document.createElement('div'); tl.className = 'wmCard wmQr s-' + PC.qrTL.size; tl.innerHTML = ch; placeWm(tl, PC.qrTL); layer.appendChild(tl);
+    var br = document.createElement('div'); br.className = 'wmCard wmQr s-' + PC.qrBR.size; br.innerHTML = ch; placeWm(br, PC.qrBR); layer.appendChild(br);
   }
-  /* 3) (2026-و16) كل جانب: رقمين (يمين + شمال) + اسم الطالب تحتهم صغير —
-     بطلب المستر الحرفي: «اللي على اليمين يكون مرتين برضه ويكون تحتهم اسم الطالب
-     خليها صغيرة زي ما هي» */
-  if(wmPhone){
-    var phc = '<div class="in">' + esc(wmPhone) + '</div>';
-    var nr = document.createElement('div'); nr.className = 'wmNumChip wmNumR'; nr.innerHTML = phc; layer.appendChild(nr);
-    var nr2 = document.createElement('div'); nr2.className = 'wmNumChip wmNumR2'; nr2.innerHTML = phc; layer.appendChild(nr2);
-    var nl = document.createElement('div'); nl.className = 'wmNumChip wmNumL'; nl.innerHTML = phc; layer.appendChild(nl);
-    var nl2 = document.createElement('div'); nl2.className = 'wmNumChip wmNumL2'; nl2.innerHTML = phc; layer.appendChild(nl2);
+  /* 3) عناصر اسم/رقم — (MG-5) كل عنصر له محتوى: both = اسم ثنائي فوق وتحته الرقم
+     (سطرين واضحين) | name = اسم بس | number = رقم بس — والاسم دايمًا ثنائي */
+  if(hasStudent && PC.nameItems.length){
+    var shortNm2 = wmShortName();
+    for(var i = 0; i < PC.nameItems.length; i++){
+      var it = PC.nameItems[i];
+      var nm = document.createElement('div'); nm.className = 'wmNm s-' + it.size;
+      var lines2 = '';
+      if (it.content !== 'number' && shortNm2) lines2 += '<span class="nm">' + esc(shortNm2) + '</span>';
+      if (it.content !== 'name' && wmPhone) lines2 += '<span class="ph">' + esc(wmPhone) + '</span>';
+      if (!lines2) lines2 = '<span class="nm">' + esc(shortNm2 || wmPhone || wmName) + '</span>';
+      nm.innerHTML = '<span class="in">' + lines2 + '</span>';
+      placeWm(nm, it); layer.appendChild(nm);
+    }
   }
-  if(wmShortName() && wmPhone){
-    var nmc = '<div class="in">' + esc(wmName) + '</div>';
-    var nmR = document.createElement('div'); nmR.className = 'wmNameChip wmNameR'; nmR.innerHTML = nmc; layer.appendChild(nmR);
-    var nmL = document.createElement('div'); nmL.className = 'wmNameChip wmNameL'; nmL.innerHTML = nmc; layer.appendChild(nmL);
+  /* 4) لوجو المنصة في النص — (MG-5) الشكل المطلوب حرفيًا:
+     name = **اسم الطالب الثنائي كبير وتحتيه الرقم مباشرة** (واضح — سطرين بس)
+     both = اسم المنصة فوق + الاسم الثنائي + الرقم
+     brand = اسم المنصة بس */
+  if(PC.centerLogo.on){
+    var lg = document.createElement('div'); lg.className = 'wmLogo s-' + PC.centerLogo.size;
+    var lgContent = PC.centerLogo.content || 'name';
+    var lgTwo = wmShortName();
+    if(lgContent !== 'brand' && (lgTwo || wmPhone)){
+      var lgInner = '';
+      if(lgContent === 'both') lgInner += '<span class="over">Mr Sherif ElSayed</span>';
+      lgInner += '<span class="in">' + esc(lgTwo || wmPhone) + '</span>';
+      if (lgTwo && wmPhone) lgInner += '<span class="sub ph">' + esc(wmPhone) + '</span>';
+      lg.innerHTML = lgInner;
+    } else {
+      lg.textContent = 'Mr Sherif ElSayed';
+    }
+    placeWm(lg, PC.centerLogo); layer.appendChild(lg);
   }
   wrap.appendChild(layer);
 }
@@ -627,6 +761,7 @@ function ensureTopShield(){
   var ts = document.createElement('div'); ts.id='topShield';
   ts.innerHTML = '<span class="brand">Mr Sherif ElSayed</span>';
   wrap.appendChild(ts);
+  applyPlayerChrome();
 }
 /* درع الشريط السفلي الكامل (2026-و7) — نفس الطقم العلوي بس تحت:
    بيغطي صف يوتيوب كله (اشتراك/لوجو/شير/كابشن) تغطية كاملة —
@@ -653,7 +788,7 @@ function ensureWm(){
   if(!CFG.wm.enabled) return;
   if(!document.getElementById('wm')) buildWm();
 }
-setInterval(function(){ ensureWm(); ensureYtCovers(); ensureBotShield(); }, 4000);
+setInterval(function(){ ensureWm(); ensureYtCovers(); ensureBotShield(); applyPlayerChrome(); }, 4000);
 try{ new MutationObserver(ensureWm).observe(wrap, {childList:true, subtree:true}); }catch(e){}
 
 /* ===== ملء الشاشة (الووترمارك جوه العنصر فبيفضل ظاهر) ===== */
@@ -1080,7 +1215,7 @@ function startWithWatchdog(){
 function ytState(){ try{ return playerApi && playerApi.getPlayerState ? playerApi.getPlayerState() : -1; }catch(e){ return -1; } }
 /* دورة الووترمارك الكبيرة (10 ظاهرة / 20 مخفية) بتشتغل وقت التشغيل بس —
    عند الإيقاف بتتوقف مؤقتًا ومتكملش (طلب المستر 2026-ل) */
-function wmRun(onoff){ try{ var w=document.getElementById('wmBig'); if(w) w.style.animationPlayState = onoff ? 'running' : 'paused'; }catch(e){} }
+function wmRun(onoff){ wmPlaying = !!onoff; try{ var w=document.getElementById('wmBig'); if(w) w.style.animationPlayState = onoff ? 'running' : 'paused'; }catch(e){} }
 
 /* ===== إخفاء شريط التحكم تلقائيًا (2026-و3 — طلب المستر الحرفي:
    «الشريط اللي تحت عاوزها تختفي أول ما أفتح الفيديو عادي، ولما أوقفه تظهر،
@@ -1144,15 +1279,15 @@ function pmCmd(func, args){
 function setPlayIcon(playing){
   var b = document.getElementById('mgPlay'); if(!b) return;
   b.innerHTML = playing
-    ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>'
-    : '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>';
+    ? '<svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>'
+    : '<svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>';
   b.setAttribute('aria-label', playing ? 'إيقاف مؤقت' : 'تشغيل');
 }
 function setMuteIcon(muted){
   var b = document.getElementById('mgMute'); if(!b) return;
   b.innerHTML = muted
-    ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>'
-    : '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
+    ? '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>'
+    : '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
   b.setAttribute('aria-label', muted ? 'تشغيل الصوت' : 'كتم الصوت');
 }
 function ytTogglePlay(){
@@ -1197,6 +1332,19 @@ function mgUpdateProgress(){
     if(buf){ var lf = 0; try{ lf = playerApi.getVideoLoadedFraction() || 0; }catch(e){} buf.style.width = (lf * 100) + '%'; }
   }catch(e){}
 }
+/* (MG-2) علامة يوتيوب في الشريط — لوجو + كلمة YouTube مقاس مريح —
+   ديكور بس (pointer-events:none — مفيش لينك خالص، الفيديو من المنصة بس) */
+function mgYtMarkEl(){
+  var m = document.createElement('span'); m.id = 'mgYtMark'; m.setAttribute('aria-hidden','true');
+  /* (MG-3) الحجم من الكونفج — صغير/متوسط/كبير — والمستر طلبها كبيرة (افتراضي كبير) */
+  var ysz = (PC.ytMark && PC.ytMark.size) || 'lg';
+  var dims = ysz === 'sm' ? { w: 21, h: 15, lbl: 10 } : ysz === 'md' ? { w: 27, h: 19, lbl: 12 } : { w: 34, h: 24, lbl: 14 };
+  if(PC.ytMark && PC.ytMark.on === false){ m.style.display = 'none'; return m; }
+  try{ m.style.setProperty('--ytLbl', dims.lbl + 'px'); }catch(e){}
+  m.innerHTML = '<svg width="' + dims.w + '" height="' + dims.h + '" viewBox="0 0 28 20"><rect x="0.5" y="0.5" width="27" height="19" rx="5" fill="#FF0000"/><rect x="0.5" y="0.5" width="27" height="19" rx="5" fill="none" stroke="rgba(255,255,255,.35)"/><path d="M11.5 5.8v8.4L19.2 10z" fill="#fff"/></svg>' +
+    '<span class="lbl">YouTube</span>';
+  return m;
+}
 function buildMgBar(){
   if(document.getElementById('mgBar')) return;
   var bar = document.createElement('div'); bar.id = 'mgBar';
@@ -1212,10 +1360,11 @@ function buildMgBar(){
   tw.innerHTML = '<div id="mgTrack"><div id="mgBuf"></div><div id="mgFill"></div></div>';
   var fsb = document.createElement('button'); fsb.type = 'button'; fsb.className = 'mBtn big';
   fsb.setAttribute('aria-label','تكبير وتصغير');
-  fsb.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
+  fsb.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
   fsb.addEventListener('click', function(e){ e.preventDefault(); e.stopPropagation(); toggleFs(); });
-  bar.appendChild(gear); bar.appendChild(tw); bar.appendChild(fsb);
+  bar.appendChild(gear); bar.appendChild(tw); bar.appendChild(fsb); bar.appendChild(mgYtMarkEl());
   wrap.appendChild(bar);
+  applyPlayerChrome();
   /* قايمة الجودة + قفلها بأي دوسة بره القايمة والزرار */
   var qm = document.createElement('div'); qm.id = 'mgQMenu'; wrap.appendChild(qm);
   document.addEventListener('click', function(e){
@@ -1372,6 +1521,11 @@ function ytRenderQMenu(){
     html += '<div class="qi' + (ytQWanted === q ? ' on' : '') + '" data-q="' + q + '"><span>' + ytQName(q) + '</span><span class="ck">' + (ytQWanted === q ? '✓' : '') + '</span></div>';
   }
   html += '<div class="qNote">الجودة بتُطلب تلقائيًا بـ 480p على الأقل — ويوتيوب بيرفعها أعلى لو النت يسمح. ولو اخترت مستوى بنفسك هنطلب ونتحقق إنه ثبت بجد</div>';
+  /* (MG-3) لو أعلى جودة في الفيديو نفسه ضعيفة — توضيح صادق + نصيحة معالجة HD */
+  var topQ = sorted.length ? sorted[0] : '';
+  if(topQ && (YT_Q_ORDER[topQ] || 0) <= (YT_Q_ORDER.large || 0)){
+    html += '<div class="qNote" style="color:rgba(252,211,77,.95)">أعلى جودة متاحة في الفيديو ده: ' + ytQName(topQ) + ' — دي حدود الملف الأصلي على يوتيوب ومفيش مشغل يقدر يخترع بكسلات أعلى. ولو الفيديو لسه مرفوع حديثًا على يوتيوب، معالجة HD بتاخد من نص ساعة لساعات — استنى شوية وارجع افتحه تاني</div>';
+  }
   m.innerHTML = html;
   var items = m.getElementsByClassName('qi');
   for(var j=0;j<items.length;j++){
@@ -1630,7 +1784,7 @@ function buildPlayer(){
    ============================================================
    • شريط تحكم عادي كامل من عندنا: تشغيل/إيقاف + شريط تقدم بالسحب
      + **الوقت (الحالي / المدة)** + كتم + **⚙ إعدادات الجودة** +
-     ملء شاشة + اسم المنصة — نفس شكل الشريط المعتمد
+     ملء شاشة + Mr Sherif ElSayed — نفس شكل الشريط المعتمد
    • إعدادات الجودة شغالة بجد:
      - بث HLS (.m3u8) → قايمة حقيقية من ملف البث (تلقائي + 1080p/720p/480p…)
        والتبديل فوري من غير إعادة تحميل (hls.js)
@@ -1675,6 +1829,8 @@ function cloudVariants(src){
 }
 function cloudUrlFor(h){
   if(!cloudBase) return '';
+  /* (تصليب) -1 أو 0 = الجودة الأصلية — من غير أي transformations
+     (من غير الشرط ده كان -1 بيتبني لينك بايظ c_scale,h_-1) */
   if(!h || h < 0) return cloudBase;
   return cloudBase.replace('/video/upload/', '/video/upload/c_scale,h_' + h + ',q_auto/');
 }
@@ -1869,8 +2025,9 @@ function buildFileBar(){
   fsb.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
   fsb.addEventListener('click', function(e){ e.preventDefault(); e.stopPropagation(); toggleFs(); });
   var brand = document.createElement('span'); brand.id = 'mgBrand'; brand.textContent = 'Mr Sherif ElSayed';
-  bar.appendChild(play); bar.appendChild(tw); bar.appendChild(time); bar.appendChild(mute); bar.appendChild(gear); bar.appendChild(fsb); bar.appendChild(brand);
+  bar.appendChild(play); bar.appendChild(tw); bar.appendChild(time); bar.appendChild(mute); bar.appendChild(gear); bar.appendChild(fsb); bar.appendChild(brand); bar.appendChild(mgYtMarkEl());
   wrap.appendChild(bar);
+  applyPlayerChrome();
   /* قايمة الجودة (بتتملي لما المصدر يجهز) */
   var qm = document.createElement('div'); qm.id = 'mgQMenu'; wrap.appendChild(qm);
   /* قفل القايمة بأي دوسة بره القايمة والزرار */

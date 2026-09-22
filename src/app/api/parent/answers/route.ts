@@ -1,21 +1,10 @@
-// ============================================================
-// /api/parent/answers — (2026-و39) إجابات الابن سؤال-بسؤال لولي الأمر
-//   GET ?parentId=xx&type=homework|exam&resultId=xx
-//   الولي أمر (المربوط بحساب ابنه بس) يشوف ورقة ابنه: كل سؤال
-//   بإجابته والإجابة الصحيحة ودرجته وملاحظة المصحح الذكي.
-//   الحماية: parent → student (ابنه فقط) — نتيجة غير ابنه = 403
-//   نفس قواعد item-analytics في عرض النصوص: قص علامة الصورة +
-//   الفاضي = «لم يتم الإجابة» + تطبيع مفتاح الإجابة normalizeCorrectKey
-// ============================================================
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { resolveQuestionsForStudent } from '@/lib/exam-models'
 import { normalizeCorrectKey } from '@/lib/correct-key'
+import { resolveParentStudent } from '@/lib/parent-students'
 
-export const runtime = 'nodejs'
-export const dynamic = 'force-dynamic'
-
-/* (2026-و38) شفاء ذاتي لجدول Parent — نفس حماية parent/results */
+/* (2026-و38) شفاء ذاتي لجدول Parent — نفس حماية مسارات التسجيل والدخول والنتايج */
 var parentDdlDone: Promise<void> | null = null
 function ensureParentTable(): Promise<void> {
   if (!parentDdlDone) {
@@ -31,6 +20,16 @@ function ensureParentTable(): Promise<void> {
   return parentDdlDone
 }
 
+// ============================================================
+// (2026-و39) متابعة ولي الأمر — إجابات الابن سؤال-بسؤال:
+//   GET ?parentId=xx&type=homework|exam&resultId=xx
+//   → { title, submittedAt, score, maxScore, questions: [{ idx, text, kind,
+//        options, studentAnswer, correctAnswer, isCorrect, awardedPoints,
+//        maxPoints, feedback }] }
+// الحماية: ولي الأمر يشوف إجابات ابنه بس (result.studentId لازم يطابق
+// student.id — أي نتيجة لطالب تاني = 403) — الأدمن بس هو اللي يشوف الكل.
+// ============================================================
+
 function parseJson(v: any): any {
   try { return typeof v === 'string' ? JSON.parse(v) : v } catch (e) { return null }
 }
@@ -45,12 +44,7 @@ function lookupAnswer(ans: any, idx: number): any {
   return undefined
 }
 
-/* قص علامة الصورة المرفقة من نص الإجابة (نفس قاعدة item-analytics) */
-function stripImageMarker(t: any): string {
-  return String(t || '').replace(/\[📷[^\]]*\]/g, '').trim()
-}
-
-/* نفس تصنيف exam-models: مقالي لو type writing/essay أو مفيش اختيارات صالحة */
+/* نفس تصنيف item-analytics: مقالي لو type writing/essay أو مفيش اختيارات أو كلها N/A */
 function isWritingQuestion(q: any): boolean {
   if (!q) return true
   if (q.type === 'writing' || q.type === 'essay') return true
@@ -60,165 +54,160 @@ function isWritingQuestion(q: any): boolean {
   return allNA
 }
 
+/* بناء إجابة الاختياري بشكل حرف + نص الخيار (زي شاشات المراجعة) */
+function mcqAnswerText(ans: any, opts: any[]): string {
+  if (ans === undefined || ans === null || ans === '') return 'لم يتم الإجابة'
+  if (typeof ans === 'number' && opts && opts[ans] !== undefined && opts[ans] !== null) {
+    return String.fromCharCode(65 + ans) + ') ' + String(opts[ans])
+  }
+  return String(ans)
+}
+
 export async function GET(request: NextRequest) {
   try {
     var sp = new URL(request.url).searchParams
-    var parentId = String(sp.get('parentId') || '')
+    var parentId = sp.get('parentId') || ''
     var type = String(sp.get('type') || '')
     var resultId = String(sp.get('resultId') || '')
-    if (!parentId || !resultId || (type !== 'homework' && type !== 'exam')) {
+    /* (2026-و79) ولي الأمر بعدة أبناء — الابن المطلوب من الـ query */
+    var studentIdParam = sp.get('studentId') || ''
+    if (!parentId || (type !== 'homework' && type !== 'exam') || !resultId) {
       return NextResponse.json({ error: 'طلب ناقص' }, { status: 400 })
     }
 
-    /* parent → student (ابنه بس) */
-    var parent: any = null
+    var parent = null as any
     try { await ensureParentTable() } catch (eDdl) {}
     try { parent = await db.parent.findUnique({ where: { id: parentId } }) } catch (pErr) {}
     if (!parent) {
       return NextResponse.json({ error: 'جلسة ولي الأمر منتهية — سجل دخول تاني' }, { status: 401 })
     }
-    var student: any = null
-    try { student = await db.student.findUnique({ where: { id: parent.studentId } }) } catch (sErr) {}
+
+    /* (2026-و79) الابن المختار لازم يكون من أبناء ولي الأمر فعلًا */
+    var resolved = await resolveParentStudent(parent, studentIdParam)
+    var student: any = resolved.selected
     if (!student) {
-      return NextResponse.json({ error: 'حساب ابنك مش موجود — سجل دخول تاني' }, { status: 401 })
+      return NextResponse.json({ error: 'حساب ابنك مش موجود في المنصة حاليًا' }, { status: 404 })
     }
 
-    /* النتيجة + العنصر (واجب/امتحان) — raw SQL الأول زي parent/results و findMany فولباك */
+    /* ---------- تحميل النتيجة (RAW عشان answers + writingResults/writingGrades مع بعض) ---------- */
     var result: any = null
-    var item: any = null
-    var title = ''
-    var submittedAt: any = null
-    var answers: any = null
-    var storedWriting: any[] = []
-
-    if (type === 'exam') {
-      try {
-        var rows: any[] = await db.$queryRawUnsafe('SELECT id, studentId, examId, score, maxScore, answers, writingGrades, submittedAt FROM ExamResult WHERE id = ? LIMIT 1', resultId)
-        if (rows && rows.length > 0) result = rows[0]
-      } catch (e1) {}
-      if (!result) {
-        try {
-          var pr = await db.examResult.findUnique({ where: { id: resultId } })
-          if (pr) result = { id: pr.id, studentId: pr.studentId, examId: (pr as any).examId, score: pr.score, maxScore: pr.maxScore, answers: '', writingGrades: '', submittedAt: pr.submittedAt }
-        } catch (e2) {}
-      }
-      if (!result) return NextResponse.json({ error: 'النتيجة مش موجودة' }, { status: 404 })
-      if (String(result.studentId) !== String(student.id)) {
-        return NextResponse.json({ error: 'النتيجة دي مش لابنك' }, { status: 403 })
-      }
-      try { item = await db.exam.findUnique({ where: { id: String(result.examId) } }) } catch (e3) {}
-      if (!item) return NextResponse.json({ error: 'الامتحان مش موجود' }, { status: 404 })
-      title = item.title || 'امتحان'
-      answers = parseJson(result.answers)
-      var wg = parseJson(result.writingGrades)
-      if (Array.isArray(wg)) storedWriting = wg
-    } else {
-      try {
-        var rows2: any[] = await db.$queryRawUnsafe('SELECT id, studentId, homeworkId, score, maxScore, answers, writingResults, submittedAt FROM HomeworkResult WHERE id = ? LIMIT 1', resultId)
-        if (rows2 && rows2.length > 0) result = rows2[0]
-      } catch (e1) {}
-      if (!result) {
-        try {
-          var pr2: any = await (db as any).homeworkResult.findUnique({ where: { id: resultId } })
-          if (pr2) result = { id: pr2.id, studentId: pr2.studentId, homeworkId: pr2.homeworkId, score: pr2.score, maxScore: pr2.maxScore, answers: '', writingResults: '', submittedAt: pr2.submittedAt }
-        } catch (e2) {}
-      }
-      if (!result) return NextResponse.json({ error: 'النتيجة مش موجودة' }, { status: 404 })
-      if (String(result.studentId) !== String(student.id)) {
-        return NextResponse.json({ error: 'النتيجة دي مش لابنك' }, { status: 403 })
-      }
-      try { item = await db.homework.findUnique({ where: { id: String(result.homeworkId) } }) } catch (e3) {}
-      if (!item) return NextResponse.json({ error: 'الواجب مش موجود' }, { status: 404 })
-      title = item.title || 'واجب'
-      answers = parseJson(result.answers)
-      var wr = parseJson(result.writingResults)
-      if (Array.isArray(wr)) storedWriting = wr
-    }
-
-    submittedAt = result.submittedAt || null
-
-    /* أسئلة الطالب الفعلية — الامتحان بنموذجه (resolveQuestionsForStudent) */
-    var qs: any[] = []
-    if (type === 'exam') {
-      try {
-        qs = resolveQuestionsForStudent(item, String(student.id), String(result.examId))
-      } catch (eQ) {
-        qs = parseJson(item.questions) || []
-      }
-    } else {
-      qs = parseJson(item.questions) || []
-    }
-
-    /* حكم المقالي المخزن بالفهرس الأصلي → نص السؤال → الموضع (نفس ترتيب item-analytics) */
-    var byOrig: Record<number, any> = {}
-    for (var wi = 0; wi < storedWriting.length; wi++) {
-      var sw = storedWriting[wi]
-      if (sw && typeof sw.origIdx === 'number') byOrig[sw.origIdx] = sw
-    }
-
     var questions: any[] = []
-    for (var qi = 0; qi < qs.length; qi++) {
-      var q = qs[qi]
-      var qText = String(q.question || q.q || ('السؤال ' + (qi + 1)))
-      var writing = isWritingQuestion(q)
+    var item: any = null
 
-      if (!writing) {
-        var opts = Array.isArray(q.options) ? q.options.map(function (o: any) { return String(o || '') }) : []
-        /* (2026-و39) نفس تطبيع submit — رقم/نص رقمي/حرف/نص الخيار بدل التخمين على A */
-        var correctIdx = normalizeCorrectKey(q, opts)
-        var keyless = correctIdx < 0 || correctIdx >= opts.length || !opts[correctIdx] || opts[correctIdx] === 'N/A'
+    if (type === 'homework') {
+      try {
+        var rows: any[] = await db.$queryRawUnsafe('SELECT id, studentId, homeworkId, score, maxScore, answers, writingResults, submittedAt FROM HomeworkResult WHERE id = ?', resultId)
+        result = rows && rows.length > 0 ? rows[0] : null
+      } catch (eRaw) {}
+      if (!result) {
+        try {
+          var pr = await db.homeworkResult.findUnique({ where: { id: resultId } })
+          if (pr) result = { id: pr.id, studentId: pr.studentId, homeworkId: (pr as any).homeworkId, score: pr.score, maxScore: pr.maxScore, answers: '', writingResults: '', submittedAt: pr.submittedAt }
+        } catch (ePr) {}
+      }
+      if (!result) return NextResponse.json({ error: 'النتيجة مش موجودة' }, { status: 404 })
+      if (String(result.studentId || '') !== String(student.id)) {
+        return NextResponse.json({ error: 'غير مصرح — النتيجة دي مش لابنك' }, { status: 403 })
+      }
+      try { item = await db.homework.findUnique({ where: { id: String(result.homeworkId || '') } }) } catch (eItem) {}
+      questions = parseJson(item && item.questions) || []
+    } else {
+      try {
+        var rows2: any[] = await db.$queryRawUnsafe('SELECT id, studentId, examId, score, maxScore, answers, writingGrades, submittedAt FROM ExamResult WHERE id = ?', resultId)
+        result = rows2 && rows2.length > 0 ? rows2[0] : null
+      } catch (eRaw2) {}
+      if (!result) {
+        try {
+          var pr2 = await db.examResult.findUnique({ where: { id: resultId } })
+          if (pr2) result = { id: pr2.id, studentId: pr2.studentId, examId: (pr2 as any).examId, score: pr2.score, maxScore: pr2.maxScore, answers: '', writingGrades: '', submittedAt: pr2.submittedAt }
+        } catch (ePr2) {}
+      }
+      if (!result) return NextResponse.json({ error: 'النتيجة مش موجودة' }, { status: 404 })
+      if (String(result.studentId || '') !== String(student.id)) {
+        return NextResponse.json({ error: 'غير مصرح — النتيجة دي مش لابنك' }, { status: 403 })
+      }
+      try { item = await db.exam.findUnique({ where: { id: String(result.examId || '') } }) } catch (eItem2) {}
+      /* أسئلة الطالب الفعلية (نماذج الامتحان — كل طالب نموذجه) زي item-analytics بالظبط */
+      try { questions = resolveQuestionsForStudent(item, student.id, String(result.examId || '')) } catch (eQ) {}
+      if (!questions || questions.length === 0) questions = parseJson(item && item.questions) || []
+    }
+
+    var answers = parseJson(result.answers)
+    var writingEntries: any[] = []
+    if (type === 'homework') writingEntries = parseJson(result.writingResults) || []
+    else writingEntries = parseJson(result.writingGrades) || []
+    var byOrig: Record<number, any> = {}
+    for (var wi = 0; wi < writingEntries.length; wi++) {
+      var wEntry = writingEntries[wi]
+      if (wEntry && typeof wEntry.origIdx === 'number') byOrig[wEntry.origIdx] = wEntry
+    }
+
+    /* ---------- بناء الأسئلة (مرآة item-analytics) ---------- */
+    var out: any[] = []
+    for (var qi = 0; qi < questions.length; qi++) {
+      var q = questions[qi]
+      var writing = isWritingQuestion(q)
+      var opts = writing ? [] : (Array.isArray(q.options) ? q.options.map(function (o: any) { return String(o || '') }) : [])
+      var correctIdx = writing ? -1 : normalizeCorrectKey(q, opts)
+      var keyless = !writing && (correctIdx < 0 || correctIdx >= opts.length)
+
+      var studentAnswer = ''
+      var correctAnswer = ''
+      var isCorrect = false
+      var awardedPoints: any = undefined
+      var maxPoints: any = undefined
+      var feedback = ''
+
+      if (writing) {
+        var g = byOrig[qi]
+        var rawAns = lookupAnswer(answers, qi)
+        studentAnswer = rawAns !== undefined && rawAns !== null ? String(rawAns) : ''
+        if (g) {
+          /* (2026-و39) نص إجابة الابن من قيد التصحيح نفسه (بيشمل اللي الـ AI قراه من الصورة)
+             — بنشيل علامات الصور — ولو مش موجود نرجع لإجابة الخريطة */
+          var entryText = String(g.aiExtractedAnswer || g.answer || '').replace(/\[📷[^\]]*\]/g, '').trim()
+          if (entryText) studentAnswer = entryText
+          var pts = typeof g.maxPoints === 'number' && g.maxPoints > 0 ? g.maxPoints : (typeof q.points === 'number' && q.points > 0 ? q.points : 1)
+          var awarded = typeof g.awardedPoints === 'number' ? g.awardedPoints : 0
+          /* نفس قاعدة item-analytics: صح بالحكم أو بالدرجة (نص الدرجات فوق) */
+          isCorrect = g.isCorrect === true || (awarded > 0 && awarded >= Math.ceil(pts * 0.5))
+          awardedPoints = awarded
+          maxPoints = pts
+          feedback = String(g.aiFeedback || g.feedback || '').replace(/\[📷[^\]]*\]/g, '').trim()
+          if (g.pending === true || g.gradingStatus === 'pending') feedback = feedback || 'بيتصحح دلوقتي بالذكاء الاصطناعي… حدّث بعد لحظات'
+        }
+        correctAnswer = String(q.modelAnswer || q.answer || '').slice(0, 300)
+      } else {
         var ans = lookupAnswer(answers, qi)
         var answered = ans !== undefined && ans !== null && ans !== ''
-        var isC = !keyless && answered && Number(ans) === correctIdx
-        var pts = (typeof q.points === 'number' && q.points > 0) ? q.points : 1
-        var ansText = (!answered)
-          ? 'لم يتم الإجابة'
-          : ((typeof ans === 'number' && opts[ans]) ? String.fromCharCode(65 + ans) + ') ' + opts[ans] : (stripImageMarker(ans) || 'لم يتم الإجابة'))
-        questions.push({
-          idx: qi,
-          text: qText,
-          kind: 'mcq',
-          options: opts,
-          studentAnswer: ansText,
-          correctAnswer: keyless
-            ? '⚠ السؤال ده محتاج مراجعة المستر — إجابته مش مؤكدة في مفتاح الدرجات'
-            : (String.fromCharCode(65 + correctIdx) + ') ' + String(opts[correctIdx] || '')),
-          isCorrect: isC,
-          awardedPoints: isC ? pts : 0,
-          maxPoints: pts,
-          feedback: '',
-        })
-      } else {
-        var g = byOrig[qi] || storedWriting.find(function (sw2: any) { return sw2 && (sw2.question || '') === qText }) || null
-        var wPts = (typeof q.points === 'number' && q.points > 0) ? q.points : (g && typeof g.maxPoints === 'number' && g.maxPoints > 0 ? g.maxPoints : 5)
-        var awarded = g && typeof g.awardedPoints === 'number' ? g.awardedPoints : 0
-        var maxPoints = g && typeof g.maxPoints === 'number' && g.maxPoints > 0 ? g.maxPoints : wPts
-        var wIsC = !!g && (g.isCorrect === true || (awarded > 0 && awarded >= Math.ceil(maxPoints * 0.5)))
-        var studentText = stripImageMarker(g ? (g.aiExtractedAnswer || g.answer || '') : (lookupAnswer(answers, qi) || ''))
-        questions.push({
-          idx: qi,
-          text: qText,
-          kind: 'writing',
-          options: [],
-          studentAnswer: studentText || 'لم يتم الإجابة',
-          correctAnswer: String(q.modelAnswer || q.answer || '').slice(0, 200),
-          isCorrect: wIsC,
-          awardedPoints: awarded,
-          maxPoints: maxPoints,
-          feedback: g ? String(g.aiFeedback || g.feedback || '') : 'بيتصحح بالذكاء الاصطناعي… حدّث الصفحة بعد لحظات',
-        })
+        studentAnswer = mcqAnswerText(ans, opts)
+        if (!keyless) correctAnswer = String.fromCharCode(65 + correctIdx) + ') ' + String(opts[correctIdx] || '')
+        isCorrect = answered && Number(ans) === correctIdx
       }
+
+      out.push({
+        idx: qi,
+        text: String((q && (q.question || q.q)) || ''),
+        kind: writing ? 'writing' : 'mcq',
+        options: opts,
+        studentAnswer: studentAnswer,
+        correctAnswer: correctAnswer,
+        isCorrect: isCorrect,
+        awardedPoints: awardedPoints,
+        maxPoints: maxPoints,
+        feedback: feedback,
+      })
     }
 
     return NextResponse.json({
-      title: title,
-      submittedAt: submittedAt,
-      score: typeof result.score === 'number' ? result.score : 0,
-      maxScore: typeof result.maxScore === 'number' ? result.maxScore : 0,
-      questions: questions,
+      title: (item && item.title) || (type === 'homework' ? 'واجب' : 'امتحان'),
+      submittedAt: result.submittedAt,
+      score: result.score,
+      maxScore: result.maxScore,
+      questions: out,
     })
   } catch (err: any) {
-    console.error('parent/answers error:', err)
+    console.error('Parent answers error:', err)
     return NextResponse.json({ error: 'حدث خطأ مؤقت في السيرفر — جرب تاني بعد لحظات' }, { status: 500 })
   }
 }
