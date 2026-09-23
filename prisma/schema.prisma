@@ -415,3 +415,26 @@ model ParentNotification {
   @@index([createdAt])
   @@map("parent_notifications")
 }
+
+// ============================================================
+// (2026-و89) اشتراكات Web Push لولي الأمر — طلب المستر: «الإشعار
+//   اللي هيجي لولي الأمر بره مش هيجي على الواتساب — إشعار براوزر
+//   حقيقي يظهر على شاشة الموبايل».
+//   كل صف = جهاز واحد اشترك لولي أمر:
+//     parentId  = رقم موبايل ولي الأمر مطبّع (نفس parent_id في parent_notifications)
+//     endpoint  = عنوان خدمة الـ push عند البراوزر (unique — إعادة الاشتراك بتتحدّث مش تتضاعف)
+//     p256dh/auth = مفاتيح تشفير الحمولة (Web Push protocol)
+//   الإرسال من lib/push.ts — الاشتراك من بوب-أب «تفعيل الإشعارات» في بورتال ولي الأمر
+// ============================================================
+model ParentPushSubscription {
+  id        String   @id @default(cuid())
+  parentId  String   @default("")
+  endpoint  String   @unique
+  p256dh    String   @default("")
+  auth      String   @default("")
+  userAgent String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([parentId])
+}

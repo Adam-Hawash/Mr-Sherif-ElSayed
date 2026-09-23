@@ -46,10 +46,12 @@
     "tailwindcss-animate": "^1.0.7",
     "tw-animate-css": "^1.2.4",
     "typescript": "^5.8.3",
+    "web-push": "^3.6.7",
     "z-ai-web-dev-sdk": "^0.0.18",
     "zustand": "^5.0.5"
   },
   "devDependencies": {
-    "@types/katex": "^0.16.8"
+    "@types/katex": "^0.16.8",
+    "@types/web-push": "^3.6.4"
   }
 }

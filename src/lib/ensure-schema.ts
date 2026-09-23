@@ -41,6 +41,10 @@ export var SCHEMA_TABLES = [
   'CREATE TABLE IF NOT EXISTS Book (id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT \'\', filePath TEXT NOT NULL DEFAULT \'\', sourceUrl TEXT NOT NULL DEFAULT \'\', fileName TEXT NOT NULL DEFAULT \'\', fileType TEXT NOT NULL DEFAULT \'application/pdf\', sizeBytes INTEGER NOT NULL DEFAULT 0, grade TEXT NOT NULL DEFAULT \'\', createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL)',
   // (2026-و44) الإشعارات — رد الشكوى/الكتب الجديدة/امتحانات وواجبات جديدة
   'CREATE TABLE IF NOT EXISTS Notification (id TEXT PRIMARY KEY, studentId TEXT NOT NULL, type TEXT NOT NULL DEFAULT \'general\', title TEXT NOT NULL, body TEXT NOT NULL DEFAULT \'\', read INTEGER NOT NULL DEFAULT 0, createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
+  /* (2026-و89) اشتراكات Web Push لولي الأمر — الإشعار الخارجي بقى إشعار براوزر حقيقي
+     (مش واتساب — طلب المستر) — كل صف = جهاز مشترك لرقم ولي أمر مطبّع */
+  'CREATE TABLE IF NOT EXISTS ParentPushSubscription (id TEXT PRIMARY KEY, parentId TEXT NOT NULL DEFAULT \'\', endpoint TEXT NOT NULL UNIQUE, p256dh TEXT NOT NULL DEFAULT \'\', auth TEXT NOT NULL DEFAULT \'\', userAgent TEXT NOT NULL DEFAULT \'\', createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
+  'CREATE INDEX IF NOT EXISTS idx_pps_parent ON ParentPushSubscription(parentId)',
 ]
 
 var SCHEMA_COLUMNS = [
@@ -192,7 +196,11 @@ export var CORE_TABLES = ['Admin', 'Student', 'StudentActivity', 'Video', 'Homew
 /* (و45) مفتاح البصمة اتبدّل رابع — عمود GalleryImage.thumbnail (صورة مصغرة
  * لفيديوهات المعرض) دخل SCHEMA_TABLES + SCHEMA_COLUMNS — نفس الدرس الموثق:
  * من غير البَمب العمود مش هيتضاف على Turso أول ريكوست بعد النشر. */
-var SCHEMA_HASH_KEY = 'schema_heal_hash_v2_w45'
+/* (و89) مفتاح البصمة اتبدّل خامس — جدول ParentPushSubscription (اشتراكات
+ * إشعارات Web Push لولي الأمر) دخل SCHEMA_TABLES — نفس الدرس الموثق
+ * و38/و40/و43/و45: من غير تغيير المفتاح الجدول مش هيتعمل على
+ * قواعد Turso الموجودة أول ريكوست بعد النشر. */
+var SCHEMA_HASH_KEY = 'schema_heal_hash_v2_w89'
 
 /* ============================================================
  * 2026-و23 — **إصلاح بطء المنصة** (طلب المستر: «المنصة بطيئة، تسجيل
