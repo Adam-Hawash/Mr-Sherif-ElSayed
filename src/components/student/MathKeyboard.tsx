@@ -4,6 +4,8 @@ import { useState, useRef, useEffect } from 'react'
 import { Calculator, X, Delete, CornerDownLeft, Image as ImageIcon, Loader2, Eye, ArrowDownToLine } from 'lucide-react'
 import { chunkedUpload } from '@/lib/chunked-upload'
 import { FractionText, hasMathMarkup } from '@/components/FractionText'
+/* (2026-و73) إعفاء نافذة رفع الصورة من عدّاد مغادرة الامتحان — الرفع مش خروج */
+import { notifyPickerOpen } from '@/components/student/useAntiCheat'
 
 interface MathKeyboardProps {
   value: string
@@ -441,7 +443,11 @@ export function MathKeyboard({ value, onChange, placeholder = 'Type your answer 
       <div className="flex items-center gap-1.5 flex-wrap">
         <button
           type="button"
-          onClick={() => fileInputRef.current?.click()}
+          onClick={function () {
+            /* (و73) الرفع مش خروج من المنصة — إعفاء عدّاد المغادرة */
+            notifyPickerOpen()
+            fileInputRef.current?.click()
+          }}
           disabled={uploading}
           className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors disabled:opacity-50"
           title="Upload image"

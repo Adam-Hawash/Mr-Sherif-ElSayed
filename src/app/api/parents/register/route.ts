@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db, safeWrite } from '@/lib/db'
+import { ensureParentStudentTable, linkParentStudent } from '@/lib/parent-students'
 
 /* (2026-و38) شفاء ذاتي لجدول Parent — درس من الإنتاج: الجدول كان نازل
  * في SCHEMA_TABLES بس مش في CORE_TABLES فالترميم التلقائي اتخطاه
@@ -63,15 +64,25 @@ export async function POST(request: NextRequest) {
       else if (digits.length === 10 && digits.indexOf('1') === 0) digits = '0' + digits
       return digits
     }
+    /* (و90) + تطبيع الحروف العربية المتشابهة (أ/ا، ى/ي، ة/ه، ؤ/و، ئ/ي) —
+       الكيبورد بتكتبها مختلفة من موبايل لموبايل وكانت بتكسر مطابقة صحيحة */
+    var foldArabic = function (t: string): string {
+      return t
+        .replace(/[أإآ]/g, 'ا')
+        .replace(/ى/g, 'ي')
+        .replace(/ة/g, 'ه')
+        .replace(/ؤ/g, 'و')
+        .replace(/ئ/g, 'ي')
+    }
     var normPwd = function (v: string): string {
       var t = String(v || '')
       t = t.replace(/[٠-٩]/g, function (d) { return String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)) })
       t = t.replace(/[۰-۹]/g, function (d) { return String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)) })
-      return t.replace(/\s+/g, '').trim().toLowerCase()
+      return foldArabic(t.replace(/\s+/g, '')).trim().toLowerCase()
     }
     // اسم الطالب: مسافات مضبوطة + حالة حروف متساهلة — عشان الكتابة الطبيعية تتقبل
     var normName = function (v: string): string {
-      return String(v || '').replace(/\s+/g, ' ').trim().toLowerCase()
+      return foldArabic(String(v || '').replace(/\s+/g, ' ').trim().toLowerCase())
     }
 
     if (!studentName) {
@@ -94,48 +105,150 @@ export async function POST(request: NextRequest) {
     }
 
     // ===== 1) جيب حساب ابنك =====
+    /* (و90) درس من شكوى المستر: «كلمة مرور ابنك غلط» رغم إنها صح — الأسباب:
+       (أ) الرقم ممكن يكون متخزن بصيغة تانية (20xxxxxxxxx / مسافات / أرقام عربية)
+       (ب) لو فيه أكتر من حساب بنفس الرقم — findFirst بيرجّع حساب قديم باسورده مختلف
+       (ج) حروف عربية متشابهة (أ/ا، ى/ي، ة/ه) في الباسورد أو الاسم
+       الحل: بحث بكل صيغ الرقم على كل الحسابات المرشحة + فحص (اسم + باسورد
+       + رقم ولي الأمر) على كل مرشح — أول واحد يطابق كلهم هو الحساب المعتمد. */
     try { await ensureParentTable() } catch (eDdl) {}
-    var student = null as any
-    try {
-      student = await safeWrite(function () { return db.student.findFirst({ where: { phone: studentPhoneNorm } }) })
-    } catch (e1) {
-      try { student = await db.student.findFirst({ where: { phone: studentPhoneNorm } }) } catch (e2) {}
+
+    /* (و92) مطابِق موحّد — نفس قواعد التحقق للأول والأبناء الإضافيين
+       (زرار «إضافة طالب» في شاشة التسجيل): رقم بكل الصيغ + اسم مطابق
+       + باسورد صحيح + رقم ولي الأمر مسجل على حساب الطالب */
+    var matchStudent = async function (name: string, phone: string, password: string) {
+      var phoneNorm = normPhone(phone)
+      if (!phoneNorm) return { err: 'أرقام التليفون لازم تكون أرقام صحيحة', field: 'studentPhone' }
+      var digits = String(phone || '').replace(/[^0-9]/g, '')
+      var variants: string[] = []
+      var pushV = function (v: string) { if (v && variants.indexOf(v) === -1) variants.push(v) }
+      pushV(phoneNorm)
+      if (digits.length === 12 && digits.indexOf('20') === 0) pushV('0' + digits.slice(2))
+      if (phoneNorm.length === 11 && phoneNorm.indexOf('0') === 0) pushV('20' + phoneNorm.slice(1))
+      pushV(digits)
+      var cands: any[] = []
+      var load = function () { return db.student.findMany({ where: { phone: { in: variants } } }) }
+      try { cands = await safeWrite(load) } catch (e1) { try { cands = await load() } catch (e2) { cands = [] } }
+      if (!cands || !cands.length) return { err: 'مفيش طالب مسجل بالرقم ده في المنصة — اتأكد إنك كاتب رقم تليفون ابنك الصح (نفس الرقم اللي اتسجل بيه)', field: 'studentPhone' }
+      var typed = normName(name)
+      var nameHit = function (s: any): boolean {
+        var stored = normName(s.name)
+        return stored === typed || (typed.length >= 4 && stored.indexOf(typed) !== -1)
+      }
+      var nameHitButWrongPwd = false
+      var anyParentPhoneStored = false
+      for (var i = 0; i < cands.length; i++) {
+        var c = cands[i]
+        if (!nameHit(c)) continue
+        if (!password || normPwd(c.password) !== normPwd(password)) { nameHitButWrongPwd = true; continue }
+        var cPar = normPhone(String(c.parentPhone || ''))
+        if (!cPar) continue
+        anyParentPhoneStored = true
+        if (cPar !== parentPhoneNorm) continue
+        return { student: c }
+      }
+      var anyName = false
+      for (var j = 0; j < cands.length; j++) { if (nameHit(cands[j])) { anyName = true; break } }
+      if (!anyName) return { err: 'الاسم مش مطابق لحساب الطالب المسجل بالرقم ده — اكتب اسم ابنك زي ما هو متسجل في المنصة بالظبط', field: 'studentName' }
+      if (nameHitButWrongPwd) return { err: 'باسورد الطالب غلط — اكتب نفس الباسورد اللي ابنك بيدخل بيه في المنصة (اتأكد إنه هو نفسه اللي ابنك بيدخل بيه دلوقتي)', field: 'studentPassword' }
+      if (!anyParentPhoneStored) return { err: 'حساب ابنك مش مسجل عليه رقم ولي أمر — كلمني أظبطه الأول', field: 'parentPhone' }
+      return { err: 'رقمك الشخصي مش هو المسجل على حساب ابنك في المنصة — لازم نفس الرقم اللي اتسجل بيه وقت ما ابنك عمل حسابه', field: 'parentPhone' }
     }
-    if (!student) {
+
+    /* (و92) الأبناء الإضافيين من زرار «إضافة طالب» — بيتحققوا كلهم الأول
+       قبل إنشاء أي حاجة، ولو واحد فيهم فيه مشكلة الرسالة بتقول مين بالظبط */
+    var extraStudents: any[] = []
+    if (Array.isArray(body.extraStudents)) {
+      var extrasIn = body.extraStudents.slice(0, 5)
+      var seenPhones: string[] = [studentPhoneNorm]
+      for (var ex = 0; ex < extrasIn.length; ex++) {
+        var exName = String((extrasIn[ex] || {}).studentName || '').trim()
+        var exPhone = String((extrasIn[ex] || {}).studentPhone || '').trim()
+        var exPwd = String((extrasIn[ex] || {}).studentPassword || '')
+        var label = 'الطالب رقم ' + (ex + 2)
+        if (!exName || !exPhone || !exPwd) {
+          return NextResponse.json({ error: label + ': اكتب اسمه ورقم تليفونه وباسورده كاملين' }, { status: 400 })
+        }
+        var exNorm = normPhone(exPhone)
+        if (seenPhones.indexOf(exNorm) !== -1) {
+          return NextResponse.json({ error: label + ': الرقم ده مكتوب قبل كده في نفس الطلب — كل ابن له رقم مختلف' }, { status: 400 })
+        }
+        seenPhones.push(exNorm)
+        var matched = await matchStudent(exName, exPhone, exPwd)
+        if (matched.err) {
+          return NextResponse.json({ error: label + ': ' + matched.err }, { status: 400 })
+        }
+        extraStudents.push(matched.student)
+      }
+    }
+
+    var digitsOnly = studentPhone.replace(/[^0-9]/g, '')
+    var phoneVariants: string[] = []
+    var pushVariant = function (v: string) { if (v && phoneVariants.indexOf(v) === -1) phoneVariants.push(v) }
+    pushVariant(studentPhoneNorm)
+    if (digitsOnly.length === 12 && digitsOnly.indexOf('20') === 0) pushVariant('0' + digitsOnly.slice(2))
+    if (studentPhoneNorm.length === 11 && studentPhoneNorm.indexOf('0') === 0) pushVariant('20' + studentPhoneNorm.slice(1))
+    pushVariant(digitsOnly)
+
+    var candidates: any[] = []
+    var loadCandidates = function () { return db.student.findMany({ where: { phone: { in: phoneVariants } } }) }
+    try {
+      candidates = await safeWrite(loadCandidates)
+    } catch (e1) {
+      try { candidates = await loadCandidates() } catch (e2) { candidates = [] }
+    }
+    if (!candidates || !candidates.length) {
       return NextResponse.json(
         { error: 'مفيش طالب مسجل بالرقم ده في المنصة — اتأكد إنك كاتب رقم تليفون ابنك الصح (نفس الرقم اللي اتسجل بيه)', field: 'studentPhone' },
         { status: 404 }
       )
     }
 
-    // ===== 2) اسم الطالب لازم يطابق المسجل =====
-    var storedName = normName(student.name)
+    // ===== 2+3+4) مطابقة الاسم والباسورد ورقم ولي الأمر على كل المرشحين =====
     var typedName = normName(studentName)
-    var nameOk = storedName === typedName || (typedName.length >= 4 && storedName.indexOf(typedName) !== -1)
-    if (!nameOk) {
-      return NextResponse.json(
-        { error: 'الاسم مش مطابق لحساب الطالب المسجل بالرقم ده — اكتب اسم ابنك زي ما هو متسجل في المنصة بالظبط', field: 'studentName' },
-        { status: 400 }
-      )
+    var nameMatch = function (s: any): boolean {
+      var storedName = normName(s.name)
+      return storedName === typedName || (typedName.length >= 4 && storedName.indexOf(typedName) !== -1)
     }
-
-    // ===== 3) باسورد الطالب لازم يطابق =====
-    if (!studentPassword || normPwd(student.password) !== normPwd(studentPassword)) {
-      return NextResponse.json(
-        { error: 'باسورد الطالب غلط — اكتب نفس الباسورد اللي ابنك بيدخل بيه في المنصة', field: 'studentPassword' },
-        { status: 400 }
-      )
+    var pwdMatch = function (s: any): boolean {
+      return !!studentPassword && normPwd(s.password) === normPwd(studentPassword)
     }
-
-    // ===== 4) رقم ولي الأمر لازم يكون هو المسجل على حساب ابنه =====
-    var storedParentPhone = normPhone(String(student.parentPhone || ''))
-    if (!storedParentPhone) {
-      return NextResponse.json(
-        { error: 'حساب ابنك مش مسجل عليه رقم ولي أمر — كلمني أظبطه الأول', field: 'parentPhone' },
-        { status: 400 }
-      )
+    var student = null as any
+    var nameHitButWrongPwd = false
+    var anyParentPhoneStored = false
+    for (var ci = 0; ci < candidates.length; ci++) {
+      var cand = candidates[ci]
+      if (!nameMatch(cand)) continue
+      if (!pwdMatch(cand)) { nameHitButWrongPwd = true; continue }
+      var candParentPhone = normPhone(String(cand.parentPhone || ''))
+      if (!candParentPhone) { continue }
+      anyParentPhoneStored = true
+      if (candParentPhone !== parentPhoneNorm) { continue }
+      student = cand
+      break
     }
-    if (storedParentPhone !== parentPhoneNorm) {
+    if (!student) {
+      /* رسالة واضحة حسب السبب الحقيقي — بدل رسالة واحدة مضللة */
+      var anyNameMatch = false
+      for (var ai = 0; ai < candidates.length; ai++) { if (nameMatch(candidates[ai])) { anyNameMatch = true; break } }
+      if (!anyNameMatch) {
+        return NextResponse.json(
+          { error: 'الاسم مش مطابق لحساب الطالب المسجل بالرقم ده — اكتب اسم ابنك زي ما هو متسجل في المنصة بالظبط', field: 'studentName' },
+          { status: 400 }
+        )
+      }
+      if (nameHitButWrongPwd) {
+        return NextResponse.json(
+          { error: 'باسورد الطالب غلط — اكتب نفس الباسورد اللي ابنك بيدخل بيه في المنصة (اتأكد إنه هو نفسه اللي ابنك بيدخل بيه دلوقتي)', field: 'studentPassword' },
+          { status: 400 }
+        )
+      }
+      if (!anyParentPhoneStored) {
+        return NextResponse.json(
+          { error: 'حساب ابنك مش مسجل عليه رقم ولي أمر — كلمني أظبطه الأول', field: 'parentPhone' },
+          { status: 400 }
+        )
+      }
       return NextResponse.json(
         { error: 'رقمك الشخصي مش هو المسجل على حساب ابنك في المنصة — لازم نفس الرقم اللي اتسجل بيه وقت ما ابنك عمل حسابه', field: 'parentPhone' },
         { status: 400 }
@@ -185,6 +298,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'حصلت مشكلة في إنشاء الحساب — جرّب تاني بعد لحظات' }, { status: 500 })
     }
 
+    /* (و92) ربط الأبناء الإضافيين — نفس دمج «إضافة طالب» (ParentStudent)
+       عشان الحساب واحد يشوف كل الأبناء من أول ما يتفتح */
+    var linkedExtra = 0
+    try {
+      await ensureParentStudentTable()
+      for (var li = 0; li < extraStudents.length; li++) {
+        try {
+          await linkParentStudent(created.id, String(extraStudents[li].id))
+          linkedExtra++
+        } catch (eLink) {
+          console.error('Parent register extra link error (ignored):', eLink)
+        }
+      }
+    } catch (eT) {}
+
     return NextResponse.json({
       success: true,
       parent: {
@@ -194,6 +322,7 @@ export async function POST(request: NextRequest) {
         studentId: created.studentId,
         student: { id: student.id, name: student.name, grade: student.grade, status: student.status, isPaidAccess: !!student.isPaidAccess },
       },
+      linkedExtraStudents: linkedExtra,
     })
   } catch (err: any) {
     console.error('Parent register error:', err)

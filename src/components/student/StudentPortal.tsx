@@ -20,6 +20,8 @@ import type { Video as VideoType, Homework, Exam, Announcement, Discussion, Exam
 import { MathKeyboard } from '@/components/student/MathKeyboard'
 import { SecurePlayerModal } from '@/components/student/SecurePlayerModal'
 import { StudentComplaints } from '@/components/student/StudentComplaints'
+/* (2026-و66) نظام منع الغش والتشتت الذكي — مراقبة مغادرة الامتحان */
+import { useAntiCheat, AntiCheatModal, AntiCheatBadge } from '@/components/student/useAntiCheat'
 import { FractionText } from '@/components/FractionText'
 import BidiText from '@/components/BidiText'
 /* (2026-و44) جرس الإشعارات + بادج المجتمع — أي حاجة جديدة توصل للطالب */
@@ -820,6 +822,46 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
 /* ========== HOMEWORK TAB ========== */
 function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { homework: Homework[]; studentId: string; completedHwIds: Set<string>; onHwSubmitted: (hwId: string) => void }) {
   const [expandedHw, setExpandedHw] = useState<string | null>(null)
+
+  /* ===== (2026-و66) منع الغش في الواجبات — نفس نظام الامتحانات:
+     تحذير لطيف 1-2 → خصم من 3 → تسليم تلقائي عند الرابعة ===== */
+  const hwCheatStrikesRef = useRef(0)
+  const hwActiveRef = useRef<string | null>(null)
+  const hwAntiCheat = useAntiCheat({
+    active: !!expandedHw,
+    /* (2026-و76) نوع الشاشة واجب — رسايل التحذير تقول «كمّل واجبك» */
+    kind: 'hw',
+    onGiveUp: function () {
+      try { toast.error('⛔ عدّيت الحد المسموح من المغادرات — الواجب هيتسلم تلقائيًا', { duration: 8000 }) } catch (e) {}
+      /* (2026-و92) إعادة محاولة بدل الصمت: لو صورة ورقة الحل لسه بتترفع
+         أو الزرار مش جاهز — نفحص كل ثانيتين (حتى 40 محاولة ≈ دقيقة و20 ثانية)
+         وبنسلّم أول ما تجهز — التسليم التلقائي ممنوع يضيع */
+      var tries = 0
+      var attempt = function () {
+        try {
+          var hwId = hwActiveRef.current
+          if (!hwId) return
+          var btn = document.getElementById('hw-submit-' + hwId) as HTMLButtonElement | null
+          if (!btn || btn.getAttribute('data-photo-busy') === '1') {
+            if (++tries <= 40) setTimeout(attempt, 2000)
+            return
+          }
+          if (btn.disabled) btn.disabled = false
+          btn.click()
+        } catch (e) {}
+      }
+      attempt()
+    },
+    onStrike: function (s: number) { hwCheatStrikesRef.current = s },
+  })
+  useEffect(function () {
+    if (expandedHw) {
+      hwActiveRef.current = expandedHw
+      hwCheatStrikesRef.current = 0
+      hwAntiCheat.reset()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expandedHw])
   const [hwAnswers, setHwAnswers] = useState<Record<string, Record<number, number | string>>>({})
   const [hwSubmitting, setHwSubmitting] = useState<string | null>(null)
   /* 2026-و20 — ممنوع تسليم الواجب لحد ما صور ورقة الحل توصل كاملة */
@@ -2021,7 +2063,10 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                     </div>
                   )}
 
-                  <Button size="sm" className="w-full sm:w-auto h-11 sm:h-8 mt-1" disabled={Object.keys(myAnswers).length === 0 && Object.keys(hwAnswers[hw.id] || {}).length === 0 || hwSubmitting === hw.id || hwPhotoBusy[hw.id] === true} onClick={async function() {
+                  {/* (2026-و76) id=hw-submit-<hwId> — onGiveUp بتدور عليه بالـgetElementById
+                     عشان التسليم التلقائي عند المغادرة الرابعة يشتغل زي الامتحانات بالظبط
+                     + data-photo-busy عشان التسليم التلقائي ما يحصلش والصورة لسه بتترفع */}
+                  <Button id={'hw-submit-' + hw.id} data-photo-busy={hwPhotoBusy[hw.id] ? '1' : '0'} size="sm" className="w-full sm:w-auto h-11 sm:h-8 mt-1" disabled={Object.keys(myAnswers).length === 0 && Object.keys(hwAnswers[hw.id] || {}).length === 0 || hwSubmitting === hw.id || hwPhotoBusy[hw.id] === true} onClick={async function() {
                     setHwSubmitting(hw.id)
                     try {
                       // Map display answers back to original indices
@@ -2064,7 +2109,8 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                       var res = await fetch('/api/homework/submit', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ studentId, homeworkId: hw.id, answers: mappedAnswers, tableAnswers: hwTablePayload }),
+                        /* (2026-و66) cheatStrikes — سجل مخالفات منع الغش */
+                        body: JSON.stringify({ studentId, homeworkId: hw.id, answers: mappedAnswers, tableAnswers: hwTablePayload, cheatStrikes: hwCheatStrikesRef.current || 0 }),
                       })
                       var data = await res.json()
                       if (res.ok || data.alreadySubmitted) {
@@ -2155,6 +2201,10 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
           })}
         </div>
       )}
+
+      {/* (2026-و66) مودال تحذير منع الغش للواجبات
+          (2026-و76) kindLabel=الواجب — رسايل التحذير بتقول «كمّل واجبك» مش «امتحانك» */}
+      <AntiCheatModal open={hwAntiCheat.warningOpen} strikes={hwAntiCheat.strikes} kindLabel="الواجب" onDismiss={hwAntiCheat.dismissWarning} />
     </div>
   )
 }
@@ -2222,6 +2272,10 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
   const [submitting, setSubmitting] = useState(false)
   /* 2026-و20 — ممنوع تسليم الامتحان لحد ما صور ورقة الحل توصل كاملة */
   const [examPhotoBusy, setExamPhotoBusy] = useState(false)
+  /* (2026-و92) مرآة متزامنة لحالة رفع الصورة — التسليم التلقائي (انتهاء وقت/
+     حد المغادرات) بيستناها تخلص قبل ما يسلّم بدل ما يضيع صامت */
+  const examPhotoBusyRef = useRef(false)
+  useEffect(function () { examPhotoBusyRef.current = examPhotoBusy }, [examPhotoBusy])
   const [examQuestions, setExamQuestions] = useState<any[]>([])
   const [examShuffleMap, setExamShuffleMap] = useState<number[]>([])
   /* (2026-و40-w) جداول ورقة العمل — مفتاحها displayIdx (وضع الورقة بالترتيب الأصلي) */
@@ -2256,7 +2310,20 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
   const examAutoRefreshDoneRef = useRef(false)
   const [examMcqNotes, setExamMcqNotes] = useState<Record<string, string>>({})
   const [examMcqNotesLoading, setExamMcqNotesLoading] = useState(false)
-  const doSubmitExamRef = useRef<null | ((opts?: { auto?: boolean }) => Promise<void>)>(null)
+  const doSubmitExamRef = useRef<null | ((opts?: { auto?: boolean; cheat?: boolean }) => Promise<void>)>(null)
+
+  /* ===== (2026-و66) نظام منع الغش والتشتت الذكي — طلب المستر:
+     «يحسس لما الطالب يقلب على الجوال أو يسيب الامتحان ويودع تحذير»
+     تحذير لطيف 1-2 → خصم نقاط من 3 → تسليم تلقائي عند الرابعة ===== */
+  const antiCheatStrikesRef = useRef(0)
+  const antiCheat = useAntiCheat({
+    active: !!takingExam && !examSubmitted,
+    onGiveUp: function () {
+      try { toast.error('⛔ عدّيت الحد المسموح من المغادرات — الامتحان هيتسلم تلقائيًا', { duration: 8000 }) } catch (e) {}
+      try { doSubmitExamRef.current?.({ auto: true, cheat: true }) } catch (e) {}
+    },
+    onStrike: function (s: number) { antiCheatStrikesRef.current = s },
+  })
 
   /* ===== (2026-و37) مسودة الامتحان المحفوظة تلقائيًا =====
      شكوى المستر: «لما الطالب بيرفع ورقة الحل بيتخرج من الصفحة ويحل من الأول».
@@ -2430,9 +2497,21 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
   /* ===== (25-b2) دالة التسليم الموحدة — نفس منطق زرار التسليم الأصلي بالظبط
      (نفس mappedAnswers من answers/writingAnswers state) — والعداد التنازلي
      بيسلّم بيها تلقائيًا عند 0 بنفس إجابات الطالب المتاحة (حتى لو فاضية) ===== */
-  async function submitExamNow(opts?: { auto?: boolean }) {
+  async function submitExamNow(opts?: { auto?: boolean; cheat?: boolean }) {
     var auto = !!(opts && opts.auto)
+    var fromCheat = !!(opts && opts.cheat)
     var examIdLocal = takingExam
+    /* (2026-و92) التسليم التلقائي ممنوع يضيع صامت — درس من شكوى المستر:
+       «أول ما يخلص الأربعة بتاعته يتسلم تلقائي عشان هو ما بيتسلمش».
+       لو صورة ورقة الحل لسه بتترفع لحظة التفعيل (حد المغادرات/انتهاء الوقت)
+       بنستنى تخلص (فحص كل ثانية ونص — حتى 3 دقايق) وبعدين نسلّم فورًا */
+    if (auto) {
+      var waitedMs = 0
+      while (examPhotoBusyRef.current && waitedMs < 180000 && !examSubmitInFlightRef.current) {
+        await new Promise(function (r) { setTimeout(r, 1500) })
+        waitedMs += 1500
+      }
+    }
     if (!examIdLocal || submitting || examPhotoBusy) return
     /* guard مزامن: التسليم مبيحصلش مرتين ولا من العداد ولا من الزرار */
     if (examSubmitInFlightRef.current) return
@@ -2480,7 +2559,7 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
       const res = await fetch('/api/exams/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentId, examId: examIdLocal, answers: mappedAnswers, tableAnswers: examTablePayload }),
+        body: JSON.stringify({ studentId, examId: examIdLocal, answers: mappedAnswers, tableAnswers: examTablePayload, cheatStrikes: antiCheatStrikesRef.current || 0, autoSubmitted: fromCheat ? 1 : 0, penaltyPoints: Math.max(0, (antiCheatStrikesRef.current || 0) - 2) * 5 }),
         signal: submitController.signal,
       })
       clearTimeout(submitTimeout)
@@ -2491,8 +2570,9 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
         if (data.showResult === true) setExamSubmitResult(data)
         else setExamSubmitResult(null)
         if (auto) {
-          /* (25-b2) التسليم حصل تلقائيًا بسبب انتهاء الوقت */
-          toast.warning('انتهى وقت الامتحان — تم تسليم إجاباتك')
+          /* (25-b2) التسليم حصل تلقائيًا — برسالة تناسب السبب (وقت/مغادرات) */
+          if (fromCheat) toast.warning('⛔ عدّيت حد المغادرات — تم تسليم الامتحان تلقائيًا')
+          else toast.warning('انتهى وقت الامتحان — تم تسليم إجاباتك')
           setExamTimeUpAuto(true)
         } else {
           /* (2026-و15) نص المستر: تم بنجاح + انتظر النتيجة من المستر —
@@ -2590,6 +2670,8 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
       }
       examAutoSubmitDoneRef.current = false
       examSubmitInFlightRef.current = false
+      antiCheatStrikesRef.current = 0
+      antiCheat.reset()
       setExamSubmitResult(null)
       setExamWritingReview(null)
       setExamWritingDone(false)
@@ -2968,7 +3050,11 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
       <div className="space-y-4" dir="ltr">
         <div className="flex items-center justify-between gap-2">
           <h3 className="font-bold truncate min-w-0">{exam.title}</h3>
-          <Button variant="outline" size="sm" className="h-11 sm:h-8 shrink-0" onClick={() => { setTakingExam(null); setAnswers({}); setWritingAnswers({}); setExamTableAnswers({}); setExamQuestions([]); setExamShuffleMap([]); setExamTimeLimitMs(null); setExamTimeLeftMs(null); setExamTimeUp(false); examDeadlineRef.current = null }}>رجوع</Button>
+          <div className="flex items-center gap-2 shrink-0">
+            {/* (2026-و66) شارة المخالفات — الطالب شايف عداد مغادراته */}
+            <AntiCheatBadge strikes={antiCheat.strikes} maxStrikes={antiCheat.maxStrikes} />
+            <Button variant="outline" size="sm" className="h-11 sm:h-8 shrink-0" onClick={() => { setTakingExam(null); setAnswers({}); setWritingAnswers({}); setExamTableAnswers({}); setExamQuestions([]); setExamShuffleMap([]); setExamTimeLimitMs(null); setExamTimeLeftMs(null); setExamTimeUp(false); examDeadlineRef.current = null }}>رجوع</Button>
+          </div>
         </div>
 
         {/* (25-b2) العداد التنازلي — ظابط فوق منطقة الحل — primary عادي،
@@ -3206,6 +3292,9 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
         >
           {examPhotoBusy ? <span className="flex items-center justify-center gap-1.5"><Loader2 className="h-4 w-4 animate-spin" /> مستني صورة ورقة الحل تترفع كاملة...</span> : submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : `تسليم الامتحان (${Object.keys(answers).length + Object.keys(writingAnswers).length}/${examQuestions.length})`}
         </Button>
+
+        {/* (2026-و66) مودال التحذير — بيقفل الشاشة لحد ما الطالب يرجع */}
+        <AntiCheatModal open={antiCheat.warningOpen} strikes={antiCheat.strikes} onDismiss={antiCheat.dismissWarning} />
       </div>
     )
   }
