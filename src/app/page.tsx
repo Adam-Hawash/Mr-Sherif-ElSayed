@@ -92,6 +92,18 @@ export default function HomePage() {
 
   // Load config + gallery + stats on mount
   useEffect(function() {
+    /* (2026-و88) لينك إشعار ولي الأمر الخارجي (واتساب/SMS) بييجي بالشكل
+       /#parent-login — أول ما الصفحة تفتح بننتقل على طول لشاشة تسجيل
+       دخول ولي الأمر (نفس تدفق المستر: «يدوس على الإشعار من بره → يفتحه
+       على صفحة تسجيل الدخول → يسجل دخول → يشوف الإشعار جوه المنصة») */
+    try {
+      var h = String(window.location.hash || '').replace('#', '')
+      if (h === 'parent-login') {
+        (store as any).setView && (store as any).setView('parent-login')
+        if (window.history && window.history.replaceState) window.history.replaceState(null, '', window.location.pathname)
+      }
+    } catch (eHash) {}
+
     var dataReady = false
     var minTimerDone = false
 

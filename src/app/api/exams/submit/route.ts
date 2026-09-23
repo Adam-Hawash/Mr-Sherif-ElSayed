@@ -605,12 +605,17 @@ export async function POST(request) {
         var exFin: any = await db.$queryRawUnsafe('SELECT score, maxScore FROM ExamResult WHERE id = ? LIMIT 1', resultId)
         exFin = exFin || []
         if (exFin.length > 0) {
+          /* (و88) siteUrl = origin المنصة — عشان رسالة الواتساب الخارجية
+             تيجي بلينك بيفتح صفحة تسجيل دخول ولي الأمر على طول */
+          var requestOrigin = ''
+          try { requestOrigin = new URL(request.url).origin } catch (roErr) {}
           await notifyParentsOfResult({
             studentId: studentId,
             kind: 'exam',
             title: String((exam as any).title || 'امتحان'),
             score: Number(exFin[0].score) || 0,
             maxScore: Number(exFin[0].maxScore) || 0,
+            siteUrl: requestOrigin,
           })
         }
       } catch (pnErr) {
