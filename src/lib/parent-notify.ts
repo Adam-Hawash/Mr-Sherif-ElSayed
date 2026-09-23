@@ -12,8 +12,18 @@
 //   - القوالب تحت PARENT_EXAM_TEMPLATE / PARENT_HOMEWORK_TEMPLATE —
 //     تعديل كلام الرسالة بيتم من الملف ده بس (سهل ومركزي)
 //   - insert متسامح: أي فشل في الإشعار **مابيبوّظش** التسليم نفسه
+//
+//   (2026-و88) الجزء الخارجي — طلب المستر: «الإشعار بيظهر لولي الأمر على
+//   الموبايل بره، أول ما يضغط عليه يفتح التليفون ويدخله على صفحة تسجيل
+//   الدخول بتاعت المنصة، وهو يسجل دخوله ويشوف الإشعار جوه المنصة —
+//   يعني الاتنين»: بعد كتابة الإشعار الداخلي بنبعت نسخة واتساب/SMS على
+//   موبايل ولي الأمر فيها لينك المنصة ({link}) — القوالب تحت
+//   PARENT_WA_EXAM_TEMPLATE / PARENT_WA_HOMEWORK_TEMPLATE — نفس قناة
+//   الإرسال المفعّلة في لوحة التحكم (lib/wa-send.ts)
 // ============================================================
 import { db } from '@/lib/db'
+import { normalizeWaPhone } from '@/lib/parent-message'
+import { sendViaChannel } from '@/lib/wa-send'
 
 /* ============================================================
    ✏️✏️ قوالب رسائل ولي الأمر — عدّل الكلام من هنا براحتك ✏️✏️
@@ -45,6 +55,49 @@ export const PARENT_HOMEWORK_TEMPLATE = [
   'تقدر تشوف التفاصيل الكاملة وإجابات ابنك من حساب ولي الأمر في المنصة.',
   'Mr. Sherif ElSayed',
 ].join('\n')
+
+/* ============================================================
+   ✏️✏️ قوالب الرسالة اللي بتوصل **بره على موبايل ولي الأمر**
+   (واتساب/SMS — و88) — عدّل الكلام من هنا براحتك
+   نفس متغيرات القوالب الداخلية + {link} = لينك المنصة اللي بيفتح
+   صفحة تسجيل دخول ولي الأمر على طول
+   ============================================================ */
+export const PARENT_WA_EXAM_TEMPLATE = [
+  '🔔 إشعار من منصة مستر شريف السيد',
+  'الطالب/ة: {student}',
+  'سلّم امتحان «{title}»',
+  'الدرجة: {score} من {max} — النسبة {percent}%',
+  '',
+  '👈 ادخل على اللينك ده وسجل دخول بحساب ولي الأمر عشان تشوف الإشعار والتفاصيل:',
+  '{link}',
+  'Mr. Sherif ElSayed',
+].join('\n')
+
+export const PARENT_WA_HOMEWORK_TEMPLATE = [
+  '📝 إشعار من منصة مستر شريف السيد',
+  'الطالب/ة: {student}',
+  'سلّم واجب «{title}»',
+  'الدرجة: {score} من {max} — النسبة {percent}%',
+  '',
+  '👈 ادخل على اللينك ده وسجل دخول بحساب ولي الأمر عشان تشوف الإشعار والتفاصيل:',
+  '{link}',
+  'Mr. Sherif ElSayed',
+].join('\n')
+
+/* ملامة قالب الواتساب بالقيم الحقيقية + اللينك */
+export function buildParentWaMessage(kind: 'exam' | 'homework', studentName: string, title: string, score: number, maxScore: number, siteUrl: string): string {
+  var s = Number(score) || 0
+  var m = Number(maxScore) || 0
+  var pct = m > 0 ? Math.round((s / m) * 100) : 0
+  var tpl = kind === 'exam' ? PARENT_WA_EXAM_TEMPLATE : PARENT_WA_HOMEWORK_TEMPLATE
+  return String(tpl)
+    .split('{student}').join(String(studentName || 'الطالب'))
+    .split('{title}').join(String(title || ''))
+    .split('{score}').join(String(s))
+    .split('{max}').join(String(m))
+    .split('{percent}').join(String(pct))
+    .split('{link}').join(String(siteUrl || ''))
+}
 
 /* ملامة القالب بالقيم الحقيقية */
 export function buildParentMessage(kind: 'exam' | 'homework', studentName: string, title: string, score: number, maxScore: number): string {
@@ -95,7 +148,7 @@ export async function ensureParentNotificationsTable(force?: boolean): Promise<v
  * الإشعار بيتكتب لكل رقم ولي أمر مربوط بالطالب (و37 + و79 multi-child).
  * أي فشل = سجل في اللوج وبس — التسليم مش بيتأثر أبدًا.
  */
-export async function notifyParentsOfResult(opts: { studentId: string; kind: 'exam' | 'homework'; title: string; score: number; maxScore: number }): Promise<void> {
+export async function notifyParentsOfResult(opts: { studentId: string; kind: 'exam' | 'homework'; title: string; score: number; maxScore: number; siteUrl?: string }): Promise<void> {
   try {
     if (!opts || !opts.studentId) return
     await ensureParentNotificationsTable()
@@ -152,6 +205,28 @@ export async function notifyParentsOfResult(opts: { studentId: string; kind: 'ex
           )
         } catch (eIns2) {
           console.error('[parent-notify] insert failed (ignored):', eIns2)
+        }
+      }
+    }
+
+    /* (2026-و88) الجزء الخارجي — رسالة واتساب/SMS على موبايل ولي الأمر
+       فيها لينك المنصة (بيفتح صفحة تسجيل دخول ولي الأمر على طول).
+       بتتبعت بنفس القناة المفعّلة في لوحة التحكم (msg_channel) — لو
+       مفيش مزود مفعّل بنسكته بهدوء والإشعار الداخلي شغال زي ما هو. */
+    var waLink = String(opts.siteUrl || '').trim()
+    if (waLink) {
+      if (waLink.indexOf('#parent-login') === -1) waLink = waLink.replace(/\/#*$/, '') + '/#parent-login'
+      var waMsg = buildParentWaMessage(opts.kind, studentName, opts.title, opts.score, opts.maxScore, waLink)
+      for (var w = 0; w < targets.length; w++) {
+        var waPhone = normalizeWaPhone(targets[w])
+        if (!waPhone) continue
+        try {
+          var out = await sendViaChannel(waPhone, waMsg)
+          if (!out.sent && out.mode !== 'manual') {
+            console.error('[parent-notify] external send failed (ignored): mode=' + out.mode + ' err=' + String(out.error || ''))
+          }
+        } catch (eWa) {
+          console.error('[parent-notify] external send error (ignored):', eWa)
         }
       }
     }

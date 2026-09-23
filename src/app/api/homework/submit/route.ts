@@ -360,15 +360,20 @@ export async function POST(request) {
 
     /* (2026-و87) إشعار ولي الأمر — واجب من غير أسئلة مقالية: الدرجة نهائية
        فورًا فالإشعار بيتبعت حالًا (اللي فيه مقالي بيتبعت بعد اكتمال تصحيحه
-       من backgroundGrading تحت) — أي فشل ما يبوّظش التسليم */
+       من backgroundGrading تحت) — أي فشل ما يبوّظش التسليم
+       (و88) بنمرر origin المنصة كمان عشان رسالة الواتساب الخارجية
+       تيجي بلينك بيفتح صفحة تسجيل دخول ولي الأمر */
     if (inserted && !hasWriting) {
       try {
+        var requestOrigin = ''
+        try { requestOrigin = new URL(request.url).origin } catch (roErr) {}
         await notifyParentsOfResult({
           studentId: studentId,
           kind: 'homework',
           title: String((homework as any).title || 'واجب'),
           score: Number(score) || 0,
           maxScore: Number(maxScore) || 0,
+          siteUrl: requestOrigin,
         })
       } catch (pnErr) {
         console.error('w-submit] parent notify error (ignored):', pnErr)
@@ -656,14 +661,18 @@ export async function POST(request) {
       }
       await persistPartial()
 
-      /* (2026-و87) إشعار ولي الأمر بالدرجة النهائية — بعد اكتمال تصحيح المقالي */
+      /* (2026-و87) إشعار ولي الأمر بالدرجة النهائية — بعد اكتمال تصحيح المقالي
+         (و88) siteUrl = origin المنصة لرسالة الواتساب الخارجية */
       try {
+        var requestOriginBg = ''
+        try { requestOriginBg = new URL(request.url).origin } catch (roErr2) {}
         await notifyParentsOfResult({
           studentId: studentId,
           kind: 'homework',
           title: String((homework as any).title || 'واجب'),
           score: mcqScore + writingScore,
           maxScore: Number(maxScore) || 0,
+          siteUrl: requestOriginBg,
         })
       } catch (pnErr) {
         console.error('w-submit] parent notify bg error (ignored):', pnErr)
