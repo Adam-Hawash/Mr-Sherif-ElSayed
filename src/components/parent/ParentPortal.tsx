@@ -31,6 +31,8 @@ import FractionText, { hasMathMarkup } from '@/components/FractionText'
 import BidiText from '@/components/BidiText'
 /* (2026-و87) كارت إشعارات ولي الأمر — بالاسم والدرجة لحظة التسليم */
 import ParentNotificationsCard from '@/components/parent/ParentNotificationsCard'
+/* (2026-و89) بوب-أب تفعيل إشعارات الموبايل (Web Push) — الإشعار الخارجي بيدوس عليه يفتح دخول ولي الأمر */
+import PushPermissionBanner from '@/components/parent/PushPermissionBanner'
 
 interface ResultRow {
   id: string
@@ -350,6 +352,9 @@ export function ParentPortal() {
             </CardContent>
           </Card>
         </div>
+
+        {/* (2026-و89) تفعيل إشعارات الموبايل (Web Push) — بوب-أب بعد الدخول + كارت حالة */}
+        <PushPermissionBanner parentId={currentParent && currentParent.id ? currentParent.id : ''} />
 
         {/* (2026-و87) إشعارات ولي الأمر — أول حاجة يشوفها بعد الهيدر */}
         <ParentNotificationsCard parentId={currentParent && currentParent.id ? currentParent.id : ''} />

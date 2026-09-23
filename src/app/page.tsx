@@ -95,14 +95,35 @@ export default function HomePage() {
     /* (2026-و88) لينك إشعار ولي الأمر الخارجي (واتساب/SMS) بييجي بالشكل
        /#parent-login — أول ما الصفحة تفتح بننتقل على طول لشاشة تسجيل
        دخول ولي الأمر (نفس تدفق المستر: «يدوس على الإشعار من بره → يفتحه
-       على صفحة تسجيل الدخول → يسجل دخول → يشوف الإشعار جوه المنصة») */
+       على صفحة تسجيل الدخول → يسجل دخول → يشوف الإشعار جوه المنصة»)
+       (2026-و89) لوولي الأمر لسه مسجل جوه الجلسة → ندخله بورتاله على طول */
     try {
       var h = String(window.location.hash || '').replace('#', '')
       if (h === 'parent-login') {
-        (store as any).setView && (store as any).setView('parent-login')
+        var par = (store as any).currentParent
+        ;(store as any).setView && (store as any).setView(par && par.id ? 'parent-portal' : 'parent-login')
         if (window.history && window.history.replaceState) window.history.replaceState(null, '', window.location.pathname)
       }
     } catch (eHash) {}
+
+    /* (2026-و89) Service Worker إشعارات ولي الأمر — تسجيل + استقبال ضغطة
+       الإشعار الخارجي (بره على شاشة الموبايل): لو المنصة مفتوحة بالفعل
+       والـ SW ركّز النافذة، بنوجّه الصفحة: مسجل دخول → بورتال الإشعارات،
+       غير كده → شاشة تسجيل دخول ولي الأمر (نفس تدفق المستر) */
+    try {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function () {})
+        navigator.serviceWorker.addEventListener('message', function (ev: MessageEvent) {
+          var d: any = ev && ev.data ? ev.data : null
+          if (!d || d.type !== 'parent-notification-click') return
+          try {
+            var st = (store as any)
+            if (st.currentParent && st.currentParent.id) st.setView && st.setView('parent-portal')
+            else st.setView && st.setView('parent-login')
+          } catch (eSwp) {}
+        })
+      }
+    } catch (eSw) {}
 
     var dataReady = false
     var minTimerDone = false

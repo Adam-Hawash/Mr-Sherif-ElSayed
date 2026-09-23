@@ -16,14 +16,20 @@
 //   (2026-و88) الجزء الخارجي — طلب المستر: «الإشعار بيظهر لولي الأمر على
 //   الموبايل بره، أول ما يضغط عليه يفتح التليفون ويدخله على صفحة تسجيل
 //   الدخول بتاعت المنصة، وهو يسجل دخوله ويشوف الإشعار جوه المنصة —
-//   يعني الاتنين»: بعد كتابة الإشعار الداخلي بنبعت نسخة واتساب/SMS على
-//   موبايل ولي الأمر فيها لينك المنصة ({link}) — القوالب تحت
-//   PARENT_WA_EXAM_TEMPLATE / PARENT_WA_HOMEWORK_TEMPLATE — نفس قناة
-//   الإرسال المفعّلة في لوحة التحكم (lib/wa-send.ts)
+//   يعني الاتنين»
+//
+//   (2026-و89) تحديث الجزء الخارجي بطلب المستر الحرفي: «الاشعار اللي هيجي
+//   لولي الأمر بره مش هيجي على الواتساب — يجي زي برومبت البراوزر، ولما
+//   يدوس عليه يخش على الاشعارات اللي جوه المنصة»:
+//     → **Web Push حقيقي** (Service Worker + VAPID): نبعت إشعار براوزر
+//       لكل جهاز اشترك لرقم ولي الأمر (ParentPushSubscription) — بيظهر
+//       على شاشة الموبايل بره المنصة، وضغطة عليه بتفتح /#parent-login
+//     → الاشتراك بيتم من بوب-أب «تفعيل الإشعارات» في بورتال ولي الأمر
+//       (PushPermissionBanner + lib/push.ts + public/sw.js)
+//     → مفيش اشتراكات = مفيش إشعار خارجي، والإشعار الداخلي شغال زي ما هو
 // ============================================================
 import { db } from '@/lib/db'
-import { normalizeWaPhone } from '@/lib/parent-message'
-import { sendViaChannel } from '@/lib/wa-send'
+import { sendParentPush } from '@/lib/push'
 
 /* ============================================================
    ✏️✏️ قوالب رسائل ولي الأمر — عدّل الكلام من هنا براحتك ✏️✏️
@@ -57,46 +63,36 @@ export const PARENT_HOMEWORK_TEMPLATE = [
 ].join('\n')
 
 /* ============================================================
-   ✏️✏️ قوالب الرسالة اللي بتوصل **بره على موبايل ولي الأمر**
-   (واتساب/SMS — و88) — عدّل الكلام من هنا براحتك
-   نفس متغيرات القوالب الداخلية + {link} = لينك المنصة اللي بيفتح
-   صفحة تسجيل دخول ولي الأمر على طول
+   ✏️✏️ قوالب الإشعار اللي بيظهر **بره على شاشة موبايل ولي الأمر**
+   (Web Push — و89) — عدّل الكلام من هنا براحتك
+   نفس متغيرات القوالب الداخلية — العنوان والنص اللي بيظهروا على
+   شاشة القفل/النوتيفيكيشن بار، وضغطة عليهم بتفتح شاشة دخول ولي الأمر
    ============================================================ */
-export const PARENT_WA_EXAM_TEMPLATE = [
-  '🔔 إشعار من منصة مستر شريف السيد',
-  'الطالب/ة: {student}',
-  'سلّم امتحان «{title}»',
-  'الدرجة: {score} من {max} — النسبة {percent}%',
-  '',
-  '👈 ادخل على اللينك ده وسجل دخول بحساب ولي الأمر عشان تشوف الإشعار والتفاصيل:',
-  '{link}',
-  'Mr. Sherif ElSayed',
-].join('\n')
+export const PARENT_PUSH_EXAM_TITLE = '🔔 متابعة من منصة مستر شريف السيد'
+export const PARENT_PUSH_HOMEWORK_TITLE = '📝 متابعة من منصة مستر شريف السيد'
+export const PARENT_PUSH_EXAM_BODY = 'الطالب/ة {student} سلّم امتحان «{title}» — الدرجة: {score} من {max} ({percent}%)'
+export const PARENT_PUSH_HOMEWORK_BODY = 'الطالب/ة {student} سلّم واجب «{title}» — الدرجة: {score} من {max} ({percent}%)'
 
-export const PARENT_WA_HOMEWORK_TEMPLATE = [
-  '📝 إشعار من منصة مستر شريف السيد',
-  'الطالب/ة: {student}',
-  'سلّم واجب «{title}»',
-  'الدرجة: {score} من {max} — النسبة {percent}%',
-  '',
-  '👈 ادخل على اللينك ده وسجل دخول بحساب ولي الأمر عشان تشوف الإشعار والتفاصيل:',
-  '{link}',
-  'Mr. Sherif ElSayed',
-].join('\n')
-
-/* ملامة قالب الواتساب بالقيم الحقيقية + اللينك */
-export function buildParentWaMessage(kind: 'exam' | 'homework', studentName: string, title: string, score: number, maxScore: number, siteUrl: string): string {
+/* ملامة قالب الإشعار الخارجي (Push payload) بالقيم الحقيقية */
+export function buildParentPushPayload(kind: 'exam' | 'homework', studentName: string, title: string, score: number, maxScore: number): { title: string; body: string; url: string; tag: string; icon: string } {
   var s = Number(score) || 0
   var m = Number(maxScore) || 0
   var pct = m > 0 ? Math.round((s / m) * 100) : 0
-  var tpl = kind === 'exam' ? PARENT_WA_EXAM_TEMPLATE : PARENT_WA_HOMEWORK_TEMPLATE
-  return String(tpl)
+  var t = kind === 'exam' ? PARENT_PUSH_EXAM_TITLE : PARENT_PUSH_HOMEWORK_TITLE
+  var b = kind === 'exam' ? PARENT_PUSH_EXAM_BODY : PARENT_PUSH_HOMEWORK_BODY
+  var body = String(b)
     .split('{student}').join(String(studentName || 'الطالب'))
     .split('{title}').join(String(title || ''))
     .split('{score}').join(String(s))
     .split('{max}').join(String(m))
     .split('{percent}').join(String(pct))
-    .split('{link}').join(String(siteUrl || ''))
+  return {
+    title: String(t),
+    body: body,
+    url: '/#parent-login', /* ضغطة الإشعار بتفتح شاشة دخول ولي الأمر */
+    tag: 'parent-' + kind + '-' + Date.now(),
+    icon: '/push-icon.png',
+  }
 }
 
 /* ملامة القالب بالقيم الحقيقية */
@@ -209,26 +205,24 @@ export async function notifyParentsOfResult(opts: { studentId: string; kind: 'ex
       }
     }
 
-    /* (2026-و88) الجزء الخارجي — رسالة واتساب/SMS على موبايل ولي الأمر
-       فيها لينك المنصة (بيفتح صفحة تسجيل دخول ولي الأمر على طول).
-       بتتبعت بنفس القناة المفعّلة في لوحة التحكم (msg_channel) — لو
-       مفيش مزود مفعّل بنسكته بهدوء والإشعار الداخلي شغال زي ما هو. */
-    var waLink = String(opts.siteUrl || '').trim()
-    if (waLink) {
-      if (waLink.indexOf('#parent-login') === -1) waLink = waLink.replace(/\/#*$/, '') + '/#parent-login'
-      var waMsg = buildParentWaMessage(opts.kind, studentName, opts.title, opts.score, opts.maxScore, waLink)
-      for (var w = 0; w < targets.length; w++) {
-        var waPhone = normalizeWaPhone(targets[w])
-        if (!waPhone) continue
-        try {
-          var out = await sendViaChannel(waPhone, waMsg)
-          if (!out.sent && out.mode !== 'manual') {
-            console.error('[parent-notify] external send failed (ignored): mode=' + out.mode + ' err=' + String(out.error || ''))
-          }
-        } catch (eWa) {
-          console.error('[parent-notify] external send error (ignored):', eWa)
+    /* (2026-و89) الجزء الخارجي بقى **Web Push حقيقي** بطلب المستر:
+       «مش واتساب — إشعار براوزر يظهر على شاشة الموبايل بره، وضغطة عليه
+       تفتح شاشة دخول ولي الأمر وبعد الدخول يشوف الإشعار جوه المنصة».
+       بنبعت لكل جهاز اشترك لرقم ولي الأمر (ParentPushSubscription).
+       مفيش اشتراكات = مفيش إشعار خارجي — الإشعار الداخلي شغال زي ما هو. */
+    try {
+      var payload = buildParentPushPayload(opts.kind, studentName, opts.title, opts.score, opts.maxScore)
+      var pushOut = await Promise.all(targets.map(function (t: string) {
+        return sendParentPush(t, payload).catch(function () { return { sent: 0, failed: 0 } })
+      }))
+      for (var w = 0; w < pushOut.length; w++) {
+        var pr = pushOut[w] as any
+        if (pr && pr.failed > 0) {
+          console.error('[parent-notify] push failed for some devices (ignored): sent=' + pr.sent + ' failed=' + pr.failed)
         }
       }
+    } catch (ePush) {
+      console.error('[parent-notify] push send error (ignored):', ePush)
     }
   } catch (e) {
     console.error('[parent-notify] failed (ignored):', e)
