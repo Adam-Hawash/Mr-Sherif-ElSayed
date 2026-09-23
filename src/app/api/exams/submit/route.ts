@@ -69,6 +69,10 @@ async function ensureTable() {
     try { await db.$executeRawUnsafe("ALTER TABLE Exam ADD COLUMN targetStudentIds TEXT DEFAULT ''") } catch(e) {}
     /* (2026-و29) استهداف المجموعات */
     try { await db.$executeRawUnsafe("ALTER TABLE Exam ADD COLUMN targetGroupIds TEXT DEFAULT ''") } catch(e) {}
+    /* (2026-و66) أعمدة منع الغش — سجل المخالفات والخصم في النتيجة */
+    try { await db.$executeRawUnsafe('ALTER TABLE ExamResult ADD COLUMN cheatStrikes INTEGER DEFAULT 0') } catch(e) {}
+    try { await db.$executeRawUnsafe('ALTER TABLE ExamResult ADD COLUMN autoSubmitted INTEGER DEFAULT 0') } catch(e) {}
+    try { await db.$executeRawUnsafe('ALTER TABLE ExamResult ADD COLUMN penaltyPoints INTEGER DEFAULT 0') } catch(e) {}
   } catch (e) {
     console.error('Ensure ExamResult table error:', e)
   }
@@ -90,6 +94,10 @@ export async function POST(request) {
     var studentId = body.studentId
     var examId = body.examId
     var answers = body.answers
+    /* (2026-و66) بيانات منع الغش — strikes من useAntiCheat في الطالب */
+    var cheatStrikes = Math.max(0, Math.min(Number(body.cheatStrikes) || 0, 20))
+    var autoSubmittedCheat = Number(body.autoSubmitted) ? 1 : 0
+    var penaltyPoints = Math.max(0, Math.min(Number(body.penaltyPoints) || 0, 100))
 
     if (!studentId || !examId || answers === undefined || answers === null) {
       return NextResponse.json({ error: 'بيانات مفقودة' }, { status: 400 })
@@ -310,9 +318,14 @@ export async function POST(request) {
       /* 2026-و22 — بنكتب العمودين مع بعض (writingGrades + writingResults):
          شاشات الأدمن بتقرأ writingResults — لو ما اتكتبش كان البادج
          «بيتصحح بالذكاء الاصطناعي» فضل ظاهر لحد ما الإصلاح الذاتي يعدّي */
+      /* (2026-و66) خصم مخالفات منع الغش — كل مغادرة بعد التانية = −5 درجات
+         (الدرجة المحفوظة والنهائية والمعروضة كلها بالخصم — عرض صادق) */
+      if (penaltyPoints > 0 && score > 0) {
+        score = Math.max(0, score - penaltyPoints)
+      }
       await db.$executeRawUnsafe(
-        'INSERT INTO ExamResult (id, studentId, examId, score, maxScore, answers, writingGrades, writingResults) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        resultId, studentId, examId, score, maxScore, answersJson, writingGradesJson, writingGradesJson
+        'INSERT INTO ExamResult (id, studentId, examId, score, maxScore, answers, writingGrades, writingResults, cheatStrikes, autoSubmitted, penaltyPoints) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        resultId, studentId, examId, score, maxScore, answersJson, writingGradesJson, writingGradesJson, cheatStrikes, autoSubmittedCheat, penaltyPoints
       )
     } catch (insertErr) {
       console.error('Insert exam result error:', insertErr)

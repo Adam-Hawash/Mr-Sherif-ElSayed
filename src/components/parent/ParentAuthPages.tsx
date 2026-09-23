@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { useAppStore } from '@/stores/app-store'
-import { ArrowRight, Phone, Lock, Loader2, AlertCircle, UserCheck, Eye, EyeOff } from 'lucide-react'
+import { ArrowRight, Phone, Lock, Loader2, AlertCircle, UserCheck, UserPlus, Eye, EyeOff, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 var fadeInUp = {
@@ -76,6 +76,29 @@ export function ParentRegisterView() {
   var ppw2State = useState(''); var parentPassword2 = ppw2State[0]; var setParentPassword2 = ppw2State[1]
   var ls = useState(false); var loading = ls[0]; var setLoading = ls[1]
   var es = useState<Record<string, string>>({}); var errors = es[0]; var setErrors = es[1]
+  /* (2026-و92) زرار «إضافة طالب» في التسجيل — طلب المستر الحرفي:
+     «لما يجي يعمل حساب يدوس إضافة طالب من قبل ما يدوس يعمل حساب
+     ويضيف بيانات الطالب الثاني» — بيانات كل ابن (اسم + رقم + باسورد)
+     بتتربط بحساب ولي الأمر من أول ما يتفتح */
+  var exsState = useState<Array<{ name: string; phone: string; pwd: string }>>([])
+  var extraStudents = exsState[0]; var setExtraStudents = exsState[1]
+  var seState = useState(false); var showExtra = seState[0]; var setShowExtra = seState[1]
+  var enState = useState(''); var exName = enState[0]; var setExName = enState[1]
+  var epState = useState(''); var exPhone = epState[0]; var setExPhone = epState[1]
+  var epwState = useState(''); var exPwd = epwState[0]; var setExPwd = epwState[1]
+
+  var addExtraStudent = function () {
+    var n = exName.trim(), p = exPhone.trim(), w = exPwd
+    if (!n || !p || !w) { toast.error('اكتب اسم ابنك ورقم تليفونه وباسورده كاملين'); return }
+    var samePhone = (studentPhone.trim() && p === studentPhone.trim()) || extraStudents.some(function (s) { return s.phone === p })
+    if (samePhone) { toast.error('الرقم ده مكتوب قبل كده — كل ابن له رقم مختلف'); return }
+    var list = extraStudents.slice()
+    list.push({ name: n, phone: p, pwd: w })
+    setExtraStudents(list)
+    setExName(''); setExPhone(''); setExPwd('')
+    setShowExtra(false)
+    toast.success('اتضاف ' + n + ' ✅ — هيتربط بحسابك أول ما تعمل الحساب')
+  }
 
   var handleRegister = async function () {
     var e: Record<string, string> = {}
@@ -101,13 +124,16 @@ export function ParentRegisterView() {
           parentPhone: parentPhone.trim(),
           parentPassword: parentPassword,
           parentPassword2: parentPassword2,
+          /* (2026-و92) الأبناء الإضافيين من زرار «إضافة طالب» */
+          extraStudents: extraStudents.map(function (s) { return { studentName: s.name, studentPhone: s.phone, studentPassword: s.pwd } }),
         }),
       })
       var data = await res.json()
       if (res.ok && data.parent) {
         setCurrentParent(data.parent)
         setView('parent-portal')
-        toast.success('تم عمل حسابك كولي أمر ✅ دي متابعة نتايج ' + (data.parent.student ? data.parent.student.name : 'ابنك'))
+        var extraCount = Number(data.linkedExtraStudents || 0)
+        toast.success('تم عمل حسابك كولي أمر ✅ دي متابعة ' + (extraCount > 0 ? ('حسابات ' + (extraCount + 1) + ' طلاب') : 'نتايج ' + (data.parent.student ? data.parent.student.name : 'ابنك')))
       } else {
         var msg = data.error || 'حصلت مشكلة في التسجيل'
         toast.error(msg, { duration: 10000 })
@@ -148,6 +174,48 @@ export function ParentRegisterView() {
                     <ParentPasswordField value={studentPassword} onChange={setStudentPassword} placeholder="باسورد ابنك (اللي بيدخل بيه)" id="pr-student-password" error={errors.studentPassword} />
                   </div>
                 </div>
+                {/* (2026-و92) زرار «إضافة طالب» قبل إنشاء الحساب — الأبناء الإضافيين */}
+                {extraStudents.length > 0 && (
+                  <div className="space-y-1.5">
+                    {extraStudents.map(function (s, i) {
+                      return (
+                        <div key={i} className="flex items-center justify-between gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/[0.06] px-3 py-2">
+                          <div className="min-w-0">
+                            <p className="text-[12.5px] font-bold text-foreground truncate">{s.name}</p>
+                            <p className="text-[10.5px] text-muted-foreground" dir="ltr">{s.phone}</p>
+                          </div>
+                          <button type="button" onClick={function () { setExtraStudents(extraStudents.filter(function (_, j) { return j !== i })) }} className="shrink-0 h-8 w-8 grid place-items-center rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer" aria-label="شيل الطالب ده">
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+                {showExtra ? (
+                  <div className="rounded-xl border border-primary/25 bg-primary/[0.04] p-3.5 space-y-3">
+                    <p className="text-[13px] font-bold text-foreground">بيانات الابن التاني</p>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="pr-ex-name" className="text-foreground text-xs">اسم الطالب (زي ما هو متسجل في المنصة) <span className="text-destructive">*</span></Label>
+                      <Input id="pr-ex-name" placeholder="زي ما هو متسجل في المنصة بالظبط" value={exName} onChange={function (e) { setExName(e.target.value) }} className="min-h-[44px]" />
+                    </div>
+                    <ParentPhoneField value={exPhone} onChange={setExPhone} placeholder="رقم تليفونه المسجل في المنصة" id="pr-ex-phone" />
+                    <ParentPasswordField value={exPwd} onChange={setExPwd} placeholder="باسورده (اللي بيدخل بيه)" id="pr-ex-password" />
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button type="button" size="sm" className="h-10 font-bold gap-1.5" onClick={addExtraStudent}><UserPlus className="h-4 w-4" />احفظ الطالب</Button>
+                      <Button type="button" size="sm" variant="ghost" className="h-10 font-bold" onClick={function () { setShowExtra(false); setExName(''); setExPhone(''); setExPwd('') }}>إلغاء</Button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={function () { setShowExtra(true) }}
+                    className="w-full flex items-center justify-center gap-2 rounded-xl border border-dashed border-primary/40 bg-primary/[0.04] px-3.5 py-3 text-primary hover:bg-primary/[0.08] transition-colors cursor-pointer min-h-[44px]"
+                  >
+                    <UserPlus className="h-4.5 w-4.5 shrink-0" />
+                    <span className="text-[13px] font-bold">عندك ابن تاني؟ اضغط إضافة طالب وحُط بياناته هنا</span>
+                  </button>
+                )}
                 <div>
                   <p className="text-sm font-semibold text-foreground mb-2">بياناتك أنت (ولي الأمر)</p>
                   <div className="space-y-3">
