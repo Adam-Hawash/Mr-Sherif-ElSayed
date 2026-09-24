@@ -2319,6 +2319,10 @@ function GalleryManager() {
   var [vidUrl, setVidUrl] = useState('')
   var [vidThumb, setVidThumb] = useState('')
   var [vidOrder, setVidOrder] = useState('0')
+  /* (و93) رفع فيديو من الجهاز — بالجودة الأصلية من غير أي ضغط */
+  var vidFileRef = useRef<HTMLInputElement>(null)
+  var [vidUploading, setVidUploading] = useState(false)
+  var [vidProgress, setVidProgress] = useState('')
 
   var loadGallery = async function() {
     setLoading(true)
@@ -2342,6 +2346,100 @@ function GalleryManager() {
     setImgUrl(''); setImgOrder('0')
     setVidUrl(''); setVidThumb(''); setVidOrder('0')
     setUploading(false); setSaving(false)
+    setVidUploading(false); setVidProgress('')
+  }
+
+  /* (و93) صورة مصغرة أوتوماتيك من أول فريم في الفيديو المرفوع من الجهاز
+     — عشان الفيديو يبان بصورته في المعرض زي فيديوهات اليوتيوب بالظبط */
+  var captureVideoThumb = function(file: File): Promise<File | null> {
+    return new Promise(function(resolve) {
+      var url = ''
+      try {
+        url = URL.createObjectURL(file)
+        var v = document.createElement('video')
+        v.preload = 'metadata'
+        v.muted = true
+        v.playsInline = true
+        v.src = url
+        var settled = false
+        var finish = function(result: File | null) {
+          if (settled) return
+          settled = true
+          try { URL.revokeObjectURL(url) } catch (e) {}
+          resolve(result)
+        }
+        var failTimer = setTimeout(function() { finish(null) }, 8000)
+        v.onloadedmetadata = function() {
+          var dur = v.duration && isFinite(v.duration) ? v.duration : 2
+          v.onseeked = function() {
+            try {
+              var w = v.videoWidth || 720
+              var h = v.videoHeight || 1280
+              var canvas = document.createElement('canvas')
+              canvas.width = Math.min(w, 720)
+              canvas.height = Math.round((Math.min(w, 720) / w) * h)
+              var ctx = canvas.getContext('2d')
+              if (!ctx) { clearTimeout(failTimer); finish(null); return }
+              ctx.drawImage(v, 0, 0, canvas.width, canvas.height)
+              canvas.toBlob(function(blob) {
+                clearTimeout(failTimer)
+                if (blob) finish(new File([blob], 'thumb.jpg', { type: 'image/jpeg' }))
+                else finish(null)
+              }, 'image/jpeg', 0.85)
+            } catch (e) { clearTimeout(failTimer); finish(null) }
+          }
+          v.currentTime = Math.min(1, dur * 0.1)
+        }
+        v.onerror = function() { clearTimeout(failTimer); finish(null) }
+        v.load()
+      } catch (e) { resolve(null) }
+    })
+  }
+
+  /* (و93) رفع فيديو من الجهاز — الفيديو بيتخزن بايت-ببايت زي ما هو
+     (chunkedUpload بيتحقق من الحجم بالبايت) — صفر ضغط، الجودة الأصلية 100% */
+  var handleVidUpload = async function(file: File) {
+    setVidUploading(true)
+    setVidProgress('جاري الرفع...')
+    try {
+      var upData = await chunkedUpload(file, 'gallery',
+        function(pct) { setVidProgress('جاري رفع الفيديو... ' + pct + '%') },
+        function(msg) { setVidProgress(msg) })
+      var uploadedUrl = upData.filePath
+
+      /* صورة مصغرة من أول فريم — لو فشلت الفيديو يظهر بأيقونة الفيلم عادي */
+      var thumbnail = ''
+      setVidProgress('جاري توليد الصورة المصغرة...')
+      var thumbFile = await captureVideoThumb(file)
+      if (thumbFile) {
+        try {
+          var thumbUp = await chunkedUpload(thumbFile, 'gallery')
+          thumbnail = thumbUp.filePath
+        } catch (e) { thumbnail = '' }
+      }
+
+      setVidProgress('جاري الحفظ...')
+      var res = await fetch('/api/gallery', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: file.name.replace(/\.[^.]+$/, ''),
+          videoUrl: uploadedUrl,
+          thumbnail: thumbnail,
+          type: 'video',
+          sortOrder: parseInt(vidOrder) || 0
+        })
+      })
+      if (res.ok) {
+        toast.success('تم رفع الفيديو بنجاح — الجودة الأصلية زي ما هي')
+        resetAll(); loadGallery()
+      } else {
+        var gErr = ''
+        try { var gData = await res.json(); gErr = String(gData.error || '') } catch { gErr = 'كود ' + res.status }
+        toast.error('الفيديو ما اتضافش: ' + gErr)
+      }
+    } catch (err: any) { toast.error(err.message || 'خطأ في رفع الفيديو') }
+    setVidUploading(false); setVidProgress('')
   }
 
   var handleImgUpload = async function(file: File) {
@@ -2497,6 +2595,25 @@ function GalleryManager() {
                 <PlayCircle className="h-4 w-4 text-blue-600" />
                 إضافة فيديو
               </h3>
+
+              {/* (و93) رفع فيديو من الجهاز — زي الصور بالظبط، بيجتمع كامل بايت-ببايت والجودة الأصلية زي ما هي */}
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">رفع فيديو من الجهاز (بالجودة الأصلية)</Label>
+                <input ref={vidFileRef} type="file" accept="video/*" className="hidden" onChange={function(e) { var f = e.target.files?.[0]; if (f) handleVidUpload(f); e.target.value = '' }} />
+                <Button variant="outline" size="sm" className="border-dashed w-full" onClick={function() { vidFileRef.current?.click() }} disabled={vidUploading}>
+                  {vidUploading ? <Loader2 className="h-4 w-4 animate-spin ml-2" /> : <Upload className="h-4 w-4 ml-2" />}
+                  {vidUploading ? (vidProgress || 'جاري الرفع...') : 'اختر فيديو للرفع'}
+                </Button>
+                {vidUploading && vidProgress && (
+                  <p className="text-[11px] text-muted-foreground text-center" aria-live="polite">{vidProgress}</p>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className="flex-grow h-px bg-border" />
+                <span className="text-[11px] text-muted-foreground">أو</span>
+                <div className="flex-grow h-px bg-border" />
+              </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">

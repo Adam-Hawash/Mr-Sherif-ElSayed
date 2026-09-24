@@ -23,6 +23,9 @@ function ImageWithSkeleton({ src, alt }: { src: string; alt: string }) {
         src={src}
         alt={alt}
         fill
+        /* (و93) unoptimized = الصورة توصل للزوار بالجودة الأصلية 100% زي ما اترفعت
+           — من غير ضغط أو تصغير من Next.js (ده كان سبب «الجودة بتقل») */
+        unoptimized
         className={"object-cover transition-all duration-500 " + (loaded ? 'opacity-100' : 'opacity-0')}
         sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 25vw"
         onLoad={function() { setLoaded(true) }}
@@ -329,7 +332,9 @@ function GalleryVideoModal({ galleryId, url, onClose }: { galleryId: string; url
 
   var ytId = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([\w-]+)/)
   var isYouTube = !!ytId
-  var isDirectVideo = !isYouTube && /\.(mp4|webm|mov|avi|ogg)(\?|$)/i.test(url)
+  /* (و93) فيديوهات المعرض المرفوعة من الجهاز بتتخزن على /api/files/<id>
+     — مفيهاش امتداد فلازم نتعرف عليها صراحةً ونشغلها بمشغل الفيديو المباشر */
+  var isDirectVideo = !isYouTube && (url.indexOf('/api/files/') === 0 || /\.(mp4|webm|mov|avi|ogg|m4v)(\?|$)/i.test(url))
 
   useEffect(function() {
     if (playing) {
