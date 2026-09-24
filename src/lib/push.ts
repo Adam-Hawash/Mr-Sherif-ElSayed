@@ -119,9 +119,11 @@ export async function sendParentPush(parentId: string, payload: ParentPushPayloa
     if (!subs || !subs.length) return out
     ensureVapid()
     var body = JSON.stringify(payload || {})
-    for (var i = 0; i < subs.length; i++) {
-      var s = subs[i]
-      if (!s || !s.endpoint) continue
+    /* (2026-و96) الأجهزة بالتوازي — جهاز بطيء/ميت ما يعطّلش باقي أجهزة
+       ولي الأمر (كانوا ورا بعض — أول جهاز يعمل timeout 10 ثواني كان
+       بياخد التاني معاه والإشعار بيتأخر) + المهلة 8 ثواني كفاية */
+    await Promise.all(subs.map(async function (s: any) {
+      if (!s || !s.endpoint) return
       try {
         await Promise.race([
           webpush.sendNotification(
@@ -129,7 +131,7 @@ export async function sendParentPush(parentId: string, payload: ParentPushPayloa
             body,
             { TTL: 86400 }
           ),
-          new Promise(function (_, rej) { setTimeout(function () { rej(new Error('push timeout')) }, 10000) }),
+          new Promise(function (_, rej) { setTimeout(function () { rej(new Error('push timeout')) }, 8000) }),
         ])
         out.sent++
       } catch (err: any) {
@@ -141,7 +143,7 @@ export async function sendParentPush(parentId: string, payload: ParentPushPayloa
         }
         console.error('[push] send failed (ignored): status=' + status + ' ' + String((err && err.message) || err).slice(0, 120))
       }
-    }
+    }))
   } catch (e) {
     console.error('[push] sendParentPush failed (ignored):', e)
   }

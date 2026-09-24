@@ -2,7 +2,7 @@
 
 import { useAppStore } from '@/stores/app-store'
 import { Badge } from '@/components/ui/badge'
-import { Camera, Trash2, Heart, ImagePlus, PlayCircle, Film, X, Loader2, Maximize, Minimize } from 'lucide-react'
+import { Camera, Trash2, ImagePlus, PlayCircle, Film, X, Loader2, Maximize, Minimize } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { SecurePlayerModal } from '@/components/student/SecurePlayerModal'
 import Image from 'next/image'
@@ -183,18 +183,7 @@ export default function GallerySection() {
                           src={img.filePath}
                           alt={img.title || 'صورة ' + (index + 1)}
                         />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-                        <div className="absolute bottom-0 left-0 right-0 p-3 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 pointer-events-none">
-                          <p className="text-white text-xs font-medium truncate">
-                            {img.title || 'صورة ' + (index + 1)}
-                          </p>
-                        </div>
-                        <div className="absolute top-3 left-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
-                          <Badge variant="secondary" className="bg-black/40 text-white border-0 text-[10px] backdrop-blur-sm">
-                            <Heart className="h-3 w-3 ml-1" />
-                            {String(index + 1).padStart(2, '0')}
-                          </Badge>
-                        </div>
+                        {/* (2026-و97) شيل اسم الملف وعلامة القلب من كارت الصورة — طلب المستر */}
                         {isAdminLoggedIn && (
                           <button
                             onClick={() => handleDelete(img.id)}
@@ -252,12 +241,7 @@ export default function GallerySection() {
                             </div>
                           )}
                           <div className="absolute inset-0 bg-black/20 group-hover:bg-black/30 transition-colors" />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-                          <div className="absolute bottom-0 left-0 right-0 p-3 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 pointer-events-none">
-                            <p className="text-white text-xs font-medium truncate">
-                              {img.title || 'فيديو ' + (index + 1)}
-                            </p>
-                          </div>
+                          {/* (2026-و97) شيل اسم الملف من كارت الفيديو — طلب المستر */}
                           <div className="absolute top-3 left-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
                             <Badge variant="secondary" className="bg-primary/80 text-white border-0 text-[10px] backdrop-blur-sm">
                               <Film className="h-3 w-3 ml-1" />
