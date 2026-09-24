@@ -17,6 +17,8 @@ import {
   Store,
 } from "lucide-react";
 
+import { PlatformLoader } from "@/components/PlatformLoader";
+
 function PaymentContent() {
   const searchParams = useSearchParams();
   const { student } = useAuth();
@@ -328,7 +330,7 @@ function PaymentContent() {
 
 export default function PaymentPage() {
   return (
-    <Suspense fallback={<div className="p-12 text-center text-slate-500 font-bold">جاري تحميل صفحة الدفع...</div>}>
+    <Suspense fallback={<PlatformLoader variant="inline" label="جاري تحميل صفحة الدفع..." />}>
       <PaymentContent />
     </Suspense>
   );

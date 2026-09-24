@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Settings, Save, Upload, Loader2, Image as ImageIcon, Trash2, Link2, Type, Layout, GraduationCap, Compass, Lightbulb, BookOpen, Smartphone, Globe, CalendarClock, PlusCircle, Plus } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
+import { PlatformLoader } from '@/components/PlatformLoader'
 import type { SiteConfig } from '@/stores/app-store'
 import { chunkedUpload } from '@/lib/chunked-upload'
 
@@ -501,7 +502,7 @@ export function CMSPanel() {
     )
   }
 
-  if (loading) return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+  if (loading) return <PlatformLoader variant="inline" label="جاري تحميل المحتوى..." />
 
   return (
     <div className="space-y-6">

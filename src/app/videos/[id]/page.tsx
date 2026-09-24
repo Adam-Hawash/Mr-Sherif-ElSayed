@@ -12,6 +12,7 @@
 import { useState, useEffect, use } from "react";
 import Link from "next/link";
 import { Lock, CreditCard, ArrowRight, CheckCircle2, Loader2 } from "lucide-react";
+import { PlatformLoader } from "@/components/PlatformLoader";
 import { SecurePlayerModal } from "@/components/student/SecurePlayerModal";
 
 export default function VideoDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -58,7 +59,7 @@ export default function VideoDetailPage({ params }: { params: Promise<{ id: stri
     load();
   }, [videoId]);
 
-  if (loading) return <div className="p-12 text-center font-bold text-slate-600">جاري تحميل الدرس...</div>;
+  if (loading) return <PlatformLoader variant="inline" label="جاري تحميل الدرس..." />;
   if (!video) return <div className="p-12 text-center text-red-500 font-bold">الفيديو غير موجود</div>;
 
   const isUnlocked = video.isUnlocked === true && video.isLocked !== true;

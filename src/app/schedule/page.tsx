@@ -4,7 +4,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { useAppStore } from '@/stores/app-store'
 import { useEffect, useState } from 'react'
-import { CalendarClock, Clock, GraduationCap, ArrowRight, BookOpen, Loader2 } from 'lucide-react'
+import { PlatformLoader } from '@/components/PlatformLoader'
+import { CalendarClock, Clock, GraduationCap, ArrowRight, BookOpen } from 'lucide-react'
 import Link from 'next/link'
 
 interface ScheduleSlot {
@@ -125,7 +126,8 @@ export default function SchedulePage() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background" dir="rtl">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        {/* (2026-و95) لودر رموز الرياضيات الموحد */}
+        <PlatformLoader variant="inline" />
       </div>
     )
   }
