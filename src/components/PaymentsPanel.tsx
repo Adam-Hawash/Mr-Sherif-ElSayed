@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
+import { PlatformLoader } from '@/components/PlatformLoader'
 import Image from 'next/image'
 
 interface PaymentItem {
@@ -545,7 +546,7 @@ export function PaymentsPanel({ onRefresh }: { onRefresh: () => void }) {
               <h3 className="font-bold text-sm flex items-center gap-2"><ImageIcon className="h-4 w-4 text-primary" />صورة الإيصال</h3>
               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={closeReceiptDialog}><X className="h-4 w-4" /></Button>
             </div>
-            {receiptLoading ? (<div className="flex justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>) : receiptBlobUrl ? (
+            {receiptLoading ? (<PlatformLoader variant="compact" label="جاري فتح صورة الإيصال..." />) : receiptBlobUrl ? (
               <div className="relative rounded-lg overflow-hidden border bg-black/5 aspect-[3/4] max-h-[70vh]"><Image src={receiptBlobUrl} alt="إيصال" fill className="object-contain" unoptimized /></div>
             ) : (<p className="text-center py-10 text-sm text-muted-foreground">فشل التحميل</p>)}
           </div>

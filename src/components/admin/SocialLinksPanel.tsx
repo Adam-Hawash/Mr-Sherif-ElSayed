@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Facebook, MessageCircle, Instagram, Save, Loader2, Link2 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
+import { PlatformLoader } from '@/components/PlatformLoader'
 
 export function SocialLinksPanel() {
   const [links, setLinks] = useState({ social_facebook: '', social_whatsapp_channel: '', social_instagram: '' })
@@ -50,7 +51,7 @@ export function SocialLinksPanel() {
     setSaving(false)
   }
 
-  if (loading) return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+  if (loading) return <PlatformLoader variant="inline" label="جاري تحميل الروابط..." />
 
   return (
     <Card>

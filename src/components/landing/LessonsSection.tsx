@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useAppStore, GRADES } from '@/stores/app-store'
 import { Badge } from '@/components/ui/badge'
 import { BookOpen, Lock, PlayCircle, ChevronLeft, ChevronRight } from 'lucide-react'
+import { PlatformLoader } from '@/components/PlatformLoader'
 import Image from 'next/image'
 
 function getYouTubeId(url: string) {
@@ -95,9 +96,8 @@ export default function LessonsSection() {
         </div>
 
         {loading ? (
-          <div className="flex justify-center py-12">
-            <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
-          </div>
+          /* (2026-و95) لودر رموز الرياضيات الموحد */
+          <PlatformLoader variant="inline" />
         ) : videos.length === 0 ? (
           <div className="text-center py-16">
             <BookOpen className="h-12 w-12 text-muted-foreground/20 mx-auto mb-4" />

@@ -1,6 +1,7 @@
 'use client'
 
 import { useAppStore } from '@/stores/app-store'
+import { PlatformLoader } from '@/components/PlatformLoader'
 import { Clock, ArrowRight, CreditCard, CheckCircle2, XCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -52,9 +53,8 @@ export function StudentPaymentPendingView() {
         </div>
 
         {loading ? (
-          <div className="flex justify-center py-8">
-            <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full" />
-          </div>
+          /* (2026-و95) لودر رموز الرياضيات الموحد */
+          <PlatformLoader variant="compact" label="جاري تحميل سجل المدفوعات..." />
         ) : payments.length > 0 ? (
           <div className="space-y-3">
             <h3 className="font-semibold text-sm">سجل المدفوعات</h3>

@@ -18,6 +18,7 @@ import Image from 'next/image'
 import { toast } from 'sonner'
 import type { Video as VideoType, Homework, Exam, Announcement, Discussion, ExamResult } from '@/stores/app-store'
 import { MathKeyboard } from '@/components/student/MathKeyboard'
+import { PlatformLoader } from '@/components/PlatformLoader'
 import { SecurePlayerModal } from '@/components/student/SecurePlayerModal'
 import { StudentComplaints } from '@/components/student/StudentComplaints'
 /* (2026-و66) نظام منع الغش والتشتت الذكي — مراقبة مغادرة الامتحان */
@@ -216,11 +217,8 @@ function StudentPortalInner() {
   // Dashboard overview before entering full portal
   if (!showFullPortal) {
     if (loading) {
-      return (
-        <div className="flex items-center justify-center py-20">
-          <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
-        </div>
-      )
+      /* (2026-و95) لودر رموز الرياضيات الموحد في بوابة الطالب */
+      return <PlatformLoader variant="inline" label="جاري تحميل بياناتك..." />
     }
 
     const initialData = dashboardData

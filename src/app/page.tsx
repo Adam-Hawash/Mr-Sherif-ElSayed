@@ -8,7 +8,7 @@ import { StudentPaymentView } from '@/components/landing/StudentPaymentView'
 import { LoginView, RegisterView } from '@/components/landing/AuthPages'
 import dynamic from 'next/dynamic'
 import { useEffect, useState, useRef } from 'react'
-import { GraduationCap, Loader2 } from 'lucide-react'
+import { PlatformLoader } from '@/components/PlatformLoader'
 
 const HeroSection = dynamic(() => import('@/components/landing/HeroSection'), {
   loading: () => <div className="min-h-[70vh] bg-background" />,
@@ -176,27 +176,9 @@ export default function HomePage() {
   const showFooter = currentView === 'landing'
   const showWhatsApp = currentView === 'landing' || currentView === 'auth-login' || currentView === 'auth-register'
 
-  // Full-page loading screen
+  // (2026-و95) لودر رموز الرياضيات الموحد
   if (!appReady) {
-    return (
-      <div className="fixed inset-0 z-[9999] bg-background flex flex-col items-center justify-center gap-6">
-        <div className="relative">
-          <div className="absolute -inset-6 rounded-full bg-[#EA580C]/10 blur-xl" />
-          <div className="relative w-20 h-20 rounded-2xl bg-muted border border-[#EA580C]/30 flex items-center justify-center">
-            <GraduationCap className="h-10 w-10 text-[#C2410C] dark:text-[#FB923C]" />
-          </div>
-        </div>
-        <div className="text-center space-y-3">
-          <h1 className="text-2xl font-bold text-foreground tracking-wide" dir="ltr">
-            <span className="shine-text">Mr. Sherif ElSayed</span>
-          </h1>
-          <div className="flex items-center gap-3 justify-center" dir="ltr">
-            <Loader2 className="h-4 w-4 animate-spin text-[#EA580C]" />
-            <p className="text-muted-foreground text-sm">Loading...</p>
-          </div>
-        </div>
-      </div>
-    )
+    return <PlatformLoader variant="full" />
   }
 
   return (
