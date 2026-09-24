@@ -88,6 +88,11 @@ export function ParentRegisterView() {
   var epwState = useState(''); var exPwd = epwState[0]; var setExPwd = epwState[1]
 
   var addExtraStudent = function () {
+    /* (2026-و92) طلب المستر: «أقصى عدد 6 طلاب» — الابن الأول + 5 إضافيين */
+    if (1 + extraStudents.length >= 6) {
+      toast.error('الحد الأقصى 6 طلاب في الحساب الواحد')
+      return
+    }
     var n = exName.trim(), p = exPhone.trim(), w = exPwd
     if (!n || !p || !w) { toast.error('اكتب اسم ابنك ورقم تليفونه وباسورده كاملين'); return }
     var samePhone = (studentPhone.trim() && p === studentPhone.trim()) || extraStudents.some(function (s) { return s.phone === p })
@@ -207,6 +212,10 @@ export function ParentRegisterView() {
                     </div>
                   </div>
                 ) : (
+                  1 + extraStudents.length >= 6 ? (
+                    /* (2026-و92) وصل الحد الأقصى — الزرار بيتشال وبيظهر تنبيه */
+                    <p className="text-center text-[11.5px] font-bold text-muted-foreground rounded-xl border border-dashed border-border px-3.5 py-3">وصلت الحد الأقصى — 6 طلاب في الحساب الواحد</p>
+                  ) : (
                   <button
                     type="button"
                     onClick={function () { setShowExtra(true) }}
@@ -215,6 +224,7 @@ export function ParentRegisterView() {
                     <UserPlus className="h-4.5 w-4.5 shrink-0" />
                     <span className="text-[13px] font-bold">عندك ابن تاني؟ اضغط إضافة طالب وحُط بياناته هنا</span>
                   </button>
+                  )
                 )}
                 <div>
                   <p className="text-sm font-semibold text-foreground mb-2">بياناتك أنت (ولي الأمر)</p>

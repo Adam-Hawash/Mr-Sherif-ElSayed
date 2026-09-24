@@ -159,6 +159,10 @@ export async function POST(request: NextRequest) {
        قبل إنشاء أي حاجة، ولو واحد فيهم فيه مشكلة الرسالة بتقول مين بالظبط */
     var extraStudents: any[] = []
     if (Array.isArray(body.extraStudents)) {
+      /* (2026-و92) طلب المستر: «أقصى عدد 6 طلاب» — الابن الأول + 5 إضافيين كحد أقصى */
+      if (body.extraStudents.length > 5) {
+        return NextResponse.json({ error: 'الحد الأقصى 6 طلاب في الحساب الواحد' }, { status: 400 })
+      }
       var extrasIn = body.extraStudents.slice(0, 5)
       var seenPhones: string[] = [studentPhoneNorm]
       for (var ex = 0; ex < extrasIn.length; ex++) {
