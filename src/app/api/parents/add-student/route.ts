@@ -49,6 +49,16 @@ export async function POST(request: NextRequest) {
     try { parent = await db.parent.findUnique({ where: { id: parentId } }) } catch (pErr) {}
     if (!parent) return NextResponse.json({ error: 'جلسة ولي الأمر منتهية — سجل دخول تاني' }, { status: 401 })
 
+    /* (2026-و92) طلب المستر: «من جوه برده تدوس إضافة طالب — برضه أقصى عدد ست طلاب» */
+    var currentCount = 1
+    try {
+      var curList = await listParentStudents(parent)
+      currentCount = Math.max(1, (curList || []).length)
+    } catch (eCnt) {}
+    if (currentCount >= 6) {
+      return NextResponse.json({ error: 'وصلت الحد الأقصى — الحساب الواحد بيشيل 6 طلاب كحد أقصى' }, { status: 400 })
+    }
+
     var parentPhoneNorm = normPhone(parent.phone)
 
     /* ===== ربط حساب ابن موجود ===== */
