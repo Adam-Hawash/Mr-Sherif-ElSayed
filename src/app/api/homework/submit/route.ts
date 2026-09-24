@@ -23,7 +23,7 @@ import { checkHwSequential } from '@/lib/sequential-guard'
 /* (و45) تصنيف موحّد اختياري/مقالي — سؤال له اختيارات صور = اختياري مش مقالي */
 import { isWritingQuestion } from '@/lib/question-figures'
 /* (2026-و87) إشعار ولي الأمر بعد التسليم — القوالب من lib/parent-notify */
-import { notifyParentsOfResult } from '@/lib/parent-notify'
+import { notifyParentsOfResult, notifyParentsOfSubmission } from '@/lib/parent-notify'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -361,23 +361,45 @@ export async function POST(request) {
     /* (2026-و87) إشعار ولي الأمر — واجب من غير أسئلة مقالية: الدرجة نهائية
        فورًا فالإشعار بيتبعت حالًا (اللي فيه مقالي بيتبعت بعد اكتمال تصحيحه
        من backgroundGrading تحت) — أي فشل ما يبوّظش التسليم
-       (و88) بنمرر origin المنصة كمان عشان رسالة الواتساب الخارجية
-       تيجي بلينك بيفتح صفحة تسجيل دخول ولي الأمر */
+       (و88) بنمرر origin المنصة كمان
+       (2026-و96) بقى fire-and-forget جوه after() — الـ await كان بيوقف
+       رد التسليم نداء web-push — والطالب لازم يخرج في أقل من ثانية */
     if (inserted && !hasWriting) {
-      try {
-        var requestOrigin = ''
-        try { requestOrigin = new URL(request.url).origin } catch (roErr) {}
-        await notifyParentsOfResult({
-          studentId: studentId,
-          kind: 'homework',
-          title: String((homework as any).title || 'واجب'),
-          score: Number(score) || 0,
-          maxScore: Number(maxScore) || 0,
-          siteUrl: requestOrigin,
-        })
-      } catch (pnErr) {
-        console.error('w-submit] parent notify error (ignored):', pnErr)
-      }
+      var requestOrigin = ''
+      try { requestOrigin = new URL(request.url).origin } catch (roErr) {}
+      after(async function () {
+        try {
+          await notifyParentsOfResult({
+            studentId: studentId,
+            kind: 'homework',
+            title: String((homework as any).title || 'واجب'),
+            score: Number(score) || 0,
+            maxScore: Number(maxScore) || 0,
+            siteUrl: requestOrigin,
+          })
+        } catch (pnErr) { console.error('[hw-submit] parent notify error (ignored):', pnErr) }
+      })
+    }
+
+    /* (2026-و96) إشعار استلام **فوري** للواجب اللي فيه مقالي — طلب المستر
+       حرفيًا: «كل ما الطالب بيعمل حاجة تجيه رسالة على طول في ثانية».
+       أول ما التسليم يتحفظ ولي الأمر ياخد «سلّم الواجب للتو — التصحيح
+       جاري» في ثواني، وإشعار الدرجة بيوصله بعد التصحيح زي ما هو
+       (tags مختلفة فمبيستبدلوش بعض) — وأي فشل في التصحيح الخلفي
+       مش هيضيع الخبر خالص زي كان بيحصل قبل كده. */
+    if (inserted && hasWriting) {
+      var requestOriginSub = ''
+      try { requestOriginSub = new URL(request.url).origin } catch (roErrSub) {}
+      after(async function () {
+        try {
+          await notifyParentsOfSubmission({
+            studentId: studentId,
+            kind: 'homework',
+            title: String((homework as any).title || 'واجب'),
+            siteUrl: requestOriginSub,
+          })
+        } catch (pnErrSub) { console.error('[hw-submit] parent submit notify error (ignored):', pnErrSub) }
+      })
     }
 
     // Respond INSTANTLY — the student is out of here in <1s

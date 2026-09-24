@@ -32,7 +32,7 @@ import { parseQuestions, resolveQuestionsForStudent } from '@/lib/exam-models'
 /* (و45) تصنيف موحّد اختياري/مقالي — سؤال له اختيارات صور = اختياري مش مقالي */
 import { isWritingQuestion } from '@/lib/question-figures'
 /* (2026-و87) إشعار ولي الأمر بعد التسليم — القوالب من lib/parent-notify */
-import { notifyParentsOfResult } from '@/lib/parent-notify'
+import { notifyParentsOfResult, notifyParentsOfSubmission } from '@/lib/parent-notify'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -340,6 +340,45 @@ export async function POST(request) {
       }
     }
 
+    /* (2026-و96) إشعار ولي الأمر **الفوري** — طلب المستر حرفيًا:
+       «كل ما الطالب بيعمل حاجة تجيه رسالة على طول في ثانية — بكل حاجة».
+       - امتحان من غير مقالي: الدرجة نهائية فورًا → إشعار الدرجة بيتبعت حالًا
+       - امتحان فيه مقالي: إشعار استلام فوري «سلّم للتو — التصحيح جاري» + إشعار
+         الدرجة بعد اكتمال التصحيح (زي ما هو — الدرجة لازم تبقى مظبوطة)
+       كله fire-and-forget جوه after() — ما بيبطّئش رد التسليم وأي فشل ما يبوّظه.
+       examScoreNotified بيمنع تكرار إشعار الدرجة في آخر after(). */
+    var examHasWriting96 = textWorkload.length > 0 || imageWorkload.length > 0
+    var examScoreNotified = false
+    var examTitle96 = String((exam as any).title || 'امتحان')
+    var examOrigin96 = ''
+    try { examOrigin96 = new URL(request.url).origin } catch (roErr96) {}
+    if (!examHasWriting96) {
+      examScoreNotified = true
+      after(async function () {
+        try {
+          await notifyParentsOfResult({
+            studentId: studentId,
+            kind: 'exam',
+            title: examTitle96,
+            score: Number(score) || 0,
+            maxScore: Number(maxScore) || 0,
+            siteUrl: examOrigin96,
+          })
+        } catch (e96) { console.error('[exam-submit] instant parent score notify error (ignored):', e96) }
+      })
+    } else {
+      after(async function () {
+        try {
+          await notifyParentsOfSubmission({
+            studentId: studentId,
+            kind: 'exam',
+            title: examTitle96,
+            siteUrl: examOrigin96,
+          })
+        } catch (e96) { console.error('[exam-submit] instant parent submit notify error (ignored):', e96) }
+      })
+    }
+
     // ===== المرحلة 3: رد فوري صادق — التسليم وصل مضمون =====
     // (التصحيح الذكي للمقالي بيكمل في after() وبعدها UPDATE الدرجة)
     after(async () => {
@@ -613,11 +652,13 @@ export async function POST(request) {
 
       /* (2026-و87) إشعار ولي الأمر بالدرجة النهائية — طلب المستر: «لما الطالب
          يسلّم الامتحان ولي الأمر ياخد إشعار بالاسم والدرجة» — بنستنى اكتمال
-         التصحيح كله عشان الرقم يكون نهائي وصادق. أي فشل ما يبوّظش حاجة. */
+         التصحيح كله عشان الرقم يكون نهائي وصادق. أي فشل ما يبوّظش حاجة.
+         (2026-و96) امتحان من غير مقالي إشعاره بدرجته اتبعت فورًا فوق —
+         examScoreNotified بيمنع التكرار هنا. */
       try {
         var exFin: any = await db.$queryRawUnsafe('SELECT score, maxScore FROM ExamResult WHERE id = ? LIMIT 1', resultId)
         exFin = exFin || []
-        if (exFin.length > 0) {
+        if (exFin.length > 0 && !examScoreNotified) {
           /* (و88) siteUrl = origin المنصة — عشان رسالة الواتساب الخارجية
              تيجي بلينك بيفتح صفحة تسجيل دخول ولي الأمر على طول */
           var requestOrigin = ''
