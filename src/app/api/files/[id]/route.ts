@@ -40,7 +40,11 @@ export async function GET(
     }
 
     // ===== بوابة الفيديو: ملفات الفيديو محمية دايماً =====
-    if (contentType.startsWith('video/')) {
+    /* (و93) استثناء فيديوهات المعرض: الأدمن بيرفعها من الجهاز عشان تظهر
+       للزوار في المعرض — محتاجة تبقى عامة زي لينكات اليوتيوب بالظبط.
+       category='gallery' يعني محتوى معرض عام — بره الحماية.
+       فيديوهات المنصة (الكورسات) فاضل عليها الحماية الكاملة بالتوكن. */
+    if (contentType.startsWith('video/') && media.category !== 'gallery') {
       const token = searchParams.get('token')
       const reqId = searchParams.get('req') || ''
       const adminId = searchParams.get('adminId') || ''
