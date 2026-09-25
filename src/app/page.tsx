@@ -78,6 +78,18 @@ export default function HomePage() {
   var setConfigLoaded = store.setConfigLoaded
   var setStats = store.setStats
 
+  /* (و98) تسخين صورة المستر — «الصورة تتحمل في الحتة الأولى» (شاشة التحميل):
+     بنبدأ تحميل الصورة فورًا من الكونفيج المُحقون سيرفر سايد + بعد وصول
+     الكونفيج — بدل ما تظهر متأخرة ~5 ثواني بعد الهيدريشن */
+  var preloadPhoto = function(url: any) {
+    try {
+      var u = String(url || '')
+      if (!u || typeof window === 'undefined') return
+      var im = new Image()
+      im.src = u
+    } catch (e) {}
+  }
+
   const [appReady, setAppReady] = useState(false)
   const startTimeRef = useRef(Date.now())
 
@@ -154,6 +166,10 @@ export default function HomePage() {
         setSiteConfig(cfg)
         setConfigLoaded(true)
       }
+      /* (و98) لو صورة الكونفيج المُحقون مختلفة — سخّنها برضه */
+      try {
+        preloadPhoto((cfg as any).instructor_photo)
+      } catch (ePc) {}
       if (gal && gal.images) {
         setGalleryImages(gal.images)
       }

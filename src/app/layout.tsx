@@ -50,6 +50,11 @@ export default async function RootLayout({
   // Favicon: صورة المستر (الافتراضي) أو صورة مخصصة من لوحة التحكم
   var faviconUrl = initialConfig.favicon_url || "/favicon.png";
 
+  // (و98) صورة المستر في الهيرو — preload من الـ head نفسه عشان التحميل
+  // يبدأ مع أول سطر HTML (المستر: الصور بتظهر متأخرة ~5 ثواني — لازم
+  // تتحمل في الحتة الأولى مع شاشة التحميل مش بعد الهيدريشن)
+  var heroPhotoUrl = String(initialConfig.instructor_photo || "");
+
   return (
     <html lang="en" dir="ltr" suppressHydrationWarning>
       <head>
@@ -78,6 +83,9 @@ export default async function RootLayout({
         <link rel="icon" href={faviconUrl} />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <link rel="shortcut icon" href="/favicon.ico" sizes="16x16 32x32" />
+
+        {/* (و98) تحميل صورة المستر يبدأ فورًا مع الـ HTML (لو موجودة) */}
+        {heroPhotoUrl ? <link rel="preload" as="image" href={heroPhotoUrl} fetchPriority="high" /> : null}
 
         {/* Inject config server-side for instant client access */}
         <script
