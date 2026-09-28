@@ -323,7 +323,13 @@ const PLAYER_PAGE = `<!doctype html>
      كل عنصر بيتموضع بمركزه x%/y% من مستطيل الفيديو + حجم sm/md/lg
      + شفافية خاصة بيه — الكونفج جاي من CFG.pcfg (لو مفيش → سلوك MG-1).
      كل العناصر pointer-events:none — مبتمنعش أي تفاعل مع الفيديو */
-  .wm{position:absolute;inset:0;z-index:40;pointer-events:none;user-select:none;overflow:hidden}
+  .wm{position:absolute;inset:0;z-index:40;pointer-events:none;user-select:none;overflow:hidden;
+    /* الووترمارك بتظهر أول ما الفيديو يشتغل بالظبط — الشاشة الأولى نضيفة من غير علامات */
+    opacity:0;transition:opacity .6s ease}
+  .wm.on{opacity:1}
+  /* دروع المنصة (فوق/تحت) للملفات: مخفية كمان لحد أول تشغيل — يوتيوب دايمًا ظاهرة
+     عشان بتغطي واجهة يوتيوب من أول لحظة */
+  .preplay{opacity:0 !important;transition:opacity .5s ease}
   .wmCard,.wmNm{position:absolute;z-index:46;pointer-events:none;transform:translate(-50%,-50%)}
   .wmQr .in{display:inline-flex;flex-direction:column;align-items:center;gap:2px;
     background:rgba(0,0,0,.66);border:1px solid rgba(255,255,255,.42);color:#fff;
@@ -482,7 +488,12 @@ const PLAYER_PAGE = `<!doctype html>
   /* زرار ملء الشاشة — مدمج زي باقي الأزرار */
   #mgBar .mBtn.big{width:30px;height:26px}
   #mgTrackWrap{flex:1 1 auto;direction:ltr;height:26px;display:flex;align-items:center;cursor:pointer;padding:0 4px;min-width:60px}
-  #mgTrack{position:relative;width:100%;height:4px;border-radius:4px;background:rgba(255,255,255,.28);overflow:hidden}
+  #mgTrack{position:relative;width:100%;height:3px;border-radius:3px;background:rgba(255,255,255,.30);overflow:visible;transition:height .12s ease}
+  /* شريط زي يوتيوب: أبيض نحيف — يتوسع مع الهوفر + إبهام دايرة بيضاء */
+  #mgTrackWrap:hover #mgTrack,#mgTrackWrap.seeking #mgTrack{height:5px}
+  #mgThumb{position:absolute;top:50%;left:0;width:11px;height:11px;border-radius:50%;background:#fff;
+    box-shadow:0 1px 5px rgba(0,0,0,.55);transform:translate(-50%,-50%) scale(0);transition:transform .12s ease;pointer-events:none;z-index:3}
+  #mgTrackWrap:hover #mgThumb,#mgTrackWrap.seeking #mgThumb{transform:translate(-50%,-50%) scale(1)}
   #mgBuf{position:absolute;top:0;left:0;bottom:0;width:0;background:rgba(255,255,255,.35)}
   #mgFill{position:absolute;top:0;left:0;bottom:0;width:0;background:#fff}
   #mgBrand{flex:0 0 auto;color:rgba(255,255,255,.92);font-weight:900;font-size:12.5px;letter-spacing:.5px;
@@ -1059,6 +1070,7 @@ function activateFallback(reason){
   if(fallbackActive) return;
   if(CFG.kind !== 'youtube'){ showPlayError('حصل خطأ في تشغيل الفيديو — جرب تاني'); return; }
   fallbackActive = true;
+  wmOn();
   try{ if(apiTimer){ clearInterval(apiTimer); apiTimer = null; } }catch(e){}
   try{ if(wdTimer){ clearInterval(wdTimer); wdTimer = null; } }catch(e){}
   try{ if(fallbackTimer){ clearTimeout(fallbackTimer); fallbackTimer = null; } }catch(e){}
@@ -1216,6 +1228,12 @@ function ytState(){ try{ return playerApi && playerApi.getPlayerState ? playerAp
 /* دورة الووترمارك الكبيرة (10 ظاهرة / 20 مخفية) بتشتغل وقت التشغيل بس —
    عند الإيقاف بتتوقف مؤقتًا ومتكملش (طلب المستر 2026-ل) */
 function wmRun(onoff){ wmPlaying = !!onoff; try{ var w=document.getElementById('wmBig'); if(w) w.style.animationPlayState = onoff ? 'running' : 'paused'; }catch(e){} }
+/* (طلب المستر) الووترمارك بتظهر أول ما الفيديو يشتغل — وبتفضل ظاهرة بعد كده */
+function wmOn(){
+  try{ var w=document.getElementById('wm'); if(w) w.classList.add('on'); }catch(e){}
+  try{ var ts=document.getElementById('topShield'); if(ts) ts.classList.remove('preplay'); }catch(e){}
+  try{ var bs=document.getElementById('botShield'); if(bs) bs.classList.remove('preplay'); }catch(e){}
+}
 
 /* ===== إخفاء شريط التحكم تلقائيًا (2026-و3 — طلب المستر الحرفي:
    «الشريط اللي تحت عاوزها تختفي أول ما أفتح الفيديو عادي، ولما أوقفه تظهر،
@@ -1269,7 +1287,7 @@ try{
    التشغيل/الإيقاف بدوسة على الفيديو نفسه (tapLayer) — زي أي مشغل عادي. */
 var plainAssumedPlaying = true;   /* حالة الوضع البديل المباشر (autoplay=1) */
 var plainAssumedMuted = false;
-var mgSeeking = false;
+var mgSeeking = false; try{ if(trackWrap) trackWrap.classList.remove('seeking'); }catch(err){}
 function pmCmd(func, args){
   try{
     var fr = document.getElementById('ytPlain');
@@ -1296,12 +1314,13 @@ function ytTogglePlay(){
     pmCmd(plainAssumedPlaying ? 'playVideo' : 'pauseVideo');
     setPlayIcon(plainAssumedPlaying);
     wmRun(plainAssumedPlaying);
+    if(plainAssumedPlaying) wmOn();
     barOnStateChange();
     return;
   }
   try{
     if(ytState() === 1){ playerApi.pauseVideo(); wmRun(false); }
-    else { playerApi.playVideo(); wmRun(true); }
+    else { playerApi.playVideo(); wmRun(true); wmOn(); }
     barOnStateChange();
   }catch(e){}
 }
@@ -1328,7 +1347,9 @@ function mgUpdateProgress(){
     var cur = playerApi.getCurrentTime() || 0;
     var fill = document.getElementById('mgFill');
     var buf = document.getElementById('mgBuf');
+    var thmb = document.getElementById('mgThumb');
     if(fill) fill.style.width = Math.min(100, (cur / dur) * 100) + '%';
+    if(thmb) thmb.style.left = Math.min(100, (cur / dur) * 100) + '%';
     if(buf){ var lf = 0; try{ lf = playerApi.getVideoLoadedFraction() || 0; }catch(e){} buf.style.width = (lf * 100) + '%'; }
   }catch(e){}
 }
@@ -1357,7 +1378,7 @@ function buildMgBar(){
     '<span id="mgQLabel">…</span>';
   gear.addEventListener('click', function(e){ e.preventDefault(); e.stopPropagation(); ytCollectLevels(); var m = qMenuEl(); if(m) m.classList.toggle('open'); });
   var tw = document.createElement('div'); tw.id = 'mgTrackWrap';
-  tw.innerHTML = '<div id="mgTrack"><div id="mgBuf"></div><div id="mgFill"></div></div>';
+  tw.innerHTML = '<div id="mgTrack"><div id="mgBuf"></div><div id="mgFill"></div><div id="mgThumb"></div></div>';
   var fsb = document.createElement('button'); fsb.type = 'button'; fsb.className = 'mBtn big';
   fsb.setAttribute('aria-label','تكبير وتصغير');
   fsb.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
@@ -1386,18 +1407,19 @@ function buildMgBar(){
       if(dur){
         playerApi.seekTo(frac * dur, true);
         var fl = document.getElementById('mgFill'); if(fl) fl.style.width = (frac * 100) + '%';
+        var th3 = document.getElementById('mgThumb'); if(th3) th3.style.left = (frac * 100) + '%';
       }
     }catch(e){}
   }
   if(trackWrap && track){
     trackWrap.addEventListener('pointerdown', function(e){
-      e.preventDefault(); mgSeeking = true;
+      e.preventDefault(); mgSeeking = true; try{ trackWrap.classList.add('seeking'); }catch(err){}
       try{ if(e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId); }catch(err){}
       seekTo(e.clientX);
     });
     trackWrap.addEventListener('pointermove', function(e){ if(mgSeeking) seekTo(e.clientX); });
-    trackWrap.addEventListener('pointerup', function(){ mgSeeking = false; });
-    trackWrap.addEventListener('pointercancel', function(){ mgSeeking = false; });
+    trackWrap.addEventListener('pointerup', function(){ mgSeeking = false; try{ if(trackWrap) trackWrap.classList.remove('seeking'); }catch(err){} });
+    trackWrap.addEventListener('pointercancel', function(){ mgSeeking = false; try{ if(trackWrap) trackWrap.classList.remove('seeking'); }catch(err){} });
   }
 }
 /* ===== أرضية الجودة 480p (2026-و5 — طلب المستر الحرفي: «خلي الجودة
@@ -1693,7 +1715,7 @@ function buildPlayer(){
             /* أرضية 480p مع كل تشغيل — طلب المستر 2026-و5: «مقبولة لـ 480» */
             ytApplyFloor();
             /* دورة الووترمارك الكبيرة بتشتغل مع التشغيل */
-            wmRun(true);
+            wmRun(true); wmOn();
             setPlayIcon(true);
             /* (2026-و3) الشريط يختفي لوحده أول ما الفيديو يمشي */
             barScheduleHide();
@@ -1983,7 +2005,9 @@ function fileUpdateProgress(){
   var v = fileApi; if(!v) return;
   var d = v.duration || 0;
   var fl = document.getElementById('mgFill'), bf = document.getElementById('mgBuf'), tl = document.getElementById('mgTime');
+  var thmb2 = document.getElementById('mgThumb');
   if(fl && d) fl.style.width = Math.min(100, (v.currentTime / d) * 100) + '%';
+  if(thmb2 && d) thmb2.style.left = Math.min(100, (v.currentTime / d) * 100) + '%';
   if(bf && d){ try{ var b = v.buffered; var end = b.length ? b.end(b.length - 1) : 0; bf.style.width = Math.min(100, (end / d) * 100) + '%'; }catch(e){} }
   if(tl) tl.textContent = fmtTime(v.currentTime) + ' / ' + (d ? fmtTime(d) : '…');
 }
@@ -1995,7 +2019,7 @@ function buildFileBar(){
   var play = document.createElement('button'); play.id = 'mgPlay'; play.type = 'button'; play.className = 'mBtn';
   play.addEventListener('click', function(e){ e.preventDefault(); e.stopPropagation(); try{ if(v.paused){ v.play(); } else { v.pause(); } }catch(err){} });
   var tw = document.createElement('div'); tw.id = 'mgTrackWrap';
-  tw.innerHTML = '<div id="mgTrack"><div id="mgBuf"></div><div id="mgFill"></div></div>';
+  tw.innerHTML = '<div id="mgTrack"><div id="mgBuf"></div><div id="mgFill"></div><div id="mgThumb"></div></div>';
   var fSeeking = false;
   function fSeekTo(clientX){
     try{
@@ -2007,10 +2031,10 @@ function buildFileBar(){
       var fl = document.getElementById('mgFill'); if(fl) fl.style.width = (frac * 100) + '%';
     }catch(e){}
   }
-  tw.addEventListener('pointerdown', function(e){ e.preventDefault(); fSeeking = true; try{ if(e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId); }catch(err){} fSeekTo(e.clientX); });
+  tw.addEventListener('pointerdown', function(e){ e.preventDefault(); fSeeking = true; try{ tw.classList.add('seeking'); }catch(err){} try{ if(e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId); }catch(err){} fSeekTo(e.clientX); });
   tw.addEventListener('pointermove', function(e){ if(fSeeking) fSeekTo(e.clientX); });
-  tw.addEventListener('pointerup', function(){ fSeeking = false; });
-  tw.addEventListener('pointercancel', function(){ fSeeking = false; });
+  tw.addEventListener('pointerup', function(){ fSeeking = false; try{ tw.classList.remove('seeking'); }catch(err){} });
+  tw.addEventListener('pointercancel', function(){ fSeeking = false; try{ tw.classList.remove('seeking'); }catch(err){} });
   var time = document.createElement('span'); time.id = 'mgTime'; time.textContent = '0:00 / …';
   var mute = document.createElement('button'); mute.id = 'mgMute'; mute.type = 'button'; mute.className = 'mBtn';
   mute.addEventListener('click', function(e){ e.preventDefault(); e.stopPropagation(); try{ v.muted = !v.muted; setMuteIcon(v.muted); }catch(err){} });
@@ -2086,7 +2110,7 @@ function mountFile(){
   v.addEventListener('progress', fileUpdateProgress);
   v.addEventListener('durationchange', fileUpdateProgress);
   /* دورة الووترمارك الكبيرة (10 ظاهرة / 20 مخفية) بتتبع التشغيل */
-  v.addEventListener('play', function(){ wmRun(true); setPlayIcon(true); barScheduleHide(); });
+  v.addEventListener('play', function(){ wmRun(true); wmOn(); setPlayIcon(true); barScheduleHide(); });
   v.addEventListener('pause', function(){ wmRun(false); setPlayIcon(false); barStopHide(); });
   v.addEventListener('ended', function(){
     wmRun(false); setPlayIcon(false);
