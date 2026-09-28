@@ -3,15 +3,20 @@
 // ROUTE: POST /api/ai-extract-frames
 // (2026-و106) استخراج أسئلة من **أي فيديو** — طلب المستر: «عايز أستخرج واجب أو
 //   امتحان من أي لينك فيديو، مش يوتيوب بس».
+// (2026-و107) طلب المستر: «أي لينك يشتغل — الغي رسالة لازم من موقع كذا / حط mp4».
+//   القراءة انتقلت للسيرفر بالكامل (ffmpeg على الرابط مباشرة — /lib/video-frames):
+//   الكلينت يبعت videoUrls والسيرفر بيصوّر لقطات بنفسه — مفيش CORS أصلاً
+//   وأي صيغة (mp4/mov/webm/mkv…) وأي موقع. صور الكلينت لسه مقبولة للأجل الاحتياط.
 //
-// اليوتيوب له مساره القديم (/api/ai-extract-youtube). الفيديوهات التانية
-//   (mp4 مباشر / archive.org / Cloudinary / ملف مرفوع على المنصة) الكلينت
-//   بيشغّل الفيديو على المتصفح وبيصوّر لقطات موزعة على المدة (canvas)
-//   وبيبعتها هنا كصور dataURL — نفس نهج /api/ai-extract-pages بالظبط.
+// اليوتيوب له مساره القديم (/api/ai-extract-youtube).
 //
-// الطلب: { images:[dataURL...], context?:string, numQuestions?:number,
-//          type?:'exam'|'homework', grade?:string, sourceLabel?:string }
+// الطلب: { images?:[dataURL...], videoUrls?:[string...], context?:string,
+//          numQuestions?:number, type?:'exam'|'homework', grade?:string,
+//          sourceLabel?:string }
 // الرد: نفس شكل extracted المعتمد في AIExtractionPanel.
+
+import { extractFramesFromVideoUrl, hasFfmpeg } from '@/lib/video-frames'
+import { extractQuestionsFromVideoUrl } from '@/lib/video-gemini'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { callGemini as callGeminiCentral, hasGeminiKey } from '@/lib/gemini'
@@ -20,7 +25,7 @@ import { parseAIJsonArrayRobust } from '@/lib/ai-json'
 import { isWritingQuestion } from '@/lib/question-figures'
 
 export const runtime = 'nodejs'
-export const maxDuration = 180
+export const maxDuration = 300
 
 var MAX_IMAGES = 30
 
@@ -102,11 +107,35 @@ export async function POST(request: NextRequest) {
     var body = await request.json()
     var images: string[] = Array.isArray(body.images) ? body.images.slice(0, MAX_IMAGES) : []
     images = images.filter(function (s) { return typeof s === 'string' && s.startsWith('data:image') })
-    /* (2026-و106) دروس يوتيوب: ممكن من غير صور — بنبعت الـ IDs في السياق
-       (نفس فكرة /api/ai-extract-youtube — Gemini بيعرف منهج يوتيوب المدرسي) */
     var youtubeIds: string[] = Array.isArray(body.youtubeIds) ? body.youtubeIds.map(function (x: any) { return String(x || '').slice(0, 24) }).filter(Boolean).slice(0, 12) : []
-    if (images.length === 0 && youtubeIds.length === 0) {
-      return NextResponse.json({ error: 'مفيش لقطات فيديو ولا فيديوهات يوتيوب — جرب تاني' }, { status: 400 })
+    /* (2026-و107) لينكات الفيديو — السيرفر بيقراها بنفسه ومن غير أي قيود:
+       الطبقة ١: ffmpeg لو متاح (لقطات سريعة بالـ HTTP range)
+       الطبقة ٢: رفع الفيديو نفسه لـ Gemini Files API (بيئات من غير ffmpeg زي Vercel + MOV) */
+    var videoUrls: string[] = Array.isArray(body.videoUrls) ? body.videoUrls.map(function (x: any) { return String(x || '').trim() }).filter(Boolean).slice(0, 12) : []
+    var selfOrigin = ''
+    try { var u0 = new URL(request.url); selfOrigin = u0.protocol + '//' + u0.host } catch (e0) {}
+    var t0All = Date.now()
+    var failedUrls: string[] = []
+    var serverFrames: string[] = []
+    if (videoUrls.length > 0 && (await hasFfmpeg())) {
+      var t0V = Date.now()
+      var perV = Math.max(3, Math.min(12, Math.floor(28 / videoUrls.length)))
+      for (var vi = 0; vi < videoUrls.length; vi++) {
+        if (Date.now() - t0V > 45000) { failedUrls.push(videoUrls[vi]); continue }
+        try {
+          var rr = await extractFramesFromVideoUrl(videoUrls[vi], perV, selfOrigin)
+          if (rr.frames.length > 0) {
+            for (var sj = 0; sj < rr.frames.length && serverFrames.length < 28; sj++) serverFrames.push(rr.frames[sj])
+          } else failedUrls.push(videoUrls[vi])
+        } catch (eV) { failedUrls.push(videoUrls[vi]) }
+      }
+    } else {
+      for (var vi2 = 0; vi2 < videoUrls.length; vi2++) failedUrls.push(videoUrls[vi2])
+    }
+    if (serverFrames.length > 0) images = serverFrames.concat(images).slice(0, MAX_IMAGES)
+    if (images.length === 0 && youtubeIds.length === 0 && videoUrls.length === 0) {
+      /* (و107) رسالة محايدة من غير CORS ومن غير ذكر صيغة — طلب المستر الحرفي */
+      return NextResponse.json({ error: 'ماقدرناش نقرا محتوى الفيديو — اتأكد إن اللينك شغال وجرب تاني' }, { status: 400 })
     }
     var context = String(body.context || '')
     if (youtubeIds.length > 0) {
@@ -141,8 +170,30 @@ export async function POST(request: NextRequest) {
       if (!result && attempt === 0) await new Promise(function (r) { setTimeout(r, 1200) })
     }
 
+    /* (2026-و107) الطبقة التانية — رفع الفيديو نفسه لـ Gemini Files API:
+       تشتغل لو مفيش ffmpeg (Vercel) أو اللقطات فشلت في قراءة المصدر */
+    if ((!result || result.length === 0) && failedUrls.length > 0) {
+      var directQs: any[] = []
+      var tried = 0
+      for (var ti = 0; ti < failedUrls.length && tried < 2; ti++) {
+        if (Date.now() - t0All > 105000) break
+        tried++
+        try {
+          var r2 = await extractQuestionsFromVideoUrl(failedUrls[ti], numQuestions, context, sourceLabel, selfOrigin)
+          if (r2.questions && r2.questions.length > 0) {
+            for (var qi2 = 0; qi2 < r2.questions.length; qi2++) {
+              var fq2 = finalizeQuestion(r2.questions[qi2])
+              if (fq2) directQs.push(fq2)
+            }
+            if (directQs.length > 0) break
+          }
+        } catch (eT2) { /* نكمل */ }
+      }
+      if (directQs.length > 0) result = directQs
+    }
+
     if (!result) {
-      return NextResponse.json({ error: 'الذكاء الاصطناعي ما قدرش يستخرج أسئلة من الفيديو — جرب تاني أو استخدم لينك فيديو تاني' }, { status: 502 })
+      return NextResponse.json({ error: 'ماقدرناش نستخرج أسئلة من الفيديو — جرب تاني' }, { status: 502 })
     }
 
     var mcq = result.filter(function (q: any) { return q.type === 'mcq' }).length
@@ -154,7 +205,7 @@ export async function POST(request: NextRequest) {
         content: '',
         questions: result,
         answerKey: '',
-        stats: { mcq: mcq, writing: writing, total: result.length, frames: images.length, youtubeIds: youtubeIds.length },
+        stats: { mcq: mcq, writing: writing, total: result.length, frames: images.length, videoUrls: videoUrls.length, tier2: (failedUrls.length > 0 && images.length === 0) ? 1 : 0, youtubeIds: youtubeIds.length },
       },
     })
   } catch (error: any) {
