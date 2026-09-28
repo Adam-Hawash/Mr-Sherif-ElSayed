@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db, safeWrite } from '@/lib/db'
 import { isAdmin, getStudentAnyStatus, safeThumb, getYouTubeId, mediaIdFromPath, ensureVideoTable } from '@/lib/video-guard'
+import crypto from 'crypto'
 
 export const dynamic = 'force-dynamic'
 
@@ -126,6 +127,30 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { title, url, grade, filePath, fileType, thumbnail, price, adminId } = body
 
+    /* (2026-و106) الدرس فيه أكتر من فيديو:
+       - isMulti=true → درس جديد متعدد: بنولّد groupKey جديد وorderIndex=0
+       - groupKey موجود → إضافة جزء جديد لدرس موجود (الترتيب أوتوماتيكي آخر واحد)
+       - من غيرهم → فيديو مستقل عادي (groupKey فاضي زي ما هو) */
+    const isMulti = Boolean(body.isMulti)
+    let finalGroupKey = String(body.groupKey || '').trim()
+    let orderIndex = Number(body.orderIndex)
+    if (isMulti || finalGroupKey) {
+      if (!finalGroupKey) finalGroupKey = 'L' + crypto.randomBytes(6).toString('hex')
+      if (!Number.isFinite(orderIndex) || orderIndex < 0) {
+        try {
+          const last = await db.video.findFirst({
+            where: { groupKey: finalGroupKey },
+            orderBy: { orderIndex: 'desc' },
+            select: { orderIndex: true },
+          })
+          orderIndex = (last && Number.isFinite(last.orderIndex) ? last.orderIndex : -1) + 1
+        } catch { orderIndex = 0 }
+      }
+    } else {
+      finalGroupKey = ''
+      orderIndex = 0
+    }
+
     // الكتابة للأدمن بس
     if (!(await isAdmin(adminId))) {
       return errOut('مسموح للأدمن بس — سجل الدخول من الأول', 401)
@@ -171,6 +196,8 @@ export async function POST(request: NextRequest) {
             fileType: fileType || '',
             thumbnail: finalThumb,
             price: Number(price) || 0,
+            groupKey: finalGroupKey,
+            orderIndex: orderIndex || 0,
           },
         })
       })

@@ -7,14 +7,29 @@
 //     (HomeworkResult.score) — نفس أرقام لوحة الأدمن بالظبط
 //   • خصوصية: ممنوع التليفون أو الإيميل أو أي بيانات شخصية — الاسم بس زي ما الطالب كاتبه
 //     (2026-و21: تعديل بطلب المستر — الاسم كامل زي ما هو كاتبه مش كلمتين)
-//   • الطلاب المقبولين بس (approved/paid) + نتايج امتحان/واجب لسه موجودين في
-//     المنصة (لو المستر مسح امتحان/واجب نقاطه بتشيل معاه — نفس منطق الحذف المتسلسل)
+//   • الطلاب المقبولين بس (approved/paid)
+//
+//   (2026-و58) دفتر النقاط الدايم — طلب المستر حرفيًا:
+//   «لما أنزل واجب جديد أو امتحان جديد النقط ما تتمسحش وتتعاد من الأول،
+//    لا النقط تتضاف على الأولانية — عشان النقط تبقى كبيرة»
+//   ------------------------------------------------------------
+//   المشكلة: النقاط كانت بتتحسب مباشرة من ExamResult/HomeworkResult —
+//   ودي جداول مربوطة بالامتحان/الواجب نفسه بحذف متسلسل (Cascade)،
+//   فأول ما المستر يمسح امتحان/واجب قديم (حتى لو عشان ينزل واحد جديد
+//   مكانه) كل نتايجه بتتمسح ودرجات الطلاب بتقل فجأة.
+//   الحل: جدول PointsLedger — مرآة دايمة لكل نتيجة (بمعرّف النتيجة نفسه).
+//   • أي نتيجة جديدة/معدلة (إعادة تصحيح/تصحيح مقالي) بتتحدّث في المرآة
+//   • مسح الامتحان/الواجب **مش بيمسح** نقاطه من الدفتر — النقاط بتضل متراكمة
+//   • مسح الطالب بيمسح نقاطه هو بس (عشان مفيش أشباح في الترتيب)
+//   • امتحان جديد الطلاب يحلوه = نقاط جديدة بتتجمع فوق القديمة (تراكمي)
 
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { ensureLedgerTable, syncLedger } from '@/lib/points-ledger'
 
 // كاش داخلي بسيط (60 ثانية) — الصفحة الرئيسية بتتفتح كتير ومفيش داعي نضرب
 // الداتابيز بكل زيارة. نفس نمط الكاش المحلي في باقي المنصة.
+// (و60: منطق الدفتر نفسه اتنقل لـ lib/points-ledger.ts عشان يتشارك مع /api/points)
 var CACHE_TTL_MS = 60000
 var cachedAt = 0
 var cachedRows: any[] | null = null
@@ -28,17 +43,15 @@ export async function GET() {
   } catch (e) {}
 
   try {
+    await syncLedger()
+
     var rows: any[] = await db.$queryRawUnsafe(
-      'SELECT s.id, s.name, s.grade, ' +
-      '( ' +
-      '  (SELECT COALESCE(SUM(er.score), 0) FROM ExamResult er ' +
-      '   WHERE er.studentId = s.id AND er.examId IN (SELECT id FROM Exam)) ' +
-      '  + ' +
-      '  (SELECT COALESCE(SUM(hr.score), 0) FROM HomeworkResult hr ' +
-      '   WHERE hr.studentId = s.id AND hr.homeworkId IN (SELECT id FROM Homework)) ' +
-      ') AS totalPoints ' +
-      'FROM Student s ' +
+      'SELECT s.id, s.name, s.grade, COALESCE(SUM(pl.points), 0) AS totalPoints ' +
+      'FROM PointsLedger pl ' +
+      'INNER JOIN Student s ON s.id = pl.studentId ' +
       "WHERE s.status IN ('approved', 'paid') " +
+      'GROUP BY s.id, s.name, s.grade ' +
+      'HAVING totalPoints > 0 ' +
       'ORDER BY totalPoints DESC, s.name ASC ' +
       'LIMIT 3'
     ) || []

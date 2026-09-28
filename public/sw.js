@@ -1,25 +1,51 @@
 /* ============================================================
-   (2026-و89) sw.js — Service Worker إشعارات أولياء الأمور
-   الهدف بطلب المستر: «الإشعار اللي هيجي لولي الأمر بره — إشعار
-   براوزر حقيقي يظهر على شاشة الموبايل، ولما يدوس عليه يخش على
-   الإشعارات اللي جوه المنصة».
-
-   - push: بيستقبل الحمولة { title, body, url, tag, icon } ويعرضها
-     على شاشة القفل/النظام بره المنصة.
-   - notificationclick: ضغطة ولي الأمر على الإشعار → فتح المنصة
-     على /#parent-login (شاشة دخول ولي الأمر — وبعد الدخول يشوف
-     الإشعار جوه المنصة). لو المنصة مفتوحة بالفعل بيتُركّز ونفس
-     الصفحة بتوجّه نفسها (لوولي الأمر مسجل → بورتال الإشعارات).
+   sw.js — Service Worker موحد (دمج و89 + و106)
+   (و89) إشعارات أولياء الأمور — push + notificationclick
+   (و106) PWA — تثبيت المنصة كتطبيق + صفحة أوفلاين للتنقلات
    ============================================================ */
 
+var PWA_CACHE = 'sherif-pwa-v1'
+var OFFLINE_URL = '/offline.html'
+
 self.addEventListener('install', function (event) {
+  /* (و89) skipWaiting الأصلي */
   self.skipWaiting()
+  /* (و106) PWA — تجهيز صفحة الأوفلاين */
+  event.waitUntil(
+    caches.open(PWA_CACHE).then(function (cache) {
+      return cache.addAll([OFFLINE_URL])
+    }).catch(function () {})
+  )
 })
 
 self.addEventListener('activate', function (event) {
-  event.waitUntil(self.clients.claim())
+  event.waitUntil(
+    caches.keys().then(function (keys) {
+      return Promise.all(
+        keys.filter(function (k) { return k !== PWA_CACHE }).map(function (k) { return caches.delete(k) })
+      )
+    }).then(function () {
+      return self.clients.claim()
+    })
+  )
 })
 
+/* ===== (و106) PWA — التنقلات: شبكة أولاً وصفحة أوفلاين كاحتياط ===== */
+self.addEventListener('fetch', function (event) {
+  var req = event.request
+  if (req.mode === 'navigate') {
+    event.respondWith(
+      fetch(req).catch(function () {
+        return caches.match(OFFLINE_URL).then(function (hit) {
+          return hit || fetch(req)
+        })
+      })
+    )
+  }
+  /* غير التنقلات (API/ملفات) — تمرير عادي. ممنوع كاش أي API (بيانات حية) */
+})
+
+/* ===== (و89) إشعارات أولياء الأمور — زي ما هي حرفيًا ===== */
 self.addEventListener('push', function (event) {
   var data = {}
   try {
@@ -65,4 +91,8 @@ self.addEventListener('notificationclick', function (event) {
       return self.clients.openWindow(target)
     })()
   )
+})
+
+self.addEventListener('message', function (event) {
+  if (event.data === 'SKIP_WAITING') self.skipWaiting()
 })

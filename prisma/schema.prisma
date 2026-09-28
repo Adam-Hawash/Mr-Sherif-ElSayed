@@ -87,6 +87,11 @@ model Video {
   thumbnail String   @default("")
   grade     String
   price     Float    @default(0)
+  /* (2026-و106) الدرس فيه أكتر من فيديو — نفس نمط Zicola (و104):
+     groupKey متطابق = أجزاء نفس الدرس، orderIndex = ترتيب الجزء داخل الدرس.
+     فاضي "" = فيديو مستقل عادي (السلوك القديم زي ما هو). */
+  groupKey  String   @default("")
+  orderIndex Int     @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -394,6 +399,109 @@ model Book {
   usage       String   @default("both")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+
+// ============================================================
+// (2026-و66) ساحة التحدي — طلب المستر: تحديات تفاعلية بين الطلاب
+//   • BattleRoom: غرفة تحدي جروبات بكود مشترك (3-4 طلاب وقت واحد)
+//     status: lobby (انتظار) | live (شغال) | ended (خلص)
+//     questions: JSON — BattleQuestion[] من lib/question-gen
+//     currentIndex/questionStartAt: السؤال الحالي وميعاد بدايته (epoch ms)
+//   • BattlePlayer: لاعب في الغرفة — token سري للتحكم (الهوست بس يبدأ)
+//     answers: JSON — { [رقم السؤال]: { choice, correct, gained, ms } }
+// ============================================================
+model BattleRoom {
+  id              String   @id @default(cuid())
+  code            String   @unique
+  title           String   @default("")
+  hostPlayerId    String   @default("")
+  status          String   @default("lobby")
+  questions       String   @default("[]")
+  currentIndex    Int      @default(0)
+  questionStartAt String   @default("0") // epoch ms كنص — INT مش لاقي 13 رقم
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([code])
+}
+
+model BattlePlayer {
+  id        String   @id @default(cuid())
+  roomId    String
+  name      String
+  token     String   @default("")
+  isHost    Boolean  @default(false)
+  score     Int      @default(0)
+  streak    Int      @default(0)
+  answers   String   @default("{}")
+  lastSeen  String   @default("0") // epoch ms كنص
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([roomId])
+}
+
+// تحدي المستر — سؤال صعب أسبوعي/مخصص الطلاب يتسابقوا فيه
+// والمستر نفسه ينزل يلعب معاهم (isTeacher في ChallengeEntry)
+model TeacherChallenge {
+  id           String    @id @default(cuid())
+  title        String
+  question     String
+  options      String    @default("[]")
+  correctIndex Int       @default(0)
+  points       Int       @default(30)
+  durationMin  Int       @default(0) // 0 = مفتوح لحد ما المستر يقفله
+  active       Boolean   @default(true)
+  closesAt     DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model ChallengeEntry {
+  id          String   @id @default(cuid())
+  challengeId String
+  studentId   String   @default("")
+  name        String
+  isTeacher   Boolean  @default(false)
+  choice      Int      @default(-1)
+  correct     Boolean  @default(false)
+  timeMs      Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  @@index([challengeId])
+}
+
+// نتايج تحدي الفلاش كاردز السريعة — لوحة شرف مستقلة
+model FlashcardScore {
+  id           String   @id @default(cuid())
+  studentId    String   @default("")
+  name         String
+  score        Int      @default(0)
+  correctCount Int      @default(0)
+  totalCards   Int      @default(10)
+  createdAt    DateTime @default(now())
+
+  @@index([score])
+}
+
+// ============================================================
+// (2026-و66) الخرائط الذهنية التفاعلية (NotebookLM style)
+//   الأدمن يلصق لينك يوتيوب أو يرفع ملف → AI يستخرج المفاهيم
+//   والقوانين → خريطة ذهنية JSON الطالب يشوفها تفاعلية
+// ============================================================
+model MindMap {
+  id         String   @id @default(cuid())
+  videoId    String   @default("")
+  title      String
+  sourceType String   @default("youtube") // youtube | text | file
+  sourceUrl  String   @default("")
+  sourceName String   @default("")
+  data       String   @default("{}") // MindMapData JSON من lib/question-gen
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([videoId])
 }
 
 // ============================================================
