@@ -33,6 +33,8 @@ import { useT } from '@/lib/i18n'
 /* (2026-و29) «أوائل الطلبة» في النافبار — طلب المستر: زرار جنب Geometry
    يفتح دايلوج بأول 3 طلاب — والقسم اتشال من الصفحة الرئيسية */
 import { TopStudentsDialog } from './TopStudentsDialog'
+/* (2026-و106) زر تثبيت المنصة كتطبيق على الموبايل — PWA */
+import { InstallPwaButton } from '@/components/InstallPwaButton'
 
 export function Navbar() {
   const [mobileMenu, setMobileMenu] = useState(false)
@@ -307,6 +309,10 @@ export function Navbar() {
               <CalendarClock className="h-4 w-4" />
               {T('مواعيد السنتر — جدول الحصص', 'Center Schedule')}
             </a>
+            {/* (2026-و106) زر تثبيت المنصة كتطبيق على الموبايل — PWA */}
+            <div className="flex [&_button]:w-full [&_button]:justify-center [&_button]:min-h-[44px]">
+              <InstallPwaButton variant="outline" />
+            </div>
             {currentStudent ? (
               <>
                 <p className="text-sm text-muted-foreground py-2">

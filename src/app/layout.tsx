@@ -23,6 +23,17 @@ export var metadata: Metadata = {
   applicationName: "Mr. Sherif ElSayed — Math Platform",
   description:
     "منصة مستر شريف السيد التعليمية — شرح رياضيات بيسهّلك الماث، واجبات أسبوعية، امتحانات دورية، ومتابعة مستمرة.",
+  /* (2026-و106) PWA — المنصة تتنصّب كتطبيق من كروم على الموبايل */
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Mr Sherif",
+  },
+  icons: {
+    icon: "/favicon.png",
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 export default async function RootLayout({
@@ -84,6 +95,11 @@ export default async function RootLayout({
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <link rel="shortcut icon" href="/favicon.ico" sizes="16x16 32x32" />
 
+        {/* (2026-و106) PWA — manifest + ثيم الموبايل + أيقونة الشاشة الرئيسية */}
+        <meta name="theme-color" content="#2D2D2D" />
+        <link rel="manifest" href="/manifest.json" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
         {/* (و98) تحميل صورة المستر يبدأ فورًا مع الـ HTML (لو موجودة) */}
         {heroPhotoUrl ? <link rel="preload" as="image" href={heroPhotoUrl} fetchPriority="high" /> : null}
 
@@ -110,6 +126,13 @@ export default async function RootLayout({
         <Toaster />
         {/* Toaster بتاع sonner — كل رسائل التنبيه في المنصة بتستخدمه */}
         <SonnerToaster position="top-center" richColors closeButton expand={false} />
+        {/* (2026-و106) تسجيل Service Worker — PWA + إشعارات أولياء الأمور (و89) */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "try{if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('/sw.js').catch(function(){})})}}catch(e){}",
+          }}
+        />
       </body>
     </html>
   );

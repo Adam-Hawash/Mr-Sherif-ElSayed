@@ -86,6 +86,9 @@ export interface Video {
   thumbnail: string
   grade: string
   price: number
+  /* (2026-و106) الدرس فيه أكتر من فيديو — groupKey متطابق = أجزاء نفس الدرس */
+  groupKey?: string
+  orderIndex?: number
   createdAt: string
 }
 
