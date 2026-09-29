@@ -158,6 +158,8 @@ export function Navbar() {
               <Shapes className="h-4 w-4" />
               Geometry Laws
             </a>
+            {/* (2026-و110) زرار «التطبيق» في الرئيسية — ظاهر دايمًا في الديسكتوب لكل الحالات */}
+            <InstallPwaButton variant="outline" size="sm" className="min-h-[44px] rounded-xl" />
             {/* (و43) مواعيد السنتر: اتشالت من قايمة الشاشات الكبيرة — موجودة في قايمة الموبايل بس */}
             {currentStudent ? (
               <div className="flex items-center gap-3">
