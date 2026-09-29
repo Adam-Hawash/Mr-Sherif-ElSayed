@@ -274,7 +274,7 @@ function StudentPortalInner() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <InstallPwaButton variant="outline" size="sm" className="gap-1.5 h-11 sm:h-8 shrink-0" />
+                  <InstallPwaButton variant="outline" size="sm" className="gap-1.5 h-11 sm:h-8 shrink-0" label="التطبيق" />
                   <Button variant="outline" size="sm" onClick={() => setShowGuide(true)} className="gap-1.5 h-11 sm:h-8">
                     <HelpCircle className="h-4 w-4" />
                     <span className="hidden sm:inline">{T('دليل التعامل', 'Guide')}</span>
@@ -435,13 +435,13 @@ function StudentPortalInner() {
         </div>
       </div>
 
-      {/* Tab Bar */}
-      <div className="border-b px-4 flex gap-1 overflow-x-auto">
+      {/* Tab Bar — (2026-و109) تحسين الموبايل: قص بتدرج عند الحافة + سحب ناعم snap + من غير سكرول بار */}
+      <div className="border-b px-4 flex gap-1 overflow-x-auto snap-x [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [mask-image:linear-gradient(to_right,transparent,black_16px,black_calc(100%_-_32px),transparent)]">
         {tabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+            className={`flex items-center gap-1.5 px-3 sm:px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0 snap-start ${
               activeTab === tab.id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
