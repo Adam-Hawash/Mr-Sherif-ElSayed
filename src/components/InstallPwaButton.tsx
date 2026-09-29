@@ -13,6 +13,7 @@
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Smartphone, X, Download } from 'lucide-react'
+import { toast } from 'sonner'
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>
@@ -56,11 +57,14 @@ function usePwaInstall() {
   var install = async function () {
     if (deferred) {
       try {
+        /* (2026-و109) طلب المستر: رسالة/إشعار «تثبيت التطبيق» قبل فتح النافذة الرسمية */
+        toast.info('تثبيت التطبيق — بنفتحلك نافذة التثبيت…', { description: 'دوس تثبيت/Install وأهم إيقونة التطبيق هتنزل على شاشتك' })
         await deferred.prompt()
         var choice = await deferred.userChoice
         if (choice.outcome === 'accepted') {
           try { localStorage.setItem('mg-pwa-installed', '1') } catch (e) {}
           setInstalled(true)
+          toast.success('تم تثبيت التطبيق بنجاح 🎉', { description: 'افتح المنصة من أيقونة التطبيق — شاشة كاملة من غير متصفح' })
         }
       } catch (e) {}
       return
@@ -77,7 +81,7 @@ function InstallHintModal({ isIos, onClose }: { isIos: boolean; onClose: () => v
     <div className="fixed inset-0 z-[95] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4" onClick={onClose}>
       <div className="bg-card w-full max-w-sm rounded-2xl border shadow-2xl p-5 space-y-3" onClick={function (e) { e.stopPropagation() }}>
         <div className="flex items-center justify-between">
-          <p className="font-bold text-sm">إزاي تثبّت التطبيق؟</p>
+          <p className="font-bold text-sm">تثبيت التطبيق</p>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground" aria-label="إغلاق"><X className="h-4 w-4" /></button>
         </div>
         {isIos ? (
@@ -101,14 +105,14 @@ function InstallHintModal({ isIos, onClose }: { isIos: boolean; onClose: () => v
 }
 
 /* زر عادي بيتركب في الهيدر/القايمة — زي ما هو من و106 */
-export function InstallPwaButton({ variant = 'default', size, className = '' }: { variant?: 'default' | 'outline' | 'ghost' | 'secondary'; size?: 'default' | 'sm' | 'lg' | 'icon'; className?: string }) {
+export function InstallPwaButton({ variant = 'default', size, className = '', label = 'ثبّت التطبيق' }: { variant?: 'default' | 'outline' | 'ghost' | 'secondary'; size?: 'default' | 'sm' | 'lg' | 'icon'; className?: string; label?: string }) {
   var pwa = usePwaInstall()
   if (pwa.installed) return null
   return (
     <>
       <Button variant={variant} size={size} className={className} onClick={pwa.install} aria-label="ثبّت المنصة كتطبيق على جهازك">
         <Smartphone className="h-4 w-4 ml-1.5" />
-        <span>ثبّت التطبيق</span>
+        <span>{label}</span>
       </Button>
       {pwa.showHint && <InstallHintModal isIos={pwa.isIos} onClose={function () { pwa.setShowHint(false) }} />}
     </>
