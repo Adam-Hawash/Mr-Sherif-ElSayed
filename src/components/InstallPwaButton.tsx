@@ -16,7 +16,7 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
 }
 
-export function InstallPwaButton({ variant = 'default', className = '' }: { variant?: 'default' | 'outline' | 'ghost' | 'secondary'; className?: string }) {
+export function InstallPwaButton({ variant = 'default', size, className = '' }: { variant?: 'default' | 'outline' | 'ghost' | 'secondary'; size?: 'default' | 'sm' | 'lg' | 'icon'; className?: string }) {
   const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null)
   const [isIos, setIsIos] = useState(false)
   const [showIosHint, setShowIosHint] = useState(false)
@@ -78,9 +78,9 @@ export function InstallPwaButton({ variant = 'default', className = '' }: { vari
 
   return (
     <>
-      <Button variant={variant} className={className} onClick={install} aria-label="ثبّت المنصة كتطبيق على جهازك">
+      <Button variant={variant} size={size} className={className} onClick={install} aria-label="ثبّت المنصة كتطبيق على جهازك">
         <Smartphone className="h-4 w-4 ml-1.5" />
-        ثبّت المنصة كتطبيق
+        <span className="hidden sm:inline">ثبّت التطبيق</span>
       </Button>
       {showIosHint && (
         <div className="fixed inset-0 z-[95] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4" onClick={function () { setShowIosHint(false) }}>
