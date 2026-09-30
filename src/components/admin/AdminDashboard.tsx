@@ -995,20 +995,53 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
   }
 
   /* (2026-و106) تجميع الفيديوهات: مستقل + مجموعات دروس متعددة */
-  const grouped = useMemo(function () {
-    const groups: { key: string; title: string; grade: string; price: number; parts: Video[] }[] = []
-    const byKey: Record<string, Video[]> = {}
-    const singles: Video[] = []
+  /* (2026-و106) تجميع الفيديوهات — (2026-ص) بقى قايمة موحدة بترتيب الطلبة
+     الفعلي زي ما السيرفر بيرجعها: كل وحدة = درس متعدد (أجزاء groupKey) أو
+     فيديو مستقل — عشان المستر يشوف نفس الترتيب اللي الطالب شايفه ويرتبه ▲▼ */
+  const unitList = useMemo(function () {
+    type Unit = { type: 'group'; key: string; title: string; grade: string; price: number; parts: Video[] } | { type: 'single'; v: Video; grade: string }
+    const units: Unit[] = []
+    const seen = new Set<string>()
     videos.forEach(function (v) {
       const k = String((v as any).groupKey || '')
-      if (k) { (byKey[k] = byKey[k] || []).push(v) } else singles.push(v)
+      if (!k) { units.push({ type: 'single', v, grade: String(v.grade || '') }); return }
+      if (seen.has(k)) return
+      seen.add(k)
+      const parts = videos.filter(function (x) { return String((x as any).groupKey || '') === k })
+        .slice().sort(function (a, b) { return (a.orderIndex || 0) - (b.orderIndex || 0) })
+      units.push({ type: 'group', key: k, title: parts[0] ? parts[0].title : k, grade: parts[0] ? String(parts[0].grade || '') : '', price: parts[0] ? Number(parts[0].price || 0) : 0, parts })
     })
-    Object.keys(byKey).forEach(function (k) {
-      const parts = byKey[k].slice().sort(function (a, b) { return (a.orderIndex || 0) - (b.orderIndex || 0) })
-      groups.push({ key: k, title: parts[0] ? parts[0].title : k, grade: parts[0] ? parts[0].grade : '', price: parts[0] ? Number(parts[0].price || 0) : 0, parts })
-    })
-    return { singles, groups }
+    return units
   }, [videos])
+
+  /* (2026-ص) ترتيب الدروس ▲▼ — فيديو مستقل أو درس متعدد كوحدة واحدة.
+     بنبعت الترتيب كامل للسيرفر وهو بيكتب sortIndex لكل فيديوهات كل وحدة. */
+  const moveLesson = async function (unitIdx: number, dir: -1 | 1) {
+    const units = unitList.slice()
+    const target = unitIdx + dir
+    if (target < 0 || target >= units.length) return
+    const tmp = units[unitIdx]; units[unitIdx] = units[target]; units[target] = tmp
+    setMovingOrder(true)
+    try {
+      const res = await fetch('/api/videos/reorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          adminId: currentAdminId,
+          mode: 'lessons',
+          units: units.map(function (u) { return u.type === 'group' ? u.parts.map(function (p) { return p.id }) : [u.v.id] }),
+        }),
+      })
+      if (res.ok) {
+        toast.success('تم حفظ الترتيب')
+        await loadVideos(false)
+      } else {
+        var d: any = null; try { d = await res.json() } catch {}
+        toast.error('فشل حفظ الترتيب: ' + (d && d.error ? d.error : 'خطأ غير معروف'))
+      }
+    } catch { toast.error('خطأ في الاتصال') }
+    setMovingOrder(false)
+  }
 
   // ===== أدوات الجدولة القديمة (زي نظام الفيديوهات الأول بالظبط) =====
   const loadStudentsForSchedule = async (grade: string) => {
@@ -1295,7 +1328,15 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
           <p className="text-center text-muted-foreground py-10 text-sm">لا توجد فيديوهات. أضف أول فيديو!</p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {grouped.groups.map((g) => {
+            {unitList.map((u, ui) => {
+              /* موضع الدرس بين دروس نفس الصف + جار نفس الصف (عشان «كل الصفوف») */
+              const sameGrade = unitList.map((x, xi) => ({ x, xi })).filter(function (t) { return t.x.grade === u.grade })
+              const gradeTotal = sameGrade.length
+              const gradePos = sameGrade.findIndex(function (t) { return t.xi === ui }) + 1
+              let prevSame = -1; let nextSame = -1
+              for (let j = 0; j < sameGrade.length; j++) { if (sameGrade[j].xi < ui) prevSame = sameGrade[j].xi; if (nextSame === -1 && sameGrade[j].xi > ui) nextSame = sameGrade[j].xi }
+              if (u.type === 'group') {
+              const g = u
               const isExp = expandedGroup === g.key
               return (
                 <div key={g.key} className="rounded-lg border-2 border-primary/30 bg-primary/5 overflow-hidden sm:col-span-2 lg:col-span-3">
@@ -1306,8 +1347,12 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
                       <Badge variant="outline" className="text-[10px] shrink-0">{g.grade}</Badge>
                       <Badge className="text-[10px] shrink-0">{g.parts.length} فيديوهات</Badge>
                       <Badge variant={g.price > 0 ? 'default' : 'secondary'} className="text-[10px] shrink-0">{g.price > 0 ? g.price + ' ج.م' : 'مجاني'}</Badge>
+                      <Badge variant="secondary" className="text-[10px] shrink-0">درس {gradePos} من {gradeTotal}</Badge>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
+                      {/* (2026-ص) ترتيب الدروس ▲▼ */}
+                      <Button size="sm" variant="ghost" className="h-7 px-1.5" disabled={movingOrder || prevSame === -1} onClick={() => moveLesson(ui, -1)} aria-label="طلوع الدرس فوق">↑</Button>
+                      <Button size="sm" variant="ghost" className="h-7 px-1.5" disabled={movingOrder || nextSame === -1} onClick={() => moveLesson(ui, 1)} aria-label="تنزيل الدرس تحت">↓</Button>
                       <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setFormGroupKey(g.key); setFormGroupTitle(g.title); setFormGroupGrade(g.grade); setFormGrade(g.grade); setFormTitle(''); setFormUrl(''); setFormPrice(''); setFormFile(null); setFormThumbnailUrl(''); setShowForm(true) }}>
                         <Plus className="h-3.5 w-3.5 ml-1" />ضيف فيديو تاني للدرس ده
                       </Button>
@@ -1340,8 +1385,9 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
                   )}
                 </div>
               )
-            })}
-            {grouped.singles.map((v) => {
+              }
+              /* (2026-ص) فيديو مستقل — كارت عادي + ▲▼ لترتيبه بين دروس صفه */
+              const v = u.v
               const ytId = getYouTubeId(v.url)
               const thumb = v.thumbnail || (ytId ? `https://img.youtube.com/vi/${ytId}/mqdefault.jpg` : null)
               return (
@@ -1365,7 +1411,14 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
                         {v.url && !v.filePath && <Badge variant="secondary" className="text-[10px]">▶ YouTube</Badge>}
                       </div>
                     </div>
-                    <p className="text-[10px] text-muted-foreground">{new Date(v.createdAt).toLocaleDateString('ar-EG')}</p>
+                    <div className="flex items-center justify-between gap-1">
+                      <p className="text-[10px] text-muted-foreground">{new Date(v.createdAt).toLocaleDateString('ar-EG')}</p>
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        <Badge variant="secondary" className="text-[9px] h-4 px-1">درس {gradePos}/{gradeTotal}</Badge>
+                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" disabled={movingOrder || prevSame === -1} onClick={() => moveLesson(ui, -1)} aria-label="طلوع الدرس فوق">↑</Button>
+                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0" disabled={movingOrder || nextSame === -1} onClick={() => moveLesson(ui, 1)} aria-label="تنزيل الدرس تحت">↓</Button>
+                      </div>
+                    </div>
                     <div className="flex items-center gap-1">
                       <Button size="sm" variant="ghost" className="flex-1 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-xs h-7" onClick={() => { setSelectedVideoForSchedule(v); setScheduleOpen(true); loadStudentsForSchedule(v.grade); loadExistingSchedule(v.id) }}>
                         <Clock className="h-3.5 w-3.5 mr-1" />جدولة

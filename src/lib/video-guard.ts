@@ -109,6 +109,8 @@ export async function ensureVideoTable(force = false): Promise<void> {
       ['orderIndex', 'INTEGER', 'DEFAULT 0'],
       // (2026-د) مدة الفيديو بالثواني — بادج ⏱ على كروت الفيديوهات
       ['durationSec', 'INTEGER', 'DEFAULT 0'],
+      // (2026-ص) ترتيب الدروس اليدوي — المستر يرتب ب▲▼ من لوحة التحكم
+      ['sortIndex', 'INTEGER', 'DEFAULT 0'],
     ]
     for (var i = 0; i < cols.length; i++) {
       try {
