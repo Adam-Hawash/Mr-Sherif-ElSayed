@@ -14,14 +14,19 @@
 //                related-videos end screen)
 //          - NO native controls, NO keyboard shortcuts, NO right-click
 //          - Settings (gear) button → video quality control
-//            (عالية [DEFAULT = أعلى جودة متاحة فعلًا في المصدر] / تلقائي /
-//             كل المستويات المتاحة حقيقيًا في الفيديو)
-//            الافتراضي = **أعلى جودة موجودة فعلًا على يوتيوب** (طلب المستر:
-//            الجودة تبقى عالية) والطالب يقدر يغيّر من القائمة وده **بيشتغل
-//            فعلًا** (إعادة تحميل التيار بالمستوى المختار). ملاحظة صادقة:
+//            (2026-د — طلب المستر الحرفي: "ثبتها لي حتى 720 — ال360 وحشة جدا"):
+//            **الجودة مثبتة على 720p افتراضيًا** والقايمة فيها بس "عالية" +
+//            المستويات الحقيقية من 720 وطالع — **مفيش تلقائي ومفيش أي مستوى
+//            أقل من 720** (360/480 اتنشالوا خالص من القايمة) فالفيديو مش
+//            بينزل تحت 720 على أي جهاز ولا بأي شبكة. ملاحظة صادقة:
 //            لو الفيديو نفسه مرفوع على يوتيوب بجودة ضعيفة (مثلاً 360p بس)
 //            القائمة بتوضّح إن دي حدود الملف الأصلي — مفيش مشغل يقدر يخترع
 //            بكسلات مش موجودة في المصدر.
+//          - VIDEO DURATION: المدة بتظهر في 3 أماكن (طلب المستر 2026-د:
+//            "اكتب وقت الفيديو في الشريط ولما يتجاب يعرفوا الفيديو قد إيه"):
+//              ① شيب ⏱ على صورة الغلاف من أول لحظة قبل التشغيل
+//              ② في الشريط: الوقت الحالي / المدة الكلية دايمًا
+//              ③ بادج ⏱ على كروت الفيديوهات في القايمة (durationSec مخزنة)
 //          - RESUME: on open the player fetches the saved progress for this
 //            student+video and seeks there — progress is CUMULATIVE (max ever
 //            reached), re-watching the start can never pull the % back down.
@@ -63,9 +68,17 @@ function loadYouTubeAPI(): Promise<any> {
 
 function formatTime(sec: number) {
   if (!sec || !isFinite(sec)) return '0:00'
-  var m = Math.floor(sec / 60)
-  var s = Math.floor(sec % 60)
-  return m + ':' + String(s).padStart(2, '0')
+  var s = Math.floor(sec)
+  var h = Math.floor(s / 3600)
+  var m = Math.floor((s % 3600) / 60)
+  var ss = s % 60
+  /* الفيديوهات الطويلة (>ساعة) بتظهر 1:05:10 بدل 65:10 — أوضح للطالب */
+  if (h > 0) return h + ':' + String(m).padStart(2, '0') + ':' + String(ss).padStart(2, '0')
+  return m + ':' + String(ss).padStart(2, '0')
+}
+/* تنسيق مدة كارت الفيديو (بادج ⏱) */
+function fmtDur(sec: number): string {
+  return formatTime(sec)
 }
 
 /* ---------- Quality helpers ---------- */
@@ -111,7 +124,8 @@ function highestAvailable(p: any): string {
   return 'hd720'
 }
 /* المستوى الفعلي المفروض: لو المستوى المطلوب موجود في الفيديو → هو؛
-   لو مش موجود → أقرب مستوى متاح له (نفضّل الأقرب من تحت عشان "تشتغل") */
+   لو مش موجود → **أقرب مستوى فوقه الأول** (سياسة المستر 2026-د: الجودة
+   متنزلش تحت المطلوب أبدًا)، ولو مفيش أعلى خالص → أعلى مستوى من تحت */
 function resolveLockLevel(p: any, wanted: string): string {
   try {
     var levels = p && p.getAvailableQualityLevels ? p.getAvailableQualityLevels() : []
@@ -122,15 +136,14 @@ function resolveLockLevel(p: any, wanted: string): string {
     if (clean.indexOf(wanted) >= 0) return wanted
     if (clean.length === 0) return wanted
     var wr = Q_RANK[wanted] || 0
-    var best = clean[0]
-    var bestDist = 999
+    var above: string | null = null
+    var below: string | null = null
     for (var j = 0; j < clean.length; j++) {
       var r = Q_RANK[clean[j]] || 0
-      var dist = Math.abs(r - wr)
-      /* تعادل → الأقل (أخف على النت — "عشان تشتغل") */
-      if (dist < bestDist || (dist === bestDist && r < (Q_RANK[best] || 0))) { best = clean[j]; bestDist = dist }
+      if (r > wr && (above === null || r < (Q_RANK[above] || 0))) above = clean[j]
+      if (r < wr && (below === null || r > (Q_RANK[below] || 0))) below = clean[j]
     }
-    return best
+    return above || below || wanted
   } catch (e) { return wanted }
 }
 export function ProtectedYouTubePlayer({
@@ -310,18 +323,22 @@ export function ProtectedYouTubePlayer({
   /* resume + cumulative progress state */
   const savedSecondsRef = useRef(0)
   const maxSeenRef = useRef(0)
+  /* تقرير مدة الفيديو (مرة واحدة) — عشان بادج ⏱ على الكروت (طلب المستر 2026-د) */
+  const durationReportedRef = useRef(false)
 
-  /* quality settings state — DEFAULT: **أعلى جودة متاحة** (top) — طلب المستر
-     الحرفي 2026-م: الفيديو يفتح بأعلى جودة موجودة، والقائمة بتبدّل التيار
-     فعلًا. الطالب يقدر يختار مستوى أقل من القائمة واختياره بيتنفذ فعلًا. */
+  /* quality settings state — DEFAULT: **مثبتة على 720p** (طلب المستر الحرفي
+     2026-د: "ثبتها لي حتى 720 — ال360 وحشة جدا — الفيديوهات بتبقى 720
+     وبتبقى 360 وأنا مش فاهم"). القايمة من غير تلقائي ومن غير أي مستوى تحت
+     720 — فالفيديو مش بينزل تحت 720 أبدًا (لو المصدر نفسه أقل، البادج
+     الصادق في القايمة بيوضّح حدود الملف الأصلي). */
   const [qualityLevels, setQualityLevels] = useState<string[]>([])
-  const [selectedQuality, setSelectedQuality] = useState<string>('top')
+  const [selectedQuality, setSelectedQuality] = useState<string>('hd720')
   const [showQualityMenu, setShowQualityMenu] = useState(false)
   /* الجودة الفعلية الشغالة دلوقتي — عشان زرار الجودة يعرض **الحقيقة**
      من getPlaybackQuality (مش الاختيار الورقي — ده كان سبب
      "الجودة بتتغير كتابيا بس") */
   const [actualQuality, setActualQuality] = useState<string>('')
-  const selectedQualityRef = useRef('top')
+  const selectedQualityRef = useRef('hd720')
   const lastQualityApplyRef = useRef(0)
   const mismatchSinceRef = useRef(0)
   const lastHardReloadRef = useRef(0)
@@ -695,6 +712,17 @@ export function ProtectedYouTubePlayer({
         var d = p.getDuration() || 0
         setCurrentTime(t)
         if (d) setDuration(d)
+        /* تقرير المدة مرة واحدة (أول ما المدة تظهر) — بيتخزن في عمود
+           durationSec عشان بادج ⏱ يظهر على كارت الفيديو في القايمة
+           (طلب المستر 2026-د: "لما يتجاب يعرفوا الفيديو قد إيه") */
+        if (videoId && d > 0 && !durationReportedRef.current) {
+          durationReportedRef.current = true
+          fetch('/api/video-duration', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ videoId: videoId, durationSec: Math.round(d) }),
+          }).catch(function () {})
+        }
         if (p.getVideoLoadedFraction) setBuffered((p.getVideoLoadedFraction() || 0) * 100)
         /* sticky quality + captions stay OFF by default — القفل الاتنين اتجاهين:
            الجودة الفعلية لازم تطابق اختيار الطالب — والترجمة متقفلة افتراضيًا
@@ -887,10 +915,11 @@ export function ProtectedYouTubePlayer({
 
   var fsActive = isFullscreen || fakeFs
   var progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0
-  /* القائمة بتعرض **المستويات الموجودة فعلًا في الفيديو بس** — مفيش بديل
-     وهمي: لو المستويات لسه مش معروفة (قبل أول تشغيل) بنعرض عالية/تلقائي
-     بس، وأول ما التشغيل يبدأ المستويات الحقيقية بتتبني تلقائي */
-  var menuLevels = qualityLevels
+  /* (2026-د) القايمة بتعرض **المستويات من 720 وطالع بس** — مفيش تلقائي
+     ومفيش أي مستوى تحت 720 (360/480 اتنشالوا — طلب المستر الحرفي).
+     لو الفيديو نفسه أقصى جودته أقل من 720 → القايمة فيها "عالية" بس
+     + الملاحظة الصادقة بتوضّح حدود الملف الأصلي. */
+  var menuLevels = qualityLevels.filter(function (q) { return (Q_RANK[q] || 0) >= (Q_RANK['hd720'] || 0) })
 
   /* الستيج: الطبقة اللي جوه الكونتينر — في الوضع الطولي بندوّرها 90° عشان
      الفيديو + الكنترولز + الووترمارك كلهم يبانوا بالعرض على الشاشة كلها */
@@ -1025,6 +1054,17 @@ export function ProtectedYouTubePlayer({
           خالص وبقت favicon لمنصة مستر شريف). */}
       {!started && (
         <div className="absolute inset-0 z-30 pointer-events-none">
+          {/* شيب مدة الفيديو (طلب المستر 2026-د: "لما يتجاب يعرفوا الفيديو
+              قد إيه") — ظاهر من أول لحظة قبل التشغيل فوق صورة الغلاف */}
+          {duration > 0 && (
+            <div
+              className="absolute top-3 left-3 z-10 flex items-center gap-1 rounded-lg bg-black/80 border border-white/15 px-2 py-1 text-white text-[11px] font-bold"
+              dir="ltr"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3" strokeLinecap="round" /></svg>
+              {fmtDur(duration)}
+            </div>
+          )}
           {poster ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={poster} alt="فيديو الدرس" className="w-full h-full object-cover bg-black" draggable={false} />
@@ -1093,15 +1133,8 @@ export function ProtectedYouTubePlayer({
               <span>عالية (الأعلى المتاح)</span>
               {selectedQuality === 'top' && <Check className="w-4 h-4" />}
             </button>
-            <button
-              type="button"
-              role="menuitem"
-              className={'w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-white hover:bg-white/10 transition-colors min-h-[36px] ' + (selectedQuality === 'auto' ? 'text-primary font-bold' : '')}
-              onClick={function (e) { e.preventDefault(); e.stopPropagation(); handleQualitySelect('auto') }}
-            >
-              <span>تلقائي</span>
-              {selectedQuality === 'auto' && <Check className="w-4 h-4" />}
-            </button>
+            {/* (2026-د) خيار "تلقائي" اتنشال خالص بطلب المستر — هو اللي كان
+                بيخلي الفيديو ينزل 360 على النت الضعيف */}
             {menuLevels.map(function (q) {
               var active = selectedQuality === q
               return (

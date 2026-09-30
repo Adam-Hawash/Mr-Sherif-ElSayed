@@ -104,6 +104,36 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    /* (2026-د) ترميم مدة الفيديوهات الناقصة من سجلات المشاهدة (قيم منطقية
+       10 ثواني..10 ساعات — القيم الوهمية زي 999999 مستبعدة) — الترميم مرة
+       واحدة لكل فيديو وبيتخزن في durationSec عشان بادج ⏱ يظهر على الكروت.
+       الطلبة بيملوا الباقي أوتوماتيك أول ما يفتحوا الفيديو (تقرير المشغل). */
+    try {
+      const missingDur = visibleVideos.filter(function (v: any) { return !v.durationSec }).map(function (v: any) { return v.id })
+      if (missingDur.length > 0) {
+        const progs = await db.videoProgress.findMany({
+          where: { videoId: { in: missingDur }, totalSeconds: { gt: 9, lt: 36000 } },
+          select: { videoId: true, totalSeconds: true },
+        })
+        const bestDur: Record<string, number> = {}
+        for (const p of progs) {
+          const s = Math.round(Number(p.totalSeconds) || 0)
+          if (s > (bestDur[p.videoId] || 0)) bestDur[p.videoId] = s
+        }
+        const durIds = Object.keys(bestDur)
+        if (durIds.length > 0) {
+          await Promise.all(durIds.map(function (id) {
+            return db.video.updateMany({ where: { id: id, durationSec: { lt: bestDur[id] } }, data: { durationSec: bestDur[id] } }).catch(function () {})
+          }))
+          for (const v of visibleVideos) {
+            if (bestDur[v.id]) v.durationSec = bestDur[v.id]
+          }
+        }
+      }
+    } catch (durErr) {
+      console.error('Videos duration backfill error:', durErr)
+    }
+
     const safeVideos = admin ? visibleVideos : visibleVideos.map(stripVideo)
 
     return NextResponse.json({

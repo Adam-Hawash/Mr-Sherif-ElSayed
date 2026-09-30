@@ -90,14 +90,21 @@ model Video {
   /* (2026-و106) الدرس فيه أكتر من فيديو — نفس نمط Zicola (و104):
      groupKey متطابق = أجزاء نفس الدرس، orderIndex = ترتيب الجزء داخل الدرس.
      فاضي "" = فيديو مستقل عادي (السلوك القديم زي ما هو). */
+<<<<<<< platform
   groupKey  String   @default("")
   orderIndex Int     @default(0)
-  /* (2026-د) مدة الفيديو بالثواني — بتمتلئ أول ما الفيديو يتفتح (تقرير
-     المشغل) أو من سجلات المشاهدة — عشان بادج المدة يظهر على كروت الفيديوهات.
-     0 = لسه معناش المدة. */
-  durationSec Int    @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+=======
+  groupKey    String   @default("")
+  orderIndex  Int      @default(0)
+  /* (2026-د) مدة الفيديو بالثواني — بتمتلئ أول ما الفيديو يتفتح (تقرير
+     المشغل) أو من سجلات المشاهدة — عشان بادج ⏱ على كروت الفيديوهات.
+     0 = لسه معناش المدة. */
+  durationSec Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+>>>>>>> mg-edited
 }
 
 model Homework {

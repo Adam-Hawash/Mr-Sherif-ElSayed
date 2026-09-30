@@ -107,6 +107,8 @@ export async function ensureVideoTable(force = false): Promise<void> {
       // (2026-و106) الدرس متعدد الفيديوهات — ترميم ترميمي لنفس السبب
       ['groupKey', 'TEXT', "DEFAULT ''"],
       ['orderIndex', 'INTEGER', 'DEFAULT 0'],
+      // (2026-د) مدة الفيديو بالثواني — بادج ⏱ على كروت الفيديوهات
+      ['durationSec', 'INTEGER', 'DEFAULT 0'],
     ]
     for (var i = 0; i < cols.length; i++) {
       try {
