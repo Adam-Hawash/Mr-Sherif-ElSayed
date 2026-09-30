@@ -9,6 +9,7 @@
 import { NextResponse } from 'next/server'
 import { db, safeWrite } from '@/lib/db'
 import { notifyStudent } from '@/lib/notify'
+import { ensureDeviceMessageTables, insertDeviceMessage } from '@/lib/device-messages'
 
 export var maxDuration = 10
 
@@ -57,6 +58,18 @@ export async function PATCH(request: Request, ctx: any) {
         try { await notifyStudent(cid, 'complaint_reply', nTitle, String(reply || '').slice(0, 240) || 'افتح تاب الشكاوى وشوف الرد') } catch (nE2) {}
       }
     } catch (nErr) {}
+    /* (2026-و111) رسالة الحل على جهاز الطالب — بطلب المستر:
+       الطالب اللي بعت شكوى من جهازه (مثلاً ناسي الباسورد) — أول ما
+       يفتح المنصة من نفس الجهاز تظهرله رسالة فيها رد الأدمن (والباسورد
+       الجديد لو كتبه في الرد). بتتسجل قبل مسح الشكوى. */
+    try {
+      var devId = String(rows[0].deviceId || '').trim()
+      if (status === 'resolved' && devId.length >= 8) {
+        var dTitle = '✅ المستر حلّ شكوى بتاعتك'
+        var dBody = String(reply || '').trim() || 'تم حل الشكوى اللي بعتّها — لو محتاج أي حاجة تانية ابعت شكوى جديدة.'
+        await insertDeviceMessage(devId, dTitle, dBody, String(rows[0].phone || ''))
+      }
+    } catch (dErr) {}
     /* (2026-و84) طلب المستر حرفيًا: «الشكاوي بعد ما احل الشكوى عاوزها
        تتمسح من صفحة الادمن» — أول ما الحالة بتبقى resolved الشكوى تتمسح
        نهائيًا من الداتابيز (الطالب واخد إشعار الحل والرد فوق) — مبتفضلش
