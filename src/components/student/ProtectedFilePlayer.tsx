@@ -20,16 +20,24 @@
 //    الفيديو بدقته الأصلية الكاملة (object-contain) ومفيش أي تصغير للجودة.
 //  • تبديل الجودات الديناميكي (360p/720p/1080p) محتاج ملفات متعددة —
 //    فزرار الجودة بيعرض رسالة توضيحية صادقة بدل واجهة وهمية.
-// ============================================================
+//
+// ===== مدة الفيديو (2026-د — طلب المستر) =====
+//  • شيب ⏱ بالمعة على الصورة من أول لحظة قبل التشغيل ("لما يتجاب يعرفوا
+//    الفيديو قد إيه") + الوقت/المدة في الشريط دايمًا.
+//  • أول ما المدة تتقرأ من الملف بتتبعت مرة واحدة لـ /api/video-duration
+//    عشان بادج المدة يظهر على كارت الفيديو في القايمة. ============================================================
 import { useState, useEffect, useRef } from 'react'
 import { Maximize, Minimize, Settings } from 'lucide-react'
 import { VideoWatermark } from '@/components/student/VideoWatermark'
 
 function formatTime(sec: number) {
   if (!sec || !isFinite(sec)) return '0:00'
-  var m = Math.floor(sec / 60)
-  var s = Math.floor(sec % 60)
-  return m + ':' + String(s).padStart(2, '0')
+  var s = Math.floor(sec)
+  var h = Math.floor(s / 3600)
+  var m = Math.floor((s % 3600) / 60)
+  var ss = s % 60
+  if (h > 0) return h + ':' + String(m).padStart(2, '0') + ':' + String(ss).padStart(2, '0')
+  return m + ':' + String(ss).padStart(2, '0')
 }
 
 export function ProtectedFilePlayer({
@@ -70,6 +78,8 @@ export function ProtectedFilePlayer({
   // الجودة للملف المفرد: أعلى جودة أصلية دايمًا + رسالة توضيحية صادقة
   const [showQInfo, setShowQInfo] = useState(false)
   const [nativeRes, setNativeRes] = useState(0)
+  // تقرير المدة (مرة واحدة) — عشان بادج ⏱ على الكروت (طلب المستر 2026-د)
+  const durationReportedRef = useRef(false)
 
   useEffect(function () { onWatchRef.current = onWatch }, [onWatch])
 
@@ -264,12 +274,35 @@ export function ProtectedFilePlayer({
             setDuration(videoRef.current.duration)
             /* الجودة الأصلية الحقيقية للملف — بتتعرض في رسالة زرار الجودة */
             try { setNativeRes(videoRef.current.videoHeight || 0) } catch (e) {}
+            /* تقرير المدة مرة واحدة — بيتخزن في durationSec عشان بادج ⏱
+               يظهر على كارت الفيديو في القايمة (طلب المستر 2026-د) */
+            var dur = videoRef.current.duration
+            if (videoId && dur && isFinite(dur) && dur > 0 && !durationReportedRef.current) {
+              durationReportedRef.current = true
+              fetch('/api/video-duration', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ videoId: videoId, durationSec: Math.round(dur) }),
+              }).catch(function () {})
+            }
           }
         }}
       />
 
       {/* ووترمارك الطالب — جوه الكونتينر فبتفضل ظاهرة في ملء الشاشة */}
       <VideoWatermark name={studentName} phone={studentPhone} />
+
+      {/* شيب مدة الفيديو قبل التشغيل (طلب المستر 2026-د: "لما يتجاب يعرفوا
+          الفيديو قد إيه") — بيختفي أول ما التشغيل يبدأ */}
+      {!started && duration > 0 && (
+        <div
+          className="absolute top-3 left-3 z-10 flex items-center gap-1 rounded-lg bg-black/80 border border-white/15 px-2 py-1 text-white text-[11px] font-bold pointer-events-none"
+          dir="ltr"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3" strokeLinecap="round" /></svg>
+          {formatTime(duration)}
+        </div>
+      )}
 
       {!started && (
         <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">

@@ -12,6 +12,17 @@ function getYouTubeId(url: string) {
   return match ? match[1] : null
 }
 
+/* (2026-د) تنسيق مدة الفيديو لبادج الكارت ⏱ — "لما يتجاب يعرفوا الفيديو قد إيه" */
+function fmtDur(sec: number): string {
+  var s = Math.round(Number(sec) || 0)
+  if (s <= 0) return ''
+  var h = Math.floor(s / 3600)
+  var m = Math.floor((s % 3600) / 60)
+  var ss = s % 60
+  if (h > 0) return h + ':' + String(m).padStart(2, '0') + ':' + String(ss).padStart(2, '0')
+  return m + ':' + String(ss).padStart(2, '0')
+}
+
 export default function LessonsSection() {
   var store = useAppStore()
   var setView = store.setView
@@ -154,6 +165,13 @@ export default function LessonsSection() {
                         ) : (
                           <div className="w-full h-full flex items-center justify-center">
                             <PlayCircle className="h-6 w-6 text-muted-foreground/30" />
+                          </div>
+                        )}
+                        {/* (2026-د) بادج مدة الفيديو ⏱ (القفل فوق شمال — المدة تحت يمين) */}
+                        {(video as any).durationSec > 0 && (
+                          <div className="absolute bottom-1 right-1 z-10 flex items-center gap-0.5 rounded bg-black/75 px-1 py-0.5 text-white text-[9px] font-bold" dir="ltr">
+                            <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3" strokeLinecap="round" /></svg>
+                            {fmtDur((video as any).durationSec)}
                           </div>
                         )}
                         <div className="absolute top-2 left-2 z-10 h-7 w-7 rounded-full bg-black/60 flex items-center justify-center">

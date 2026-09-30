@@ -45,6 +45,14 @@
 //     بيقدر يتجاهل (مفيش ضمان رسمي من 2023) — **الجودة المضمونة 100% =
 //     ملف فيديو مباشر (مش يوتيوب)** — أي لينك مباشر بيتشغل بمشغلنا
 //     النظيف والجودة = جودة الملف نفسه.
+//  7-ج) الجودة — تحديث 2026-د (طلب المستر الحرفي: "ثبتها لي حتى 720 يعني —
+//     الفيديوهات بتبقى 720 وفيديوهات بتبقى 360 مع إنها نفس اليوم أنا مش فاهم"
+//     + "ال360 وحشة جدا"):
+//     **الجودة مثبتة على 720p** — أرضية hd720: setPlaybackQualityRange
+//     ('hd720','highres') عند كل تشغيل وتغير جودة ودوريًا، والحارس بيعيد
+//     التيار لو نزل تحت 720 (فيهم 480). **قايمة ⚙ من غير تلقائي ومن غير
+//     أي مستوى تحت 720** (360/240/144 اتنشالوا خالص) — فمفيش طريق للجودة
+//     الواطية خالص، والفيديو مش بينزل تحت 720 على أي جهاز.
 //     **ميزة «إضافة فيديو من كود HTML» اتلغت نهائيًا (2026-و4)** بطلب
 //     المستر نفسه: «لما باجي أضيف كود الـ HTML بلاقي جايبلي حاجات
 //     الـ YouTube، لا.. فأنا عاوزك تلغي» — راجعت الكود كله (القايمة في
@@ -319,6 +327,13 @@ const PLAYER_PAGE = `<!doctype html>
   #wrap{position:relative;width:100%;max-width:100vw;background:#000;overflow:hidden}
   #wrap.fs{width:100vw;height:100vh;max-width:none}
   #yt,#fileVid{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000}
+  /* (2026-د) مشغل يوتيوب العملاق: بيرندر 1920×1080 وبيتصغّر بـ CSS scale —
+     يوتيوب بيحدد سقف التيار بمقاس المشغل (مشغل 390px على الموبايل = سقف 480p
+     — ده كان السبب الحقيقي إن الفيديو بيتفتح 360/480 حتى مع أرضية الجودة)
+     والمقاس الكبير بيسمح بتيار 720p/1080p فعلًا + التصغير بيحافظ على الحدة */
+  #mgYtScaler{position:absolute;top:50%;left:50%;width:1920px;height:1080px;
+    transform:translate(-50%,-50%) scale(var(--mgYtS,.2));transform-origin:center center;background:#000}
+  #mgYtScaler iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000}
   /* ===== الووترمارك (MG-2 — كل حاجة من لوحة الأدمن) =====
      كل عنصر بيتموضع بمركزه x%/y% من مستطيل الفيديو + حجم sm/md/lg
      + شفافية خاصة بيه — الكونفج جاي من CFG.pcfg (لو مفيش → سلوك MG-1).
@@ -511,13 +526,13 @@ const PLAYER_PAGE = `<!doctype html>
   #mgTime{flex:0 0 auto;font-size:10.5px;font-weight:700;color:rgba(255,255,255,.85);
     direction:ltr;unicode-bidi:plaintext;letter-spacing:.2px;padding:0 6px;white-space:nowrap;
     font-variant-numeric:tabular-nums;text-shadow:0 1px 2px rgba(0,0,0,.6)}
-  @media(max-width:620px){#mgTime{display:none}}
+  @media(max-width:620px){#mgTime{font-size:9.5px;padding:0 3px}}
   #mgBar .mBtnWide{flex:0 0 auto;min-width:26px;height:26px;border:0;border-radius:7px;
     background:transparent;color:#fff;display:flex;align-items:center;justify-content:center;
     gap:4px;padding:0 6px;cursor:pointer}
   #mgBar .mBtnWide:hover{background:rgba(255,255,255,.12)}
   #mgQLabel{font-size:10.5px;font-weight:800;color:rgba(255,255,255,.9);letter-spacing:.3px;white-space:nowrap}
-  @media(max-width:520px){#mgQLabel{display:none}}
+  @media(max-width:520px){#mgQLabel{font-size:9px}}
   #mgQMenu{position:absolute;bottom:calc(var(--mgBarH) + 8px);left:12px;z-index:72;min-width:170px;display:none;
     background:rgba(13,13,20,.92);
     -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
@@ -825,7 +840,26 @@ function clearRot(){
 /* ===== عرض الفيديو **كامل 100% من غير أي قص** (طلب المستر 2026-هـ:
    "الفيديو مش كامل إنت قاصص منه الأطراف — لازم يبان كله") — مفيش أي قص،
    وأي واجهة يوتيوب بتتغطى بالدروع (الدرع العلوي + باتش اللوجو + الووترمارك). */
+/* (2026-د) ملاءمة المشغل العملاق 1920×1080 جوه الصندوق (تصغير contain) —
+   بتتنادى مع كل layoutWrap (ريسايز/ملء شاشة/دوران) */
+function mgYtFit(){
+  try{
+    var scs = document.querySelectorAll('#mgYtScaler');
+    for(var i=0;i<scs.length;i++){
+      var sc = scs[i];
+      var w = (wrap && wrap.clientWidth) || window.innerWidth || 0;
+      var h = (wrap && wrap.clientHeight) || window.innerHeight || 0;
+      if(w<=0 || h<=0) continue;
+      var s = Math.min(w/1920, h/1080);
+      sc.style.setProperty('--mgYtS', String(s));
+    }
+  }catch(e){}
+}
 function layoutWrap(){
+  layoutWrapOrig();
+  mgYtFit();
+}
+function layoutWrapOrig(){
   var fs = isFs() || isFakeFs || parentFs;
   if(!fs){
     wrap.className='';
@@ -1083,7 +1117,7 @@ function activateFallback(reason){
   /* شيل طبقات المشغل الأصلي بس — شريط التحكم بتاعنا (mgBar) وطبقة النقر
      (tapLayer) بيفضلوا شغالين: أزرار الشريط بتتحول postMessage تلقائيًا
      لما fallbackActive يبقى true (الأوامر نفسها: تشغيل/إيقاف/كتم) */
-  var killIds = ['ytHost','ytCrop','startOv','centerOv','endOv','ytCtrl','peBox','unmuteBtn'];
+  var killIds = ['ytHost','ytCrop','startOv','centerOv','endOv','ytCtrl','peBox','unmuteBtn','mgYtScaler'];
   for(var i=0;i<killIds.length;i++){ try{ var el = document.getElementById(killIds[i]); if(el && el.parentNode) el.parentNode.removeChild(el); }catch(e){} }
   /* (2026-ك) نمسح مرجع المشغل القديم — من غير كده التايمر بيفضل ينادي على
      مشغل اتشال من الـ DOM ويعمّي الكونسول بتحذيرات على الفاضي */
@@ -1092,12 +1126,15 @@ function activateFallback(reason){
   if(pendingResume > 5) startS = Math.max(startS, Math.floor(pendingResume));
   var f = document.getElementById('ytPlain');
   if(!f){
+    /* (2026-د) نفس خدعة المشغل العملاق — الوضع البديل كمان بيرندر 1920×1080 */
+    var sc2 = document.createElement('div'); sc2.id = 'mgYtScaler';
     f = document.createElement('iframe');
     f.id = 'ytPlain';
     f.setAttribute('allow','autoplay; fullscreen; encrypted-media; picture-in-picture');
     f.setAttribute('allowfullscreen','');
     f.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;background:#000';
-    wrap.appendChild(f);
+    sc2.appendChild(f);
+    wrap.appendChild(sc2);
   }
   /* نفس مواصفات المشغل الأصلي بالظبط: **controls=0 — مفيش أي واجهة يوتيوب**
      (لا لوجو ولا وقت ولا share ولا إعدادات — القرار 2026-ؤ) + كابشن مقفول
@@ -1351,6 +1388,9 @@ function mgUpdateProgress(){
     if(fill) fill.style.width = Math.min(100, (cur / dur) * 100) + '%';
     if(thmb) thmb.style.left = Math.min(100, (cur / dur) * 100) + '%';
     if(buf){ var lf = 0; try{ lf = playerApi.getVideoLoadedFraction() || 0; }catch(e){} buf.style.width = (lf * 100) + '%'; }
+    /* (2026-د) الوقت الحالي / المدة الكلية في الشريط — على الموبايل كمان */
+    var tl = document.getElementById('mgTime');
+    if(tl) tl.textContent = fmtTime(cur) + ' / ' + fmtTime(dur);
   }catch(e){}
 }
 /* (MG-2) علامة يوتيوب في الشريط — لوجو + كلمة YouTube مقاس مريح —
@@ -1379,11 +1419,14 @@ function buildMgBar(){
   gear.addEventListener('click', function(e){ e.preventDefault(); e.stopPropagation(); ytCollectLevels(); var m = qMenuEl(); if(m) m.classList.toggle('open'); });
   var tw = document.createElement('div'); tw.id = 'mgTrackWrap';
   tw.innerHTML = '<div id="mgTrack"><div id="mgBuf"></div><div id="mgFill"></div><div id="mgThumb"></div></div>';
+  /* (2026-د) وقت الفيديو في الشريط — طلب المستر الحرفي: "اكتب لي وقت الفيديو
+     في الشريط عشان الناس تعرف الوقت ولما يتجاب يعرفوا الفيديو قد إيه" */
+  var time = document.createElement('span'); time.id = 'mgTime'; time.textContent = '0:00 / …';
   var fsb = document.createElement('button'); fsb.type = 'button'; fsb.className = 'mBtn big';
   fsb.setAttribute('aria-label','تكبير وتصغير');
   fsb.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
   fsb.addEventListener('click', function(e){ e.preventDefault(); e.stopPropagation(); toggleFs(); });
-  bar.appendChild(gear); bar.appendChild(tw); bar.appendChild(fsb); bar.appendChild(mgYtMarkEl());
+  bar.appendChild(gear); bar.appendChild(tw); bar.appendChild(time); bar.appendChild(fsb); bar.appendChild(mgYtMarkEl());
   wrap.appendChild(bar);
   applyPlayerChrome();
   /* قايمة الجودة + قفلها بأي دوسة بره القايمة والزرار */
@@ -1442,9 +1485,12 @@ function buildMgBar(){
    ثانية، وبعدها رسالة صادقة واحدة — التشغيل السلس أهم من إلحاح 480p،
    والتلميح قبل التشغيل (onReady) هو فرصة 480p من غير أي قطيعة */
 var qFloorTries = 0, qFloorLast = 0, qFloorTold = false;
+/* (2026-د) تقرير مدة الفيديو للسيرفر — مرة واحدة (بادج ⏱ على الكروت) */
+var durSent = false;
 function ytApplyFloor(){
   if(fallbackActive || ytQWanted) return;
-  try{ if(playerApi && playerApi.setPlaybackQualityRange) playerApi.setPlaybackQualityRange('large','highres'); }catch(e){}
+  /* (2026-د) الأرضية بقت 720p بدل 480p — طلب المستر الحرفي: "ثبتها لي حتى 720" */
+  try{ if(playerApi && playerApi.setPlaybackQualityRange) playerApi.setPlaybackQualityRange('hd720','highres'); }catch(e){}
 }
 function ytFloorGuard(){
   if(fallbackActive || ytQWanted || !playerApi || !ytIdCached) return;
@@ -1452,8 +1498,8 @@ function ytFloorGuard(){
     if(!qFloorTold){ qFloorTold = true;
       var qf = '';
       try{ qf = String(playerApi.getPlaybackQuality() || ''); }catch(e){}
-      if(qf === 'tiny' || qf === 'small' || qf === 'medium'){
-        toast('يوتيوب مثبّت دلوقتي على ' + ytQName(qf) + ' — عرض 480p محتاج سرعة إنترنت أعلى، ومش هنقطع الفيديو تاني'); }
+      if(qf === 'tiny' || qf === 'small' || qf === 'medium' || qf === 'large'){
+        toast('يوتيوب مثبّت دلوقتي على ' + ytQName(qf) + ' — عرض 720p محتاج سرعة إنترنت أعلى، ومش هنقطع الفيديو تاني'); }
     }
     return;
   }
@@ -1461,13 +1507,13 @@ function ytFloorGuard(){
   if(cur > 90) return; /* ممنوع قطع الفيديو في النص — المحاولات في البداية بس */
   var q = '';
   try{ q = String(playerApi.getPlaybackQuality() || ''); }catch(e){}
-  if(q !== 'tiny' && q !== 'small' && q !== 'medium') return;
+  if(q !== 'tiny' && q !== 'small' && q !== 'medium' && q !== 'large') return;
   var now = Date.now();
   if(now - qFloorLast < 25000) return;
   qFloorTries++; qFloorLast = now;
   try{
-    playerApi.loadVideoById(ytIdCached, Math.max(0, Math.floor(cur)), 'large');
-    try{ if(playerApi.setPlaybackQualityRange) playerApi.setPlaybackQualityRange('large','highres'); }catch(e){}
+    playerApi.loadVideoById(ytIdCached, Math.max(0, Math.floor(cur)), 'hd720');
+    try{ if(playerApi.setPlaybackQualityRange) playerApi.setPlaybackQualityRange('hd720','highres'); }catch(e){}
   }catch(e){}
 }
 /* ===== متحقق اختيار الطالب (2026-و5 — طلب المستر: «والتغيير يكون بيحصل
@@ -1516,7 +1562,8 @@ function ytCurQuality(){ try{ if(playerApi && playerApi.getPlaybackQuality) retu
 function ytUpdateQLabel(){
   var el = document.getElementById('mgQLabel'); if(!el) return;
   var cur = ytCurQuality();
-  el.textContent = cur ? ytQName(cur) : 'تلقائي';
+  /* (2026-د) قبل ما يوتيوب يحدد التيار بنعرض 720p — دي الجودة المثبتة */
+  el.textContent = cur ? ytQName(cur) : '720p';
 }
 function ytCollectLevels(){
   if(!fallbackActive){
@@ -1534,15 +1581,18 @@ function ytCollectLevels(){
 function ytRenderQMenu(){
   var m = qMenuEl(); if(!m) return;
   var cur = ytCurQuality();
-  var autoOn = (!ytQWanted || cur === 'auto');
   var html = '<div class="qHead">إعدادات الجودة</div>';
-  html += '<div class="qi' + (autoOn ? ' on' : '') + '" data-q="auto"><span>تلقائي' + (cur && cur !== 'auto' ? ' (' + ytQName(cur) + ')' : '') + '</span><span class="ck">' + (autoOn ? '✓' : '') + '</span></div>';
+  /* (2026-د) قايمة من غير تلقائي ومن غير أي مستوى تحت 720 — طلب المستر
+     الحرفي: "ثبتها لي حتى 720 — ال360 وحشة جدا" — فمفيش طريق للجودة
+     الواطية خالص والفيديو مش بينزل تحت 720 على أي جهاز */
   var sorted = ytQLevels.slice().sort(function(a,b){ return (YT_Q_ORDER[b]||0) - (YT_Q_ORDER[a]||0); });
-  for(var i=0;i<sorted.length;i++){
-    var q = sorted[i];
+  var filtered = [];
+  for(var f=0;f<sorted.length;f++){ if((YT_Q_ORDER[sorted[f]]||0) >= (YT_Q_ORDER.hd720||0)) filtered.push(sorted[f]); }
+  for(var i=0;i<filtered.length;i++){
+    var q = filtered[i];
     html += '<div class="qi' + (ytQWanted === q ? ' on' : '') + '" data-q="' + q + '"><span>' + ytQName(q) + '</span><span class="ck">' + (ytQWanted === q ? '✓' : '') + '</span></div>';
   }
-  html += '<div class="qNote">الجودة بتُطلب تلقائيًا بـ 480p على الأقل — ويوتيوب بيرفعها أعلى لو النت يسمح. ولو اخترت مستوى بنفسك هنطلب ونتحقق إنه ثبت بجد</div>';
+  html += '<div class="qNote">الجودة مثبتة على 720p على الأقل — ويوتيوب بيرفعها أعلى لو النت يسمح. ولو اخترت مستوى بنفسك هنطلب ونتحقق إنه ثبت بجد</div>';
   /* (MG-3) لو أعلى جودة في الفيديو نفسه ضعيفة — توضيح صادق + نصيحة معالجة HD */
   var topQ = sorted.length ? sorted[0] : '';
   if(topQ && (YT_Q_ORDER[topQ] || 0) <= (YT_Q_ORDER.large || 0)){
@@ -1588,10 +1638,19 @@ function mountYouTube(){
      كامل 100% من غير أي قص.
      (ملغاة 2026-و4: استثناء وضع كود HTML embed اتنست — المستر شال الميزة
      نفسها لأنها كانت بتجيب واجهة يوتيوب) */
+  /* **خدعة الجودة الحاسمة (2026-د)**: يوتيوب بيحدد سقف التيار بمقاس المشغل —
+     مشغل 390px على الموبايل = سقف 480p حتى لو الفيديو 1080 (ده السبب الحقيقي
+     لـ "الجودة وحشة والفيديوهات ساعات 360 وساعات 720"). الحل: الـ iframe
+     بيرندر دايمًا **1920×1080** جوه حاوية بتتصغّر بالـ CSS (contain) —
+     يوتيوب يسمح بتيار 720p/1080p فعلًا + التصغير بيحافظ على الحدة 100%. */
+  var scaler = document.createElement('div');
+  scaler.id = 'mgYtScaler';
   var host = document.createElement('div');
   host.id = 'ytHost';
   host.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;background:#000';
-  wrap.appendChild(host);
+  scaler.appendChild(host);
+  wrap.appendChild(scaler);
+  mgYtFit();
   /* الكابشن: إبادة API + postMessage دورية — من غير أي تغطية مرئية زيادة
      (غطاء capLid اتشال نهائيًا 2026-و2 بطلب المستر: «الفيديو من غير قص
      تحت») — الشريط السفلي Opaque بتاعنا هو التغطية الوحيدة الباقية */
@@ -1603,7 +1662,9 @@ function mountYouTube(){
     'onerror="this.onerror=null;this.src=\\'https://i.ytimg.com/vi/' + ytId + '/hqdefault.jpg\\';" ' +
     'alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;' +
     'filter:brightness(.34) saturate(.92);pointer-events:none">' +
-    '<div class="big" style="position:relative"><svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg></div><p style="position:relative">اضغط للمشاهدة</p>';
+    '<div class="big" style="position:relative"><svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg></div><p style="position:relative">اضغط للمشاهدة</p>' +
+    /* (2026-د) شيب مدة الفيديو على شاشة البداية — "لما يتجاب يعرفوا الفيديو قد إيه" */
+    '<div id="mgDurChip" style="position:relative;display:none;align-items:center;gap:6px;background:rgba(0,0,0,.7);border:1px solid rgba(255,255,255,.25);border-radius:10px;padding:5px 12px;color:#fff;font-weight:800;font-size:12.5px;font-family:system-ui,sans-serif;direction:ltr"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg><span id="mgDurT"></span></div>';
   startOv.addEventListener('click', function(){ if(!tapOk()) return; startWithWatchdog(); });
   startOv.addEventListener('touchend', function(e){ e.preventDefault(); if(!tapOk()) return; startWithWatchdog(); });
   wrap.appendChild(startOv);
@@ -1678,9 +1739,9 @@ function buildPlayer(){
               var st0 = 0; try{ st0 = playerApi.getPlayerState ? playerApi.getPlayerState() : -1; }catch(e){}
               if(st0 === 1 || st0 === 3) return;
               var q0 = ''; try{ q0 = String(playerApi.getPlaybackQuality() || ''); }catch(e){}
-              if(q0 === 'tiny' || q0 === 'small' || q0 === 'medium'){
-                playerApi.cueVideoById(ytIdCached, 0, 'large');
-                try{ if(playerApi.setPlaybackQualityRange) playerApi.setPlaybackQualityRange('large','highres'); }catch(e){}
+              if(q0 === 'tiny' || q0 === 'small' || q0 === 'medium' || q0 === 'large'){
+                playerApi.cueVideoById(ytIdCached, 0, 'hd720');
+                try{ if(playerApi.setPlaybackQualityRange) playerApi.setPlaybackQualityRange('hd720','highres'); }catch(e){}
               }
             }catch(e){}
           }, 1200);
@@ -1773,6 +1834,16 @@ function buildPlayer(){
         reportProgress(cur, dur);
         mgUpdateProgress();
         ytUpdateQLabel();
+        /* (2026-د) مدة الفيديو: بتظهر على شاشة البداية + تتبعت للسيرفر مرة
+           واحدة عشان بادج ⏱ يظهر على كروت الفيديوهات في المنصة */
+        if(dur > 0){
+          var dch = document.getElementById('mgDurChip');
+          if(dch && dch.style.display !== 'flex'){ dch.style.display = 'flex'; var dt = document.getElementById('mgDurT'); if(dt) dt.textContent = fmtTime(dur); }
+          if(!durSent && CFG.videoId && String(CFG.videoId).indexOf('gal_') !== 0){
+            durSent = true;
+            try{ fetch('/api/video-duration', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ videoId: CFG.videoId, durationSec: Math.round(dur) }) }).catch(function(){}); }catch(e){}
+          }
+        }
         /* أرضية 480p دورية: طلب الأرضية كل 5 ثواني + حارس محدود (محاولتين
            في أول 90 ثانية بس — من غير قطيعة) + متحقق اختيار الطالب */
         var floorNow = Math.floor(Date.now() / 5000);
@@ -1909,10 +1980,14 @@ function renderQMenu(){
   var m = qMenuEl(); if(!m) return;
   var html = '<div class="qHead">إعدادات الجودة</div>';
   if(hlsLevels.length){
-    html += '<div class="qi' + (hlsAuto ? ' on' : '') + '" data-lv="-1"><span>تلقائي' + (hlsAuto && hlsCurIdx >= 0 && hlsLevels[hlsCurIdx] ? (' (' + hLabel(hlsLevels[hlsCurIdx].h) + ')') : '') + '</span><span class="ck">' + (hlsAuto ? '✓' : '') + '</span></div>';
+    /* (2026-د) من غير تلقائي ومن غير أي مستوى تحت 720 — نفس سياسة يوتيوب
+       (طلب المستر: "ثبتها حتى 720 — ال360 وحشة جدا") */
     var sorted = hlsLevels.map(function(l, i){ return { h: l.h, i: i }; }).sort(function(a, b){ return (b.h || 0) - (a.h || 0); });
-    for(var i = 0; i < sorted.length; i++){
-      var L = sorted[i];
+    var hd = [];
+    for(var s2 = 0; s2 < sorted.length; s2++){ if((sorted[s2].h || 0) >= 720) hd.push(sorted[s2]); }
+    if(!hd.length) hd = sorted; /* البث نفسه كله أقل من 720 → نعرض المتاح بصدق */
+    for(var i = 0; i < hd.length; i++){
+      var L = hd[i];
       html += '<div class="qi' + (!hlsAuto && hlsCurIdx === L.i ? ' on' : '') + '" data-lv="' + L.i + '"><span>' + hLabel(L.h) + '</span><span class="ck">' + ((!hlsAuto && hlsCurIdx === L.i) ? '✓' : '') + '</span></div>';
     }
   } else if(CFG.cloudinary && cloudBase){
@@ -2070,11 +2145,17 @@ function onFileMeta(){
   try{
     var v = fileApi; if(!v) return;
     if(!fileQualityLabel){ fileQualityLabel = hLabel(v.videoHeight); }
-    /* (و35) بناء جودات Cloudinary من مقاس الفيديو الأصلي — الأصغر بس (مفيش تكبير) */
+    /* (و35) بناء جودات Cloudinary من مقاس الفيديو الأصلي — الأصغر بس (مفيش تكبير)
+       (2026-د) من غير أي مستوى تحت 720 — طلب المستر: ال360 وحشة */
     if(CFG.cloudinary && cloudBase && !cloudLevels.length){
       var oh = Number(v.videoHeight) || 0;
-      var caps = [2160, 1440, 1080, 720, 480, 360];
+      var caps = [2160, 1440, 1080, 720];
       for(var ci = 0; ci < caps.length; ci++){ if(oh && caps[ci] < oh) cloudLevels.push(caps[ci]); }
+    }
+    /* (2026-د) تقرير مدة الملف مرة واحدة — بادج ⏱ على الكروت */
+    if(!durSent && CFG.videoId && String(CFG.videoId).indexOf('gal_') !== 0 && v.duration && isFinite(v.duration)){
+      durSent = true;
+      try{ fetch('/api/video-duration', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ videoId: CFG.videoId, durationSec: Math.round(v.duration) }) }).catch(function(){}); }catch(e){}
     }
     renderQMenu(); updateQLabel(); fileUpdateProgress();
   }catch(e){}
