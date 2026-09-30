@@ -28,6 +28,22 @@ var GRADES = [
   'أولى بكالوريا',
 ]
 
+/* (2026-و111) Device ID الجهاز — بيتعمل مرة وبيفضل على الجهاز
+   عشان رسالة حل الشكوى توصل الجهاز اللي بعت منها (طلب المستر) */
+function getDeviceId(): string {
+  try {
+    var k = 'mg-device-id'
+    var v = localStorage.getItem(k) || ''
+    if (!v) {
+      v = (typeof crypto !== 'undefined' && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : 'dev-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 14)
+      localStorage.setItem(k, v)
+    }
+    return v
+  } catch (e) { return '' }
+}
+
 export default function PublicComplaintsPage() {
   var [name, setName] = useState('')
   var [phone, setPhone] = useState('')
@@ -54,7 +70,7 @@ export default function PublicComplaintsPage() {
       var res = await fetch('/api/complaints', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentName: n, phone: p, grade: grade || '', message: m, source: 'public' }),
+        body: JSON.stringify({ studentName: n, phone: p, grade: grade || '', message: m, source: 'public', deviceId: getDeviceId() }),
       })
       var data: any = {}
       try { data = await res.json() } catch (err) {}
@@ -96,6 +112,10 @@ export default function PublicComplaintsPage() {
                 <h1 className="text-2xl font-extrabold">تم إرسال رسالتك ✅</h1>
                 <p className="text-sm text-muted-foreground leading-relaxed max-w-sm mx-auto">
                   رسالتك وصلت وهيترد عليك في أقرب وقت، ولو كتبت رقم تليفون صحيح هيتم التواصل معاك.
+                </p>
+                {/* (2026-و111) رسالة الحل هتوصل على نفس الجهاز — طلب المستر */}
+                <p className="text-xs font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-2.5 max-w-sm mx-auto leading-relaxed">
+                  💡 أول ما المشكلة تتحل هتوصلك رسالة على المنصة من نفس الجهاز اللي بعتّ منها — افتح المنصة هتلاقيها مستنياك.
                 </p>
                 <Button asChild className="mt-2">
                   <Link href="/">
@@ -167,6 +187,8 @@ export default function PublicComplaintsPage() {
 
                   <p className="text-[11px] text-muted-foreground text-center leading-relaxed">
                     لو المشكلة في الدخول — اكتب اسم الحساب أو رقم التليفون اللي مسجل بيه عشان نقدر نساعدك أسرع.
+                    <br />
+                    💡 الحل هيوصلك رسالة هنا على المنصة من نفس الجهاز اللي بعتّ منه الشكوى.
                   </p>
                 </form>
               </CardContent>

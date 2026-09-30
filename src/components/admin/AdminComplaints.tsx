@@ -8,7 +8,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, Flag, CheckCircle2, Clock3, RefreshCw, User, Phone, GraduationCap, Bot, MessageSquareReply, UserRound } from 'lucide-react'
+import { Loader2, Flag, CheckCircle2, Clock3, RefreshCw, User, Phone, GraduationCap, Bot, MessageSquareReply, UserRound, UserRoundCheck } from 'lucide-react'
 import { toast } from 'sonner'
 
 type Complaint = {
@@ -23,6 +23,7 @@ type Complaint = {
   status: string
   reply: string
   createdAt: string
+  matchedStudent?: { id: string; name: string; grade: string } | null
 }
 
 export function AdminComplaints() {
@@ -121,6 +122,8 @@ export function AdminComplaints() {
         {/* (2026-و85) توضيح: الحل = مسح نهائي */}
         <p className="text-[11px] text-muted-foreground leading-relaxed">
           أول ما تعلّم «تم الحل» الشكوى بتتمسح من القايمة نهائيًا (الطالب بياخد إشعار بالحل والرد قبل المسح) — فالقايمة فيها الشكاوى الجديدة والمفتوحة بس.
+          {/* (2026-و111) رسالة الحل بتوصل جهاز الطالب */}
+          {' '}لو الشكوى جاية من جهاز طالب، ردك هيوصله رسالة أول ما يفتح المنصة من نفس الجهاز اللي بعت منه.
         </p>
 
         {loading ? (
@@ -146,6 +149,13 @@ export function AdminComplaints() {
                       {/* (2026-و26) شكوى من صفحة الشكاوى العامة — زائر من غير حساب */}
                       {c.source === 'public' && (
                         <Badge variant="outline" className="text-[10px] gap-1 text-sky-600 border-sky-300 dark:text-sky-400"><UserRound className="h-3 w-3" />زائر — من غير حساب</Badge>
+                      )}
+                      {/* (2026-و111) الرقم المكتوب في الشكوى مطابق لطالب مسجل — طلب المستر */}
+                      {c.matchedStudent && (
+                        <Badge variant="outline" className="text-[10px] gap-1 text-emerald-600 border-emerald-300 dark:text-emerald-400">
+                          <UserRoundCheck className="h-3 w-3" />
+                          مسجل عندنا: {c.matchedStudent.name}{c.matchedStudent.grade ? ' — ' + c.matchedStudent.grade : ''} (باسورده في تاب الطلاب 🔑)
+                        </Badge>
                       )}
                     </div>
                     <div className="flex items-center gap-1.5">
@@ -178,7 +188,7 @@ export function AdminComplaints() {
                         <textarea
                           value={replyText}
                           onChange={function (e) { setReplyText(e.target.value) }}
-                          placeholder="اكتب ردك للطالب... (هيشوفه في صفحة الشكاوي عنده)"
+                          placeholder="اكتب ردك للطالب... لو الشكوى في الباسورد — اكتب الباسورد الجديد في الرد وهتوصله رسالة على جهازه"
                           rows={2}
                           maxLength={2000}
                           className="w-full rounded-xl border bg-background px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-primary/40"

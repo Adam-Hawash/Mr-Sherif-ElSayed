@@ -10,6 +10,7 @@
 // ============================================================
 import { NextResponse } from 'next/server'
 import { db, safeWrite } from '@/lib/db'
+import { ensureDeviceMessageTables } from '@/lib/device-messages'
 
 export var maxDuration = 10
 
@@ -64,6 +65,10 @@ export async function POST(request: Request) {
     var studentName = cleanText(body.studentName, 120)
     var phone = cleanText(body.phone, 20)
     var grade = cleanText(body.grade, 30)
+    /* (2026-و111) Device ID الجهاز اللي بعت منه الشكوى — عشان رسالة الحل
+       توصله أول ما يفتح المنصة من نفس الجهاز (طلب المستر) */
+    var deviceId = cleanText(body.deviceId, 80)
+    try { await ensureDeviceMessageTables() } catch (e) {}
 
     // لو فيه studentId → الاسم والتليفون بيتجيبوا من قاعدة البيانات نفسها
     // (مش من الطلب) عشان مفيش حد يبعت شكوى باسم حد تاني.
@@ -119,9 +124,9 @@ export async function POST(request: Request) {
     var id = 'cmp_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
     await safeWrite(function () {
       return db.$executeRawUnsafe(
-        `INSERT INTO Complaint (id, studentId, studentName, phone, grade, message, summary, source, status, reply, createdAt, updatedAt)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'new', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-        id, studentId, studentName, phone, grade, message, summary, source
+        `INSERT INTO Complaint (id, studentId, studentName, phone, grade, message, summary, source, status, reply, deviceId, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'new', '', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+        id, studentId, studentName, phone, grade, message, summary, source, deviceId
       )
     })
 
@@ -182,6 +187,32 @@ export async function GET(request: Request) {
               if (!r.phone) r.phone = String(s.phone || '')
               if (!r.grade) r.grade = String(s.grade || '')
             }
+          })
+        }
+      } catch (e) {}
+    }
+
+    /* (2026-و111) طلب المستر: «لو الرقم اللي هو كاتبه مسجل معانا في المنصة» —
+       لو رقم التليفون مكتوب في الشكوى مطابق لطالب مسجل، نعلّم الأدمن فورًا
+       بمين هو وصفه عشان يلاقيه في تاب الطلاب ويبعتله الباسورد في الرد */
+    if (!studentId) {
+      try {
+        var phones: string[] = []
+        rows.forEach(function (r: any) {
+          var p = String(r.phone || '').trim()
+          if (p && phones.indexOf(p) === -1) phones.push(p)
+        })
+        if (phones.length > 0) {
+          var pph = phones.map(function () { return '?' }).join(',')
+          var mrows = (await db.$queryRawUnsafe(
+            'SELECT id, name, grade, phone FROM Student WHERE phone IN (' + pph + ') LIMIT 100',
+            ...phones
+          )) || []
+          var pmap: any = {}
+          mrows.forEach(function (s: any) { pmap[String(s.phone || '').trim()] = s })
+          rows.forEach(function (r: any) {
+            var m = pmap[String(r.phone || '').trim()]
+            if (m) r.matchedStudent = { id: m.id, name: String(m.name || ''), grade: String(m.grade || '') }
           })
         }
       } catch (e) {}

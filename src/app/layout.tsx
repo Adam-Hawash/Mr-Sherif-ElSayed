@@ -7,6 +7,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { AIAssistant } from "@/components/student/AIAssistant";
 import { RecordingGuard } from "@/components/RecordingGuard";
 import { FloatingInstallButton } from "@/components/InstallPwaButton";
+import { DeviceMessages } from "@/components/DeviceMessages";
 import { LangBoot } from "@/lib/i18n";
 
 const geistSans = Geist({
@@ -134,6 +135,9 @@ export default async function RootLayout({
         {/* (2026-و109) طلب المستر: الزرار الثابت — زر عايم مثبت على الشاشة في كل الصفحات
             (الرئيسية + الطالب + الأدمن) بيختفي بس بعد التثبيت الفعلي */}
         <FloatingInstallButton />
+        {/* (2026-و111) رسايل حل الشكاوى للجهاز — أول ما الطالب يفتح المنصة
+            من الجهاز اللي بعت منه الشكوى تظهرله رسالة الأدمن بالحل */}
+        <DeviceMessages />
         {/* حماية عامة من التسجيل/التصوير + أدوات المطوّر في كل الصفحات */}
         <RecordingGuard />
         <Toaster />
