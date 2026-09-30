@@ -57,7 +57,9 @@ export async function GET(request: NextRequest) {
     const [videos, total] = await Promise.all([
       db.video.findMany({
         where,
-        orderBy: { createdAt: 'desc' },
+        /* (2026-ص) الترتيب اليدوي أولاً (لو المستر رتب الدروس ب▲▼)، وبعدها
+           السلوك القديم زي ما هو: الأحدث أولًا. */
+        orderBy: [{ sortIndex: 'asc' }, { createdAt: 'desc' }],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
@@ -197,6 +199,15 @@ export async function POST(request: NextRequest) {
     // نفسه — الكود كان بيجيب واجهة يوتيوب ومفيش تحكم فعلي في الجودة.
     const finalUrl = String(url || '').trim()
 
+    /* (2026-ص) لو الصف ده مرتب يدويًا (فيه sortIndex > 0) — الفيديو الجديد
+       بيتمسك في الآخر (maxSort+1) عشان مايقفزش أول القايمة. */
+    let newSortIndex = 0
+    try {
+      const agg = await db.video.aggregate({ _max: { sortIndex: true }, where: { grade: String(grade) } })
+      const maxSort = Number((agg._max && (agg._max as { sortIndex: number | null }).sortIndex) || 0)
+      if (maxSort > 0) newSortIndex = maxSort + 1
+    } catch {}
+
     if (!finalUrl && !filePath) {
       return errOut('لازم لينك فيديو (يوتيوب أو أي موقع) أو ملف فيديو مرفوع — دوس واحدة منهم الأول', 400)
     }
@@ -228,6 +239,7 @@ export async function POST(request: NextRequest) {
             price: Number(price) || 0,
             groupKey: finalGroupKey,
             orderIndex: orderIndex || 0,
+            sortIndex: newSortIndex,
           },
         })
       })

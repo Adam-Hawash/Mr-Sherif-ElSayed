@@ -96,6 +96,10 @@ model Video {
      المشغل) أو من سجلات المشاهدة — عشان بادج المدة يظهر على كروت الفيديوهات.
      0 = لسه معناش المدة. */
   durationSec Int    @default(0)
+  /* (2026-ص) ترتيب الدرس يدوي — المستر يرتب الدروس ب▲▼ من لوحة التحكم.
+     كل أجزاء الدرس المتعدد بيأخدوا نفس الرقم. 0 = مفيش ترتيب يدوي
+     (السلوك القديم). */
+  sortIndex Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
