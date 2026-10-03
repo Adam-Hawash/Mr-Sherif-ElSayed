@@ -129,7 +129,7 @@ var DEFAULTS = {
   payment_fawry: '',
 }
 
-export async function GET() {
+export async function GET(request) {
   try {
     var configs = await db.siteConfig.findMany()
     var map = Object.assign({}, DEFAULTS)
@@ -147,11 +147,22 @@ export async function GET() {
      * نفسها، فمش محتاجين نكررها هنا. التكرار على القراءة كان بيلغي أي تعديل
      * يعمله الأدمن فورًا فيظهرله إن «التغييرات بترجع» رغم إنها متخزنة فعلًا.
      * أي تعديل من الأدمن دلوقتي بيتخزن وبيترجع زي ما هو. */
-    return NextResponse.json(map)
+    /* (توفير الباك إند — ص8) الكونفج بيتكاش على الـ CDN دقيقة (s-maxage=60
+       + stale-while-revalidate) بدل ما كل زيارة صفحة توقّع فانكشن.
+       الأدمن بيجيب الكونفج بـ ?fresh= اللي بتفلت الكاش دايمًا —
+       فتعديلاته بتوصل جهازه لحظيًا زي ما هي */
+    var res = NextResponse.json(map)
+    var isFresh = false
+    try { isFresh = new URL(request.url).searchParams.has('fresh') } catch (eU) {}
+    res.headers.set('Cache-Control', isFresh ? 'private, no-store' : 'public, s-maxage=60, stale-while-revalidate=300')
+    return res
   } catch (error) {
     console.error('Config fetch error:', error)
     // CRITICAL FIX: Return flat DEFAULTS so frontend never crashes
-    return NextResponse.json(Object.assign({}, DEFAULTS))
+    /* (توفير الباك إند — ص8) الأخطاء عمري ما تتكاش */
+    var errRes = NextResponse.json(Object.assign({}, DEFAULTS))
+    errRes.headers.set('Cache-Control', 'private, no-store')
+    return errRes
   }
 }
 

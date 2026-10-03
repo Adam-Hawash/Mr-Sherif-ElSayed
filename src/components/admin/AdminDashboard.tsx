@@ -288,7 +288,7 @@ export function AdminDashboard() {
       }
       // Load Resend API key
       try {
-        const cfgRes = await fetch('/api/config')
+        const cfgRes = await fetch('/api/config?fresh=' + Date.now())
         const cfgData = await cfgRes.json()
         setResendApiKey(cfgData.resend_api_key || '')
         setHeroDevUrl(cfgData.hero_developer_url || '')
