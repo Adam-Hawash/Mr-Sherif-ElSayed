@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db, safeWrite } from '@/lib/db'
 import { isAdmin } from '@/lib/video-guard'
 import { notifyStudents } from '@/lib/notify'
+import { notifyParentsOfNewContent } from '@/lib/parent-notify'
 
 export const runtime = 'nodejs'
 
@@ -109,6 +110,8 @@ export async function POST(request: NextRequest) {
       /* (و44) إشعار للطلاب: كتاب جديد اتضاف */
       /* (و45) await — الإشعار بيتكتب قبل الرد */
       try { await notifyStudents({ grade: String(grade || ''), type: 'book', title: '📕 كتاب جديد اتضاف: ' + String(title).trim(), body: String(description || '').slice(0, 200) || 'تقدر تفتحه أو تحمله من تاب الكتب والملازم' }) } catch (nE) {}
+      /* (2026-ص5) إشعار ولي الأمر بالمحتوى الجديد — تيجي على ولي الأمر وللطالب */
+      try { await notifyParentsOfNewContent({ grade: String(grade || ''), kind: 'book', title: String(title).trim(), body: String(description || '').slice(0, 160) || 'كتاب جديد في تاب الكتب والملازم' }) } catch (npE) {}
       return NextResponse.json({ message: 'تم إضافة الكتاب باللينك الخارجي', book: linkBook }, { status: 201 })
     }
 
@@ -137,6 +140,8 @@ export async function POST(request: NextRequest) {
     /* (و44) إشعار للطلاب: كتاب جديد اتضاف */
     /* (و45) await — الإشعار بيتكتب قبل الرد */
       try { await notifyStudents({ grade: String(grade || ''), type: 'book', title: '📕 كتاب جديد اتضاف: ' + String(title).trim(), body: String(description || '').slice(0, 200) || 'تقدر تفتحه أو تحمله من تاب الكتب والملازم' }) } catch (nE) {}
+      /* (2026-ص5) إشعار ولي الأمر بالمحتوى الجديد — تيجي على ولي الأمر وللطالب */
+      try { await notifyParentsOfNewContent({ grade: String(grade || ''), kind: 'book', title: String(title).trim(), body: String(description || '').slice(0, 160) || 'كتاب جديد في تاب الكتب والملازم' }) } catch (npE) {}
 
     return NextResponse.json({ message: 'تم إضافة الكتاب', book }, { status: 201 })
   } catch (error: any) {

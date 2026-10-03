@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { notifyStudents } from '@/lib/notify'
+import { notifyParentsOfNewContent } from '@/lib/parent-notify'
 
 // GET /api/announcements - جلب كل الإعلانات
 export async function GET(request: NextRequest) {
@@ -60,6 +61,8 @@ export async function POST(request: NextRequest) {
     /* (و44) إشعار للطلاب: إعلان جديد */
     /* (و45) await — الإشعار بيتكتب قبل الرد */
       try { await notifyStudents({ grade: String(grade || ''), type: 'announcement', title: '📣 إعلان جديد: ' + String(title), body: String(content || '').slice(0, 200) }) } catch (nE) {}
+      /* (2026-ص5) إشعار ولي الأمر بالمحتوى الجديد — تيجي على ولي الأمر وللطالب */
+      try { await notifyParentsOfNewContent({ grade: String(grade || ''), kind: 'announcement', title: String(title), body: String(content || '').slice(0, 160) || 'في إعلان جديد في المنصة' }) } catch (npE) {}
 
     return NextResponse.json({ message: 'تم إنشاء الإعلان بنجاح', announcement }, { status: 201 })
   } catch (error) {

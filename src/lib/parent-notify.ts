@@ -362,3 +362,76 @@ export async function notifyParentsOfSubmission(opts: { studentId: string; kind:
     console.error('[parent-notify] submission notify failed (ignored):', e)
   }
 }
+
+/* ============================================================
+   (2026-ص5) إشعار ولي الأمر بالمحتوى الجديد — طلب المستر حرفيًا:
+   «الإشعارات تبقى لولياء الأمور — تيجي على ولي الأمر وللطالب».
+   لما الأدمن يضيف واجب/امتحان/إعلان/كتاب → كل أولياء أمور طلبة الصف
+   يستلموا: صف جوه شاشة ولي الأمر + Web Push حقيقي على أجهزتهم
+   المشتركة (ParentPushSubscription) — نفس نمط إشعارات التسليم
+   بالظبط، وأي فشل = لوج بس والعملية الأساسية سليمة أبدًا.
+   ============================================================ */
+export async function notifyParentsOfNewContent(opts: { studentIds?: string[]; grade?: string; kind: 'exam' | 'homework' | 'announcement' | 'book'; title: string; body?: string; siteUrl?: string }): Promise<void> {
+  try {
+    if (!opts || !opts.title) return
+    await ensureParentNotificationsTable()
+
+    /* 1) طلبة الصف — نفس قاعدة notifyStudents بالظبط (مطابقة الصف المخزّنة
+       + النشطين فقط) أو قايمة طلبة محددة لو الراوت بيبعتها */
+    var ids: string[] = Array.isArray(opts.studentIds) ? opts.studentIds.filter(Boolean) : []
+    if (ids.length === 0 && opts.grade) {
+      try {
+        var rowsG: any = await db.$queryRawUnsafe(
+          "SELECT id FROM Student WHERE status IN ('approved','paid') AND grade = ?",
+          String(opts.grade)
+        )
+        ids = (rowsG || []).map(function (r: any) { return String(r.id) })
+      } catch (eG) { ids = [] }
+    }
+    if (ids.length === 0) return
+
+    /* 2) كل أرقام أولياء الأمور المرتبطين بالطلبة دول — من غير تكرار:
+       (أ) parentPhone المخزّن في Student + (ب) حسابات Parent المربوطة مباشرة
+       + (ج) حسابات Parent المدموجة عبر ParentStudent (ولي أمر بأكتر من ابن) */
+    var targets: string[] = []
+    var pushTarget = function (raw: any) {
+      var n = normalizeParentPhone(String(raw || ''))
+      if (n && targets.indexOf(n) === -1) targets.push(n)
+    }
+    var CHUNK = 60
+    for (var ci = 0; ci < ids.length; ci += CHUNK) {
+      var slice = ids.slice(ci, ci + CHUNK)
+      var ph = slice.map(function () { return '?' }).join(',')
+      try {
+        var s1: any = await db.$queryRawUnsafe('SELECT id, parentPhone FROM Student WHERE id IN (' + ph + ')', ...slice)
+        for (var a = 0; a < (s1 || []).length; a++) pushTarget(s1[a] && s1[a].parentPhone)
+      } catch (e1) {}
+      try {
+        var s2: any = await db.$queryRawUnsafe('SELECT phone FROM Parent WHERE studentId IN (' + ph + ')', ...slice)
+        for (var b = 0; b < (s2 || []).length; b++) pushTarget(s2[b] && s2[b].phone)
+      } catch (e2) {}
+      try {
+        var s3: any = await db.$queryRawUnsafe('SELECT p.phone FROM Parent p INNER JOIN ParentStudent ps ON ps.parentId = p.id WHERE ps.studentId IN (' + ph + ')', ...slice)
+        for (var c = 0; c < (s3 || []).length; c++) pushTarget(s3[c] && s3[c].phone)
+      } catch (e3) {}
+    }
+    if (!targets.length) return /* مفيش أولياء أمور مربوطين — مفيش إشعار (مش مشكلة) */
+
+    /* 3) نص الرسالة والـ Push — نفس قوالب إشعارات التسليم */
+    var kindLabel = opts.kind === 'homework' ? 'واجب جديد 📚' : opts.kind === 'exam' ? 'امتحان جديد 📝' : opts.kind === 'book' ? 'كتاب جديد 📖' : 'إعلان جديد 📣'
+    var gradeLabel = String(opts.grade || '')
+    var message = 'في ' + kindLabel.replace(/ 📚| 📝| 📖| 📣/g, '') + ': ' + String(opts.title || '').slice(0, 110) + (gradeLabel ? ' — الصف: ' + gradeLabel : '')
+    var icon = '/push-icon.png'
+    try { icon = await resolveParentPushIcon() } catch (eI) {}
+    var payload = {
+      title: kindLabel,
+      body: String(opts.body || 'تابع مع ابني/بنتي من شاشة ولي الأمر').slice(0, 160),
+      url: opts.siteUrl || '/#parent-login',
+      tag: 'parent-content-' + opts.kind,
+      icon: icon,
+    }
+    await dispatchParentNotice(targets, gradeLabel || 'المنصة', message, payload)
+  } catch (e) {
+    console.error('[parent-notify] new-content notify failed (ignored):', e)
+  }
+}
