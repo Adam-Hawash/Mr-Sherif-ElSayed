@@ -101,13 +101,15 @@ export function getGeminiApiKeys(): string[] {
   var multi = process.env.GEMINI_API_KEYS || ''
   var single = process.env.GEMINI_API_KEY || ''
   if (multi.trim()) {
-    var parts = multi.split(',')
+    /* (و108) فصل متسامح: فاصلة إنجليزية , أو عربية ، أو منقوطة ; أو سطر جديد —
+       الفاصلة العربي كانت بتخلّي كل المفاتيح مفتاح واحد طويل بايظ */
+    var parts = multi.split(/[,،;\n\r\t]+/)
     for (var i = 0; i < parts.length; i++) {
-      var k = parts[i].trim()
+      var k = parts[i].replace(/[\u200B-\u200D\uFEFF]/g, '').trim()
       if (k) keys.push(k)
     }
   }
-  if (single.trim()) keys.push(single.trim())
+  if (single.trim()) keys.push(single.replace(/[\u200B-\u200D\uFEFF]/g, '').trim())
   // de-duplicate
   var seen = {}
   var unique = []
