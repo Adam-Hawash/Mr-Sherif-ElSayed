@@ -22,6 +22,7 @@ export var GEMINI_MODELS = ['gemini-3.6-flash', 'gemini-flash-latest']
    محاولات فاشلة على موديلات راجعة (404). جداول/قرايات كلها try/catch —
    الكاش ده self-contained: أي فشل فيه ما يبوّظش أي نداء AI أبدًا. */
 import { db } from '@/lib/db'
+import { attemptInteractions, isAuthKey, isAuthKeyPathError } from './gemini-interactions'
 
 var aiCacheReady = false
 var aiCacheLoading: Promise<void> | null = null
@@ -287,6 +288,11 @@ function extractText(data: any): string {
 
 // Single attempt against one model + one key
 async function attempt(model: string, apiKey: string, parts: any[], generationConfig: any, timeoutMs: number, thinkingMode: 'low' | 'off' | 'default'): Promise<GeminiResult> {
+  /* (و105) مفتاح auth (AQ.)؟ المسار القديم بيرفضه 401 غالبًا — روح
+     للمسار الجديد (interactions) على طول بدون ما نضيّع محاولة فاشلة */
+  if (isAuthKey(apiKey)) {
+    return attemptInteractions(model, apiKey, parts, generationConfig, timeoutMs, thinkingMode)
+  }
   var controller = new AbortController()
   var timeoutHandle = setTimeout(function () { controller.abort() }, timeoutMs)
   try {
@@ -349,6 +355,12 @@ async function attempt(model: string, apiKey: string, parts: any[], generationCo
           if (text3) return { ok: true, text: text3, model: model }
         }
       } catch (e) {} finally { clearTimeout(timeoutHandle3) }
+    }
+
+    /* (و105) مفاتيح الـ auth بترفض على المسار القديم — جرّب المسار الجديد قبل ما نستسلم */
+    if (isAuthKeyPathError(res.status, errBody) && !isAuthKey(apiKey)) {
+      var inter = await attemptInteractions(model, apiKey, parts, generationConfig, timeoutMs, thinkingMode)
+      if (inter.ok) return inter
     }
 
     return { ok: false, error: model + ': ' + res.status + ' ' + (errBody || '').substring(0, 300), status: res.status }
@@ -459,6 +471,12 @@ export async function callGemini(opts: {
 async function streamAttempt(model: string, apiKey: string, parts: any[], generationConfig: any, timeoutMs: number, thinkingMode: 'low' | 'off' | 'default', onDelta?: (d: string) => void): Promise<GeminiResult> {
   var emitted = 0
 
+  /* (و105) مفتاح auth (AQ.)؟ الاستريم القديم بيرفضه — المسار الجديد
+     non-streaming والراوت بيعمل typewriter محلي في الحالة دي */
+  if (isAuthKey(apiKey)) {
+    return attemptInteractions(model, apiKey, parts, generationConfig, timeoutMs, thinkingMode)
+  }
+
   var runStream = async function (cfg: any): Promise<GeminiResult> {
     var controller = new AbortController()
     var timeoutHandle = setTimeout(function () { controller.abort() }, timeoutMs)
@@ -527,6 +545,11 @@ async function streamAttempt(model: string, apiKey: string, parts: any[], genera
     var second = await runStream(generationConfig)
     if (second.ok) return second
     return second
+  }
+  /* (و105) مفتاح auth اترفض ومفيش أي دلتا اتبعت — جرّب المسار الجديد */
+  if (first.status && isAuthKeyPathError(first.status, first.error || '') && emitted === 0) {
+    var inter = await attemptInteractions(model, apiKey, parts, generationConfig, timeoutMs, thinkingMode)
+    if (inter.ok) return inter
   }
   return first
 }
