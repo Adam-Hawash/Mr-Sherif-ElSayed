@@ -58,8 +58,13 @@ export function NotificationsBell({ studentId }: { studentId: string }) {
   React.useEffect(function () {
     if (!studentId) return
     load()
-    var t = setInterval(load, 60000)
-    return function () { clearInterval(t) }
+    /* (توفير الباك إند — ص8) مفيش polling وانتا في تاب مخفي — الدورة
+       كانت بتضرب الـ API على الفاضي وبتاكل من حصة الفانكشنز.
+       أول ما ترجع للتاب بنتحدّث فورًا — مفيش أي حاجة بتضيع */
+    var t = setInterval(function () { if (!document.hidden) load() }, 60000)
+    function onVis() { if (!document.hidden) load() }
+    document.addEventListener('visibilitychange', onVis)
+    return function () { clearInterval(t); document.removeEventListener('visibilitychange', onVis) }
   }, [studentId, load])
 
   /* اقفال المنسدلة بالضغط بره */

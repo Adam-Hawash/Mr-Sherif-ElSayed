@@ -51,8 +51,11 @@ export function StudentComplaints({ studentId, studentName, studentPhone, grade 
      — بندور كل دقيقة على تحديث حالات الشكاوى (رد/حل) */
   useEffect(function () {
     if (!studentId) return
-    var t = setInterval(function () { loadMine() }, 60000)
-    return function () { clearInterval(t) }
+    /* (توفير الباك إند — ص8) التدوير بيقف وانتا في تاب مخفي — وترجع بيتحدّث فورًا */
+    var t = setInterval(function () { if (!document.hidden) loadMine() }, 60000)
+    function onVis() { if (!document.hidden) loadMine() }
+    document.addEventListener('visibilitychange', onVis)
+    return function () { clearInterval(t); document.removeEventListener('visibilitychange', onVis) }
   }, [studentId, loadMine])
 
   async function submit() {
