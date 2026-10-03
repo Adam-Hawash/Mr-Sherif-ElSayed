@@ -182,7 +182,9 @@ async function uploadVideoToFileApi(videoUrl: string, mime: string, apiKey: stri
     if (String(file.state) === 'FAILED') return null
     await new Promise(function (r) { setTimeout(r, 3000) })
     try {
-      var pRes = await fetch(GEMINI_BASE + '/v1beta/' + name.replace(/^files\//, 'files/') + '?key=' + apiKey)
+      var pRes = await fetch(GEMINI_BASE + '/v1beta/' + name.replace(/^files\//, 'files/'), {
+        headers: { 'x-goog-api-key': apiKey },
+      })
       if (!pRes.ok) return null
       var pj: any = await pRes.json()
       file = pj
