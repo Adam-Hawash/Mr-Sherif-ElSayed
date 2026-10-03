@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db, safeWrite } from '@/lib/db'
 import { notifyStudents } from '@/lib/notify'
+import { notifyParentsOfNewContent } from '@/lib/parent-notify'
 import { isAdmin } from '@/lib/video-guard'
 
 /* (25-ب1) أعمدة الميزات الجديدة (إظهار الإجابات / المؤقت / جدولة الظهور) —
@@ -264,6 +265,8 @@ export async function POST(request: NextRequest) {
       try { var tp = JSON.parse(targetIds); if (Array.isArray(tp)) nIds = tp.filter(Boolean) } catch (e) {}
       /* (و45) await — الإشعار بيتكتب قبل الرد */
         try { await notifyStudents({ studentIds: nIds, grade: String(grade || ''), type: 'exam', title: '📝 امتحان جديد: ' + String(title), body: 'دخل من تاب الامتحانات وحل دلوقتي' }) } catch (nE) {}
+        /* (2026-ص5) إشعار ولي الأمر بالمحتوى الجديد — تيجي على ولي الأمر وللطالب */
+        try { await notifyParentsOfNewContent({ studentIds: nIds, grade: String(grade || ''), kind: 'exam', title: String(title), body: 'اتبعت امتحان جديد — تابع مع ابني/بنتي من شاشة ولي الأمر' }) } catch (npE) {}
     } catch (nE) {}
 
     return NextResponse.json({ message: 'Exam added', exam }, { status: 201 })
