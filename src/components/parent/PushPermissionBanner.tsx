@@ -58,8 +58,23 @@ export default function PushPermissionBanner({ parentId }: { parentId: string })
     if (!parentId) return
     var p = getPushPermissionState()
     setPerm(p)
-    setEnabled(isParentPushEnabled(parentId))
+    var localEnabled = isParentPushEnabled(parentId)
+    setEnabled(localEnabled)
     setReady(true)
+    /* (2026-ص6) تفعيل صامت لجهاز جديد — طلب المستر: «عاوز أفرق ما بين
+       الأجهزة». الإذن متمنح على الجهاز ده بس مفيش اشتراك محلي
+       (المستر فعّلها على اللاب، ولما فتح المنصة من موبايله مكانش
+       بيوصله حاجة) — بنسجّل الجهاز ده لوحده من غير أي بوب-أب،
+       لأن الاشتراك لكل جهاز لوحده والمفتاح ده محلي على الجهاز. */
+    if (p === 'granted' && !localEnabled) {
+      enableParentPush(parentId).then(function (r) {
+        if (r && r.ok) {
+          setEnabled(true)
+          try { sessionStorage.setItem('parent_push_dismissed', '1') } catch (e) {}
+        }
+      }).catch(function () {})
+      return
+    }
     try {
       var dismissed = String(sessionStorage.getItem('parent_push_dismissed') || '') === '1'
       if (p === 'default' && !isParentPushEnabled(parentId) && !dismissed) {
@@ -126,8 +141,8 @@ export default function PushPermissionBanner({ parentId }: { parentId: string })
                 <CheckCircle2 className="h-4.5 w-4.5 text-emerald-600" />
               </div>
               <div className="min-w-0">
-                <p className="text-sm font-bold text-foreground">إشعارات الموبايل مفعّلة ✓</p>
-                <p className="text-[11px] text-muted-foreground">هتوصلك درجات أبنائك بره على شاشة موبايلك أول بأول</p>
+                <p className="text-sm font-bold text-foreground">إشعارات الموبايل مفعّلة على الجهاز ده ✓</p>
+                <p className="text-[11px] text-muted-foreground">التفعيل لكل جهاز لوحده — عايز الإشعار يوصلك على موبايل تاني أو اللاب؟ افتح المنصة منه وفعّلها هناك كمان</p>
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
@@ -191,7 +206,7 @@ export default function PushPermissionBanner({ parentId }: { parentId: string })
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-bold text-foreground">فعّل إشعارات الموبايل 🔔</p>
-                <p className="text-[11px] text-muted-foreground">درجات ابنك توصلك أول بأول على شاشة موبايلك بره المنصة</p>
+                <p className="text-[11px] text-muted-foreground">درجات ابنك توصلك أول بأول على شاشة موبايلك بره المنصة — التفعيل لكل جهاز لوحده</p>
               </div>
             </div>
             <Button size="sm" className="h-9 shrink-0 gap-1.5 text-xs font-bold" onClick={function () { setOpen(true) }}>
