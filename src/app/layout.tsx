@@ -21,7 +21,7 @@ const geistMono = Geist_Mono({
 });
 
 export var metadata: Metadata = {
-  title: "Mr. Sherif ElSayed | Math Platform",
+  title: "Math Station by Mr. Sherif El Sayed",
   applicationName: "Math with Mr. Sherif",
   description:
     "منصة مستر شريف السيد التعليمية — شرح رياضيات بيسهّلك الماث، واجبات أسبوعية، امتحانات دورية، ومتابعة مستمرة.",
