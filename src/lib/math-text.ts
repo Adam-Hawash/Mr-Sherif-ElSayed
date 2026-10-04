@@ -112,3 +112,35 @@ export function repairModelJson(raw: string): string {
   }
   return out
 }
+
+/*
+ * normalizeLooseRoots — (2026-و111) توحيد كتابة الجذور اللي الموديلات بتحب
+ * تكتبها خام: «sqrt(3)» و «cbrt(8)» و «√3» و «∛8» — كلها بترجع لـ
+ * \sqrt{3} و \sqrt[3]{8} عشان عارض المنصة يرسمها جذر حقيقي بالخط
+ * المتصل على المحتوى (طلب المستر حرفيًا: «الـ root بيتكتب غلط —
+ * عاوزه كلهم يبقوا متوصلين ببعض... يبقى شكله حقيقي»).
+ *
+ * آمنة على أي نص:
+ *   - مفيش lookbehind (متصفحات قديمة بترمي SyntaxError وقت بناء الـ regex)
+ *   - \sqrt و \cbrt المكتوبين صح بيتحموا بمَعلَم مؤقت قبل التحويل ويرجعوا زي ما هما
+ *   - الأقواس العادية جوه sqrt(...) بتبقى جسم الجذر (حد 60 حرف ومفيش أقواس متداخلة)
+ */
+export function normalizeLooseRoots(input: string): string {
+  if (!input) return input
+  var s = String(input)
+  /* حماية الأوامر المكتوبة صح من أي تحويل */
+  s = s.replace(/\\sqrt/g, '\u0001SRQ').replace(/\\cbrt/g, '\u0001CBQ')
+  /* cbrt(8) → \sqrt[3]{8} — قبل sqrt عشان «rt(» ما تفضلش عالقة */
+  s = s.replace(/\bcbrt\s*\(([^()]{1,60})\)/gi, '\\sqrt[3]{$1}')
+  /* sqrt(3) / SQRT(x+1) → \sqrt{...} */
+  s = s.replace(/\bsqrt\s*\(([^()]{1,60})\)/gi, '\\sqrt{$1}')
+  /* √(72/2) → \sqrt{72/2} و √3 → \sqrt{3} */
+  s = s.replace(/√\s*\(([^()]{1,60})\)/g, '\\sqrt{$1}')
+  s = s.replace(/√\s*([0-9٠-٩A-Za-z][0-9٠-٩A-Za-z.]*)/g, '\\sqrt{$1}')
+  /* ∛(8) → \sqrt[3]{8} و ∛8 → \sqrt[3]{8} */
+  s = s.replace(/∛\s*\(([^()]{1,60})\)/g, '\\sqrt[3]{$1}')
+  s = s.replace(/∛\s*([0-9٠-٩A-Za-z][0-9٠-٩A-Za-z.]*)/g, '\\sqrt[3]{$1}')
+  /* رجّع المحمي زي ما كان */
+  s = s.replace(/\u0001SRQ/g, '\\sqrt').replace(/\u0001CBQ/g, '\\cbrt')
+  return s
+}

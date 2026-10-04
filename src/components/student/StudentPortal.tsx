@@ -2119,7 +2119,32 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
               <div className="flex items-start justify-between gap-3" onClick={hasQuestions ? function() {
                 if (isHwSeqLocked) { toast.error('الواجب ده هيتفتح أول ما تسلّم الواجب اللي قبله — سلّم الواجب اللي قبله الأول', { duration: 6000 }); return }
                 if (isSubmitted) { openHwReview(hw.id); return }
-                setExpandedHw(isExpanded ? null : hw.id)
+                /* (2026-و111) حكم السيرفر قبل فتح الحل — شكوى المستر: الطلاب
+                   «بيحلوا الواجب وبعد كده يسلموه ويدخلوا يلاقيه يقول لهم يعملوه
+                   من الأول». اللستة المحلية ممكن تفوّت تسليم قديم (سباق/خطأ شبكة)
+                   فبنسأل السيرفر مباشرة قبل ما نفتح الحل — لو سلّمه فعلًا نفتح
+                   شاشة المراجعة بالنتيجة فورًا بدل ما يعيد حل الواجب كله ويترفض
+                   عند التسليم. فشل الشبكة → معاودة مرة → بعدها فتح عادي (التسليم
+                   على السيرفر محمي بـ alreadySubmitted على أي حال). */
+                ;(async function() {
+                  var checkData: any = null
+                  for (var hwAttempt = 0; hwAttempt < 2; hwAttempt++) {
+                    try {
+                      var hwChkRes = await fetch('/api/homework-results?studentId=' + encodeURIComponent(studentId) + '&homeworkId=' + encodeURIComponent(hw.id))
+                      var hwChkData = await hwChkRes.json()
+                      if (hwChkData && Array.isArray(hwChkData.results)) { checkData = hwChkData; break }
+                    } catch (e) {}
+                    if (hwAttempt === 0) { try { await new Promise(function(r) { setTimeout(r, 1200) }) } catch (e) {} }
+                  }
+                  if (checkData && checkData.results && checkData.results.length > 0) {
+                    var hwChkRow = checkData.results[0]
+                    setHwResults(function(prev) { return { ...prev, [hw.id]: { score: Number(hwChkRow.score) || 0, maxScore: Number(hwChkRow.maxScore) || 100, resultId: hwChkRow.id } } })
+                    onHwSubmitted(hw.id)
+                    openHwReview(hw.id)
+                    return
+                  }
+                  setExpandedHw(isExpanded ? null : hw.id)
+                })()
               } : undefined}>
                 <div className="flex items-start gap-3 min-w-0 flex-1">
                   <div className={"h-9 w-9 rounded-lg flex items-center justify-center shrink-0 mt-0.5 " + (isHwSeqLocked ? 'bg-red-500/10' : isSubmitted ? 'bg-emerald-500/10' : hasQuestions ? 'bg-emerald-500/10' : 'bg-blue-500/10')}>
@@ -2902,16 +2927,27 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
      + استرجاع المسودة (نفس الأسئلة بنفس الترتيب وبنفس الإجابات) ===== */
   async function handleStartExam(exam: any, parsedQuestions: any[], draft?: any) {
     setCheckingServer(true)
-    try {
-      var checkRes = await fetch('/api/exam-results?studentId=' + studentId + '&examId=' + exam.id)
-      var checkData = await checkRes.json()
-      if (checkData.results && checkData.results.length > 0) {
-        onExamSubmitted(exam.id)
-        setCheckingServer(false)
-        setBlockedExamId(exam.id)
-        return
-      }
-    } catch { /* proceed anyway */ }
+    /* (2026-و111) فحص السيرفر بمعاودة: فشل شبكة لحظي كان بيسيب الامتحان
+       يفتح للحل تاني وبعدها التسليم بيرفض (alreadySubmitted) — دلوقتي
+       محاولة + معاودة واحدة قبل ما نفتح، والتسليم نفسه محمي على السيرفر */
+    var examCheckData: any = null
+    for (var exChkAttempt = 0; exChkAttempt < 2; exChkAttempt++) {
+      try {
+        var checkRes = await fetch('/api/exam-results?studentId=' + studentId + '&examId=' + exam.id)
+        var checkData = await checkRes.json()
+        if (checkData && Array.isArray(checkData.results)) {
+          examCheckData = checkData
+          if (checkData.results.length > 0) break
+        }
+      } catch { /* معاودة */ }
+      if (exChkAttempt === 0) { try { await new Promise(function(r) { setTimeout(r, 1200) }) } catch (e) {} }
+    }
+    if (examCheckData && examCheckData.results && examCheckData.results.length > 0) {
+      onExamSubmitted(exam.id)
+      setCheckingServer(false)
+      setBlockedExamId(exam.id)
+      return
+    }
     setCheckingServer(false)
     try {
       if (draft && Array.isArray(draft.questions) && draft.questions.length > 0) {

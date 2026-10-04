@@ -1,11 +1,13 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Calculator, X, Delete, CornerDownLeft, Image as ImageIcon, Loader2, Eye, ArrowDownToLine } from 'lucide-react'
+import { Calculator, X, Delete, CornerDownLeft, Image as ImageIcon, Camera, Loader2, Eye, ArrowDownToLine } from 'lucide-react'
 import { chunkedUpload } from '@/lib/chunked-upload'
 import { FractionText, hasMathMarkup } from '@/components/FractionText'
-/* (2026-و73) إعفاء نافذة رفع الصورة من عدّاد مغادرة الامتحان — الرفع مش خروج */
-import { notifyPickerOpen } from '@/components/student/useAntiCheat'
+/* (2026-و73) إعفاء نافذة الرفع/الكاميرا من عدّاد مغادرة الامتحان */
+import { notifyPickerOpen, notifyPickerClose } from '@/components/student/useAntiCheat'
+/* (ص7) رسالة الإذن على زرار الكاميرا/الرفع — طلب المستر */
+import { toast } from 'sonner'
 
 interface MathKeyboardProps {
   value: string
@@ -140,6 +142,21 @@ export function MathKeyboard({ value, onChange, placeholder = 'Type your answer 
   const [activeGroup, setActiveGroup] = useState(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  /* (2026-و73) مدخل الكاميرا الاحتياطي — لو مودال الكاميرا الحقيقي اتفتحش
+   * (متصفح قديم/رفض إذن) بنرجّع لمدخل capture=environment اللي بيفتح
+   * كاميرا الجهاز على الموبايل — والاتنين بيعتبروا جزء من حل السؤال
+   * مش خروج من المنصة */
+  const cameraInputRef = useRef<HTMLInputElement>(null)
+  /* (2026-و74) مودال الكاميرا الحقيقي — getUserMedia جوه الصفحة نفسها
+   * عشان زرار «تصوير بالكاميرا» يفتح الكاميرا فعلًا (فيديو مباشر + زرار
+   * التقاط) على الديسكتوب والموبايل — بدل ما كان بيفتح منتقي ملفات
+   * والتصوير هنا برضه مش خروج من المنصة (notifyPickerOpen أثناءه) */
+  const [camOpen, setCamOpen] = useState(false)
+  const [camError, setCamError] = useState('')
+  const [camStarting, setCamStarting] = useState(false)
+  const [camFacing, setCamFacing] = useState<'environment' | 'user'>('environment')
+  const camVideoRef = useRef<HTMLVideoElement>(null)
+  const camStreamRef = useRef<MediaStream | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadPct, setUploadPct] = useState(0)
   const [uploadedImage, setUploadedImage] = useState<string>('')
@@ -380,9 +397,98 @@ export function MathKeyboard({ value, onChange, placeholder = 'Type your answer 
     }
   }
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Allow multiple files to be selected
-    const files = e.target.files
+  /* ===== (2026-و74) مودال الكاميرا الحقيقي — getUserMedia داخل الصفحة =====
+   * فتح الكاميرا هنا مش بيخرج من التبويب أبدًا: الفيديو المباشر بيظهر في
+   * مودال فوق الامتحان، والطالب يصور بضغطة زرار والصورة تترفع فورًا —
+   * ومن غير أي مخالفة (العدّاد معلّق أثناء فتح المودال) */
+  const stopCamStream = function () {
+    try {
+      if (camStreamRef.current) {
+        var tracks = camStreamRef.current.getTracks()
+        for (var i = 0; i < tracks.length; i++) tracks[i].stop()
+        camStreamRef.current = null
+      }
+    } catch (e) {}
+  }
+
+  const startCamera = async function (facing: 'environment' | 'user') {
+    setCamError('')
+    setCamStarting(true)
+    try {
+      stopCamStream()
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('unsupported')
+      }
+      var stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: facing, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: false,
+      })
+      camStreamRef.current = stream
+      if (camVideoRef.current) {
+        camVideoRef.current.srcObject = stream
+        try { await camVideoRef.current.play() } catch (e2) {}
+      }
+    } catch (err: any) {
+      var ename = err && err.name ? String(err.name) : ''
+      if (ename === 'NotAllowedError' || ename === 'PermissionDeniedError') {
+        setCamError('لازم تسمح للكاميرا الأول — اضغط «سماح / Allow» في الرسالة اللي فوق، وبعدها دوس على زرار الكاميرا تاني.')
+      } else if (ename === 'NotFoundError' || ename === 'OverconstrainedError') {
+        setCamError('مفيش كاميرا متوصلة بالجهاز ده — استخدم زرار «رفع صورة ورقة الحل» بدلها.')
+      } else {
+        setCamError('مقدرناش نفتح الكاميرا على المتصفح ده — استخدم زرار الرفع العادي أو كاميرا الجهاز من الزرار الاحتياطي تحت.')
+      }
+    } finally {
+      setCamStarting(false)
+    }
+  }
+
+  const openCamera = function () {
+    /* الكاميرا مش خروج من المنصة — تعليق عدّاد المغادرة طوال التصوير */
+    notifyPickerOpen()
+    /* (ص7) طلب المستر: أول ما الطالب يدوس زرار الكاميرا تظهرله رسالة الإذن
+       على طول — ولو سمح الكاميرا بتفتح مباشرة من غير «حاجات لازم» */
+    try {
+      toast.info('📸 لو ظهرلك طلب إذن الكاميرا اضغط «سماح / Allow» — ولو سمحت قبل كده هتفتح على طول', { duration: 5000 })
+    } catch (eT) {}
+    setCamError('')
+    setCamOpen(true)
+    setTimeout(function () { startCamera(camFacing) }, 50)
+  }
+
+  const closeCamera = function () {
+    setCamOpen(false)
+    stopCamStream()
+    /* (و74) المودال قفل من غير blur حقيقي — نرف التعليق عشان أي مغادرة
+     * حقيقية بعدها تتحسب طبيعي (والرفع اللي بيحصل بعد التصوير مش خروج أصلًا) */
+    notifyPickerClose()
+  }
+
+  const switchCamFacing = function () {
+    var next: 'environment' | 'user' = camFacing === 'environment' ? 'user' : 'environment'
+    setCamFacing(next)
+    startCamera(next)
+  }
+
+  const capturePhoto = async function () {
+    var video = camVideoRef.current
+    if (!video || !video.videoWidth || !video.videoHeight) return
+    try {
+      var canvas = document.createElement('canvas')
+      canvas.width = video.videoWidth
+      canvas.height = video.videoHeight
+      var ctx = canvas.getContext('2d')
+      if (!ctx) return
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+      var blob = await new Promise<Blob | null>(function (resolve) { canvas.toBlob(resolve, 'image/jpeg', 0.92) })
+      if (!blob || blob.size <= 0) return
+      var file = new File([blob], 'camera-' + Date.now() + '.jpg', { type: 'image/jpeg' })
+      closeCamera()
+      await uploadImageFiles([file])
+    } catch (e) {}
+  }
+
+  /* الرفع الموحد — بياخد ملفات من منتقي الملفات أو من الكاميرا مباشرة */
+  const uploadImageFiles = async (files: File[]) => {
     if (!files || files.length === 0) return
 
     setUploading(true)
@@ -434,30 +540,71 @@ export function MathKeyboard({ value, onChange, placeholder = 'Type your answer 
       setUploadPct(100)
       if (onUploadStateChange) onUploadStateChange(false, 100)
       if (fileInputRef.current) fileInputRef.current.value = ''
+      /* (و73) تصفير مدخل الكاميرا كمان — عشان نفس الصورة تنفع تتصور تاني */
+      if (cameraInputRef.current) cameraInputRef.current.value = ''
     }
+  }
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Allow multiple files to be selected
+    const files = e.target.files
+    if (!files || files.length === 0) return
+    await uploadImageFiles(Array.from(files))
   }
 
   return (
     <div className="w-full space-y-2">
+      {/* (2026-س2) إرشاد الحل بالصورة — بيظهر والخانة لسه فاضية:
+          ده اللي بيخلي الطالب اللي «ما بيعرفش يصور/يرفع» يعرف الخطوات
+          من أول ثانية — اكتب في الكشكول ← صوّر/ارفع من الزرارين اللي تحت */}
+      {!value && !uploading && (
+        <div className="flex items-start gap-2 p-2.5 rounded-lg border-2 border-sky-400/50 bg-sky-50 dark:bg-sky-950/40 dark:border-sky-700/60" dir="rtl">
+          <span className="text-lg leading-none mt-0.5">📸</span>
+          <p className="text-xs sm:text-[13px] font-bold text-sky-800 dark:text-sky-200 leading-relaxed">
+            اكتب حلك في كشكولك الأول ✍️ وبعدين صوّر الورقة بزرار
+            <span className="mx-1 px-1.5 py-0.5 rounded bg-emerald-600 text-white">📷 تصوير بالكاميرا</span>
+            أو ارفع صورة جاهزة بزرار
+            <span className="mx-1 px-1.5 py-0.5 rounded bg-amber-400 text-amber-950">📎 رفع صورة</span>
+            — الصورة بتوصل للمستر تلقائيًا مع إجابتك
+          </p>
+        </div>
+      )}
       {/* Toolbar above textarea - not overlapping */}
       <div className="flex items-center gap-1.5 flex-wrap">
+        {/* (2026-س2) زرار الكاميرا بقى أول زرار وأكبر وأوضح — ده الحل الأساسي
+            لشكوى «الطلاب ما بيعرفوش يصوروا ورقة الحل»: زرار كبير بلون صريح
+            ونص واضح بحد أدنى 44px لمس على الموبايل */}
+        <button
+          type="button"
+          onClick={openCamera}
+          disabled={uploading}
+          className="inline-flex items-center gap-2 px-4 min-h-[44px] rounded-lg text-sm font-bold bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 active:bg-emerald-800 transition-colors disabled:opacity-50"
+          title="صوّر ورقة حلك بالكاميرا وارفعها"
+        >
+          <Camera className="h-4 w-4" />
+          <span>📷 تصوير بالكاميرا</span>
+        </button>
         <button
           type="button"
           onClick={function () {
             /* (و73) الرفع مش خروج من المنصة — إعفاء عدّاد المغادرة */
             notifyPickerOpen()
+            /* (ص7) نفس رسالة الإذن على زرار الرفع — الطالب يسمح مرة واحدة */
+            try {
+              toast.info('📸 لو ظهرلك طلب إذن الكاميرا أو الملفات اضغط «سماح / Allow» — عشان تقدر تصور ورقة الحل وترفعها', { duration: 5000 })
+            } catch (eT2) {}
             fileInputRef.current?.click()
           }}
           disabled={uploading}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors disabled:opacity-50"
-          title="Upload image"
+          className="inline-flex items-center gap-2 px-3 min-h-[44px] rounded-lg text-sm font-bold border-2 border-amber-500/60 bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors disabled:opacity-50"
+          title="ارفع صورة ورقة الحل من الجهاز"
         >
           {uploading ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
-            <ImageIcon className="h-3.5 w-3.5" />
+            <ImageIcon className="h-4 w-4" />
           )}
-          <span>{uploading ? 'جاري رفع الورقة كاملة... ' + uploadPct + '%' : 'رفع صورة ورقة الحل'}</span>
+          <span>{uploading ? 'جاري رفع الورقة... ' + uploadPct + '%' : '📎 رفع صورة الحل'}</span>
         </button>
         <button
           type="button"
@@ -477,6 +624,17 @@ export function MathKeyboard({ value, onChange, placeholder = 'Type your answer 
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        multiple
+        className="hidden"
+        onChange={handleImageUpload}
+      />
+      {/* (2026-و73) مدخل الكاميرا — capture بيفتح كاميرا الجهاز على الموبايل
+        * مباشرة، ونفس معالج الرفع بيشتغل معاه عادي */}
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
         multiple
         className="hidden"
         onChange={handleImageUpload}
@@ -735,6 +893,92 @@ export function MathKeyboard({ value, onChange, placeholder = 'Type your answer 
             >
               Insert Fraction
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* (2026-و74) مودال الكاميرا الحقيقي — فيديو مباشر جوه الصفحة + زرار تصوير.
+        * كده «تصوير بالكاميرا» بيفتح الكاميرا فعلًا على الديسكتوب والموبايل
+        * (بدل منتقي الملفات) والطالب بيفضل جوه المنصة طول الوقت = مفيش خروج */}
+      {camOpen && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" dir="rtl">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/40">
+              <p className="text-sm font-bold flex items-center gap-2">
+                <Camera className="h-4 w-4 text-emerald-600" />
+                صوّر ورقة حلك
+              </p>
+              <button type="button" onClick={closeCamera} className="text-muted-foreground hover:text-foreground transition-colors" title="إغلاق الكاميرا">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="relative bg-black" style={{ minHeight: 260 }}>
+              <video
+                ref={camVideoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-auto max-h-[55vh] object-contain"
+                style={{ display: camStarting || camError ? 'none' : 'block' }}
+              />
+              {camStarting && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-white">
+                  <Loader2 className="h-8 w-8 animate-spin" />
+                  <p className="text-sm font-medium">جاري فتح الكاميرا...</p>
+                </div>
+              )}
+              {!camStarting && camError && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center">
+                  <span className="text-4xl">📷</span>
+                  <p className="text-sm text-white/90 leading-relaxed max-w-xs">{camError}</p>
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={function () { startCamera(camFacing) }}
+                      className="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold transition-colors"
+                    >
+                      جرب تاني
+                    </button>
+                    <button
+                      type="button"
+                      onClick={function () {
+                        /* الرجوع لمدخل capture=environment — بيفتح كاميرا الجهاز على الموبايل */
+                        notifyPickerClose()
+                        notifyPickerOpen()
+                        setCamOpen(false)
+                        stopCamStream()
+                        if (cameraInputRef.current) cameraInputRef.current.click()
+                      }}
+                      className="px-4 py-2 rounded-lg bg-white/15 hover:bg-white/25 text-white text-sm font-bold transition-colors"
+                    >
+                      كاميرا الجهاز
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center justify-center gap-3 px-4 py-4 bg-muted/30">
+              <button
+                type="button"
+                onClick={switchCamFacing}
+                disabled={camStarting || !!camError}
+                className="inline-flex items-center justify-center h-11 w-11 rounded-full bg-muted text-muted-foreground hover:bg-muted/80 transition-colors disabled:opacity-50"
+                title="تبديل الكاميرا (أمامية/خلفية)"
+              >
+                <Camera className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={capturePhoto}
+                disabled={camStarting || !!camError}
+                className="inline-flex items-center justify-center gap-2 px-8 h-12 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white text-base font-black shadow-lg transition-all hover:scale-105 disabled:opacity-50 disabled:hover:scale-100"
+                title="التقاط الصورة ورفعها"
+              >
+                <Camera className="h-5 w-5" />
+                تصوير
+              </button>
+              <div className="h-11 w-11" aria-hidden="true" />
+            </div>
           </div>
         </div>
       )}

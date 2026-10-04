@@ -24,12 +24,15 @@ export interface McqNoteItem {
   correctAnswerText: string // نص الإجابة الصحيحة
 }
 
-/* مفتاح كاش ثابت للسؤال (بيستخدم في كاش الداتابيز عشرات المرات) */
+/* مفتاح كاش ثابت للسؤال (بيستخدم في كاش الداتابيز عشرات المرات)
+ * (2026-و111) البادئة بقت k2: الملاحظات القديمة المكتوبة بنظام الرموز
+ * القديم (sqrt(3) الخام والجذر المفكوك) بتتتجاهل وتتولد تاني بالنظام
+ * الجديد — من غير أي هجرة داتا. لو عاوز تلغي الكاش تاني غيّر البادئة. */
 export function mcqNoteKey(item: McqNoteItem): string {
   var raw = String(item.question || '').slice(0, 120) + '|' + String(item.correctAnswerText || '').slice(0, 60)
   var h = 0
   for (var i = 0; i < raw.length; i++) h = (h * 31 + raw.charCodeAt(i)) >>> 0
-  return 'k' + h.toString(36)
+  return 'k2' + h.toString(36)
 }
 
 function buildNotesPrompt(items: McqNoteItem[]): string {

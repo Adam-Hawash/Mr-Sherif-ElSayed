@@ -102,6 +102,16 @@ export async function GET(request: NextRequest) {
         }
       }
 
+      /* (2026-و111) وضع فحص الطالب: studentId + homeworkId مع بعض =
+         «هل سلّم الطالب ده الواجب ده؟» — الفحص اللي بيحصل قبل فتح الواجب
+         في بورتال الطالب. بنفلتر على الطالب ده بس ومممنوع نرجّع داتا
+         طلاب تانية في الوضع ده. */
+      var studentCheckMode = false
+      if (studentId) {
+        studentCheckMode = true
+        rawResults = (rawResults || []).filter(function (r: any) { return String(r.studentId) === String(studentId) })
+      }
+
       // (2026-و16) self-heal: تسليمات قديمة قبل التصحيح الفوري (writingResults
       // فاضية أو فيها pending/needsGrading) ← إعادة تصحيح خلفية بنفس مسار
       // regrade-core الحاسم بعد ما الرد يتبعت — البادج بيختفي بعد تحديث بسيط
@@ -303,9 +313,10 @@ export async function GET(request: NextRequest) {
         })
       }
 
-      // Get students who haven't submitted the homework yet
+      // Get students who haven't submitted the homework yet (أدمن بس — وضع فحص الطالب مش محتاجه)
       var notSubmitted: any[] = []
       try {
+        if (studentCheckMode) throw new Error('skip-notsubmitted-in-student-check')
         var submittedIds = rawResults.map(function(r) { return r.studentId })
         if (submittedIds.length > 0) {
           var notPlaceholders = submittedIds.map(function() { return '?' }).join(',')
