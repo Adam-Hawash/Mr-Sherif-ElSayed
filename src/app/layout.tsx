@@ -69,8 +69,9 @@ export default async function RootLayout({
   var heroPhotoUrl = String(initialConfig.instructor_photo || "");
 
   return (
-    <html lang="en" dir="ltr" suppressHydrationWarning>
+    <html lang="en" dir="ltr" translate="no" suppressHydrationWarning>
       <head>
+      <meta name="google" content="notranslate" />
         {/* سكريبت مبكر — الثيم (ليلي/نهاري) واللغة بيتريّكوا قبل أول رسم
             عشان مفيش وميض غلط: الثيم من مفتاح next-themes «theme» والافتراضي ليلي،
             واللغة من sh_lang — الافتراضي إنجليزي LTR، ولو مختار عربي الاتجاه بيتقلب RTL */}
