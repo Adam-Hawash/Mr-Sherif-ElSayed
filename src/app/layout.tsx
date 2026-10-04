@@ -22,7 +22,7 @@ const geistMono = Geist_Mono({
 
 export var metadata: Metadata = {
   title: "Mr. Sherif ElSayed | Math Platform",
-  applicationName: "Mr. Sherif ElSayed — Math Platform",
+  applicationName: "Math with Mr. Sherif",
   description:
     "منصة مستر شريف السيد التعليمية — شرح رياضيات بيسهّلك الماث، واجبات أسبوعية، امتحانات دورية، ومتابعة مستمرة.",
   /* (2026-و106) PWA — المنصة تتنصّب كتطبيق من كروم على الموبايل */
@@ -30,7 +30,7 @@ export var metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Mr Sherif",
+    title: "Math with Mr. Sherif",
   },
   icons: {
     icon: "/favicon.png",
