@@ -1632,6 +1632,28 @@ function ExamSettingsRow({ exam, adminId, onChanged }: { exam: any; adminId: str
     setSavingSched(false)
   }
 
+  /* (2026-و115) نهاية مدة الامتحان — بعد المدة: رسالة «مدة الامتحان خلصت» ليومين ثم اختفاء تلقائي */
+  const [endsVal, setEndsVal] = useState<string>(toLocalInputValue((exam as any).endsAt))
+  const expiredNow = (function () {
+    var em115 = (exam as any).endsAt ? new Date((exam as any).endsAt).getTime() : 0
+    return !!em115 && Date.now() >= em115
+  })()
+
+  const saveEnds = async function () {
+    if (!endsVal) { toast.error('اختار وقت النهاية الأول'); return }
+    setSavingSched(true)
+    var ok = await patchExam({ endsAt: new Date(endsVal).toISOString() }, 'تم تحديد نهاية مدة الامتحان — بعدها بتظهر رسالة «مدة الامتحان خلصت» ليومين وبيختفي تلقائيًا')
+    if (ok) onChanged()
+    setSavingSched(false)
+  }
+
+  const cancelEnds = async function () {
+    setSavingSched(true)
+    var ok = await patchExam({ endsAt: null }, 'تم إلغاء نهاية المدة — الامتحان هيفضل ظاهر للطلاب')
+    if (ok) { setEndsVal(''); onChanged() }
+    setSavingSched(false)
+  }
+
   return (
     <div className="mt-2 p-2 rounded-lg border border-dashed border-emerald-500/40 bg-emerald-500/5 space-y-1.5"
       onClick={function (e) { e.stopPropagation() }}>
@@ -1646,6 +1668,12 @@ function ExamSettingsRow({ exam, adminId, onChanged }: { exam: any; adminId: str
         {scheduled && (
           <Badge className="text-[9px] bg-blue-500 text-white">مجدول — يظهر {formatEgyptian(exam.scheduledAt)}</Badge>
         )}
+        {(exam as any).endsAt && !expiredNow && (
+          <Badge className="text-[9px] bg-orange-500 text-white">⏰ تنتهي {formatEgyptian((exam as any).endsAt)}</Badge>
+        )}
+        {expiredNow && (
+          <Badge className="text-[9px] bg-red-500 text-white">⏰ انتهت المدة</Badge>
+        )}
       </div>
       {/* سطر 2: المؤقت بالدقائق + موعد الظهور */}
       <div className="flex items-center gap-1.5 flex-wrap">
@@ -1657,6 +1685,15 @@ function ExamSettingsRow({ exam, adminId, onChanged }: { exam: any; adminId: str
         <Button type="button" variant="outline" size="sm" className="h-7 text-[10px] px-2" disabled={!schedVal || savingSched} onClick={saveSchedule}>حفظ الموعد</Button>
         {scheduled && (
           <Button type="button" variant="ghost" size="sm" className="h-7 text-[10px] px-2 text-destructive" disabled={savingSched} onClick={cancelSchedule}>إلغاء الجدولة</Button>
+        )}
+      </div>
+      {/* (2026-و115) سطر 2.5: نهاية مدة الامتحان — اختياري */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <Input type="datetime-local" value={endsVal} onChange={function (e) { setEndsVal(e.target.value) }}
+          placeholder="بلا نهاية" className="h-7 text-[11px] flex-1 min-w-[150px]" title="نهاية مدة الامتحان — بعد المدة بيتكتب للطلاب «مدة الامتحان خلصت» ليومين وبعدها بيختفي تلقائيًا (فارغ = بدون نهاية)" />
+        <Button type="button" variant="outline" size="sm" className="h-7 text-[10px] px-2" disabled={!endsVal || savingSched} onClick={saveEnds}>حفظ النهاية</Button>
+        {(exam as any).endsAt && (
+          <Button type="button" variant="ghost" size="sm" className="h-7 text-[10px] px-2 text-destructive" disabled={savingSched} onClick={cancelEnds}>إلغاء النهاية</Button>
         )}
       </div>
       {/* (2026-و26) سطر 3: استهداف الطلاب — مين يشوف الامتحان (زي الفيديوهات) */}
@@ -1748,6 +1785,8 @@ function ExamTrackingPanel({ onViewImage }: { onViewImage?: (src: string) => voi
   const [formShowResult, setFormShowResult] = useState(false)
   const [formTimeLimit, setFormTimeLimit] = useState('')
   const [formScheduledAt, setFormScheduledAt] = useState('')
+  /* (2026-و115) نهاية مدة الامتحان في فورم الإضافة */
+  const [formEndsAt, setFormEndsAt] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
   const answerKeyRef = useRef<HTMLInputElement>(null)
   const thumbnailRef = useRef<HTMLInputElement>(null)
@@ -1881,9 +1920,13 @@ function ExamTrackingPanel({ onViewImage }: { onViewImage?: (src: string) => voi
       if (formScheduledAt.trim()) {
         try { body.scheduledAt = new Date(formScheduledAt).toISOString() } catch (e) {}
       }
+      /* (2026-و115) نهاية مدة الامتحان (اختياري) */
+      if (formEndsAt.trim()) {
+        try { body.endsAt = new Date(formEndsAt).toISOString() } catch (e) {}
+      }
       const res = await fetch('/api/exams', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (res.ok) {
-        toast.success('تم إضافة الامتحان'); setShowForm(false); setFormTitle(''); setFormContent(''); setFormGrade(''); setFormFile(null); setFormFilePath(''); setFormFileType(''); setFormFileUrl(''); setFormQuestions([]); setFormPassScore(50); setAnswerKeyFile(null); setAnswerKeyPath(''); setAnswerKeyType(''); setAnswerKeyUrl(''); setThumbnailFile(null); setThumbnailPath(''); setThumbnailUrl(''); setExamModels([]); setFormShowResult(false); setFormTimeLimit(''); setFormScheduledAt(''); loadExams(false)
+        toast.success('تم إضافة الامتحان'); setShowForm(false); setFormTitle(''); setFormContent(''); setFormGrade(''); setFormFile(null); setFormFilePath(''); setFormFileType(''); setFormFileUrl(''); setFormQuestions([]); setFormPassScore(50); setAnswerKeyFile(null); setAnswerKeyPath(''); setAnswerKeyType(''); setAnswerKeyUrl(''); setThumbnailFile(null); setThumbnailPath(''); setThumbnailUrl(''); setExamModels([]); setFormShowResult(false); setFormTimeLimit(''); setFormScheduledAt(''); setFormEndsAt(''); loadExams(false)
       } else { try { const d = await res.json(); toast.error(d.error || 'خطأ', { duration: 8000 }) } catch { toast.error('خطأ في السيرفر - حاول تاني', { duration: 8000 }) } }
     } catch (err: any) { toast.error('خطأ في الاتصال: ' + (err.message || ''), { duration: 8000 }) }
     setSubmitting(false)
@@ -2160,6 +2203,16 @@ function ExamTrackingPanel({ onViewImage }: { onViewImage?: (src: string) => voi
                   <Button type="button" variant="ghost" size="sm" className="h-8 text-[11px] text-destructive"
                     onClick={function () { setFormScheduledAt('') }}>إلغاء الموعد (يظهر فورًا)</Button>
                 )}
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-muted-foreground">نهاية مدة الامتحان (اختياري)</Label>
+                  <Input type="datetime-local" value={formEndsAt}
+                    onChange={function (e) { setFormEndsAt(e.target.value) }}
+                    placeholder="بلا نهاية" className="h-8 text-xs" title="بعد المدة دي: بتظهر للطلاب رسالة «مدة الامتحان خلصت» ليومين وبعدها الامتحان بيختفي تلقائيًا" />
+                </div>
+                {formEndsAt && (
+                  <Button type="button" variant="ghost" size="sm" className="h-8 text-[11px] text-destructive"
+                    onClick={function () { setFormEndsAt('') }}>إلغاء النهاية (بدون نهاية)</Button>
+                )}
               </div>
             </div>
 
@@ -2193,6 +2246,9 @@ function ExamTrackingPanel({ onViewImage }: { onViewImage?: (src: string) => voi
                         {(exam as any).showResult && <Badge variant="outline" className="text-[9px] border-emerald-500/40 text-emerald-600">إجابات ظاهرة</Badge>}
                         {Number((exam as any).timeLimitMin) > 0 && <Badge variant="outline" className="text-[9px] border-red-500/40 text-red-600">⏱ {Number((exam as any).timeLimitMin)} د</Badge>}
                         {isScheduledFuture((exam as any).scheduledAt) && <Badge className="text-[9px] bg-blue-500 text-white">مجدول</Badge>}
+                        {/* (2026-و115) بادجات نهاية المدة */}
+                        {(exam as any).endsAt && !(exam as any).expired && <Badge variant="outline" className="text-[9px] border-orange-500/40 text-orange-600">⏰ تنتهي {formatEgyptian((exam as any).endsAt)}</Badge>}
+                        {(exam as any).expired && <Badge className="text-[9px] bg-red-500 text-white">⏰ انتهت المدة</Badge>}
                         {/* (2026-و26) بادج الاستهداف */}
                         {parseTargetStudentIds((exam as any).targetStudentIds).length > 0 && <Badge className="text-[9px] bg-teal-600 text-white">👥 موجه لـ {parseTargetStudentIds((exam as any).targetStudentIds).length} طالب</Badge>}
                       </div>

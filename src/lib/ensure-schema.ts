@@ -85,6 +85,8 @@ var SCHEMA_COLUMNS = [
   ['Exam', 'modelMode', 'TEXT', "DEFAULT 'random'"],
   ['Exam', 'fixedModel', 'TEXT', "DEFAULT ''"],
   ['Exam', 'passScore', 'REAL', 'DEFAULT 50'],
+  /* (2026-و115) نهاية مدة الامتحان — «مدة الامتحان خلصت» ليومين ثم اختفاء تلقائي */
+  ['Exam', 'endsAt', 'DATETIME', ''],
   ['ExamResult', 'score', 'REAL', 'DEFAULT 0'],
   ['ExamResult', 'maxScore', 'REAL', 'DEFAULT 100'],
   ['ExamResult', 'answers', 'TEXT', "DEFAULT ''"],
@@ -200,7 +202,7 @@ export var CORE_TABLES = ['Admin', 'Student', 'StudentActivity', 'Video', 'Homew
  * إشعارات Web Push لولي الأمر) دخل SCHEMA_TABLES — نفس الدرس الموثق
  * و38/و40/و43/و45: من غير تغيير المفتاح الجدول مش هيتعمل على
  * قواعد Turso الموجودة أول ريكوست بعد النشر. */
-var SCHEMA_HASH_KEY = 'schema_heal_hash_v2_w89'
+var SCHEMA_HASH_KEY = 'schema_heal_hash_v2_w89_w115_examends'
 
 /* ============================================================
  * 2026-و23 — **إصلاح بطء المنصة** (طلب المستر: «المنصة بطيئة، تسجيل

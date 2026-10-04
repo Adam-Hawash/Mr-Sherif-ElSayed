@@ -256,6 +256,8 @@ function StudentPortalInner() {
       /* (25-b2) المجدول مستقبليًا مينزلش للطالب من الـ API — لو شوفت scheduledAt
          مستقبلي في بيانات قديمة (كاش) نتجاهله بصمت من أي قايمة للطالب */
       if (isExamScheduledAhead(e)) return false
+      /* (2026-و115) الامتحان اللي خلصت مدته مش بيتحسب في «المطلوب دلوقتي» */
+      if ((e as any).ended) return false
       return !initialData.examResults.find(function (r) { return r.examId === e.id })
     })
     var pendingHomework = pendingHwList.length
@@ -3623,8 +3625,11 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
         let hasQuestions = false
         let parsedQuestions: any[] = []
         try { if ((exam as any).questions) { parsedQuestions = JSON.parse((exam as any).questions); hasQuestions = parsedQuestions.length > 0 } } catch {}
+        /* (2026-و115) نهاية المدة عدت؟ الكارت بيبان برسالة «مدة الامتحان خلصت»
+           (لسه في مهلة اليومين قبل الاختفاء التلقائي من السيرفر) */
+        const isEnded115 = (exam as any).ended === true
         return (
-          <Card key={exam.id} className={isExamSeqLocked ? 'border-red-500/30 opacity-90' : isCompleted ? 'border-emerald-500/30' : ''}>
+          <Card key={exam.id} className={isEnded115 ? 'border-red-500/30 opacity-75' : isExamSeqLocked ? 'border-red-500/30 opacity-90' : isCompleted ? 'border-emerald-500/30' : ''}>
             <CardContent className="p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-start gap-3 min-w-0 flex-1">
@@ -3655,6 +3660,12 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
                       <div className="flex items-center gap-2 flex-wrap">
                         <Badge className="text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
                           تم تسليم الامتحان
+                        </Badge>
+                      </div>
+                    ) : isEnded115 ? (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge className="text-xs bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                          ⏰ مدة الامتحان خلصت
                         </Badge>
                       </div>
                     ) : isExamSeqLocked ? (

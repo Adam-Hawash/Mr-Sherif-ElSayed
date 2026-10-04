@@ -132,7 +132,7 @@ export async function POST(request) {
       /* (25-ب1) showResult مضاف للـ SELECT — بنقرأه بس للرد النهائي
          (إظهار نتيجة الاختياري للطالب أو رسالة الانتظار) */
       var examRows = await db.$queryRawUnsafe(
-        'SELECT id, title, questions, passScore, models, modelMode, fixedModel, showResult, targetStudentIds, targetGroupIds FROM Exam WHERE id = ? LIMIT 1',
+        'SELECT id, title, questions, passScore, models, modelMode, fixedModel, showResult, endsAt, targetStudentIds, targetGroupIds FROM Exam WHERE id = ? LIMIT 1',
         examId
       )
       exam = examRows && examRows.length > 0 ? examRows[0] : null
@@ -143,6 +143,15 @@ export async function POST(request) {
     if (!exam) {
       return NextResponse.json({ error: 'الامتحان غير موجود' }, { status: 404 })
     }
+
+    /* (2026-و115) نهاية مدة الامتحان عدّت؟ التسليم مرفوض — طلب المستر:
+       «الامتحان بعد المدة دي يتلغي» */
+    try {
+      var endsMs115 = exam.endsAt ? new Date(exam.endsAt).getTime() : 0
+      if (endsMs115 && Date.now() > endsMs115) {
+        return NextResponse.json({ error: 'مدة الامتحان خلصت', ended: true }, { status: 410 })
+      }
+    } catch (e115) {}
 
     /* (2026-و26) حارس الاستهداف: الامتحان الموجه لطلاب محددين — التسليم
        مسموح للي اسمه في القايمة بس (حتى لو طلبه بنفسه بالـ API)
