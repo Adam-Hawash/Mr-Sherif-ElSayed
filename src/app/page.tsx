@@ -35,6 +35,14 @@ const LessonsSection = dynamic(() => import('@/components/landing/LessonsSection
   loading: () => <div className="h-20" />,
   ssr: false,
 })
+/* (ص119) الفيديوهات التعريفية — نفس أماكن Zicola-Math بالظبط:
+   فيديو المنصة بعد الهيرو مباشرة + فيديو المستر قبل قسم المعرض */
+const IntroVideoSection = dynamic(() => import('@/components/landing/IntroVideoSection'), {
+  loading: () => <div className="h-20" />,
+})
+const TeacherVideoSection = dynamic(() => import('@/components/landing/TeacherVideoSection'), {
+  loading: () => <div className="h-20" />,
+})
 const WhatsAppButton = dynamic(() => import('@/components/landing/WhatsAppButton').then(m => ({ default: m.WhatsAppButton })), {
   ssr: false,
 })
@@ -207,12 +215,16 @@ export default function HomePage() {
         <main className="flex-1">
           <HeroSection />
           {/* (و111-e) تأثير «لما بنزل الحاجات بتتكون» — كل قسم بيظهر بتلاشي وصعود (بدون الهيرو) */}
+          {/* (ص119) الفيديو التعريفي — أول قسم بعد الهيرو مباشرة (نفس زيكولا) */}
+          <Reveal><IntroVideoSection /></Reveal>
           <Reveal><FeaturesGuideSection /></Reveal>
           <Reveal><FeaturesSection /></Reveal>
           <Reveal><GradesSection /></Reveal>
           {/* (2026-و29) أفضل 3 طلاب بقوا في النافبار (زرار أوائل الطلبة) بدل الرئيسية */}
           <Reveal><LessonsSection /></Reveal>
           <Reveal><TipsSection /></Reveal>
+          {/* (ص119) فيديو تعريف المستر — قبل قسم المعرض بالظبط (نفس زيكولا) */}
+          <Reveal><TeacherVideoSection /></Reveal>
           <Reveal><GallerySection /></Reveal>
         </main>
       )}

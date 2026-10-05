@@ -11,6 +11,7 @@ import { toast } from 'sonner'
 import { PlatformLoader } from '@/components/PlatformLoader'
 import type { SiteConfig } from '@/stores/app-store'
 import { chunkedUpload } from '@/lib/chunked-upload'
+import { VideoLinksCard } from './VideoLinksCard'
 
 interface FieldDef {
   key: string
@@ -506,6 +507,9 @@ export function CMSPanel() {
 
   return (
     <div className="space-y-6">
+      {/* (ص119) الفيديوهات التعريفية — فيديو المنصة + فيديو المستر (نفس Zicola-Math) */}
+      <VideoLinksCard />
+
       {/* Image Management */}
       <Card>
         <CardHeader>

@@ -12,6 +12,34 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { isAdmin, verifyVideoToken } from '@/lib/video-guard'
 
+/* (ص119) حذف ملف من جدول Media — محمي بمعرّف الأدمن (نفس بوابة isAdmin
+   بتاعة تشغيل الفيديو). بيستخدمه كارت الفيديوهات التعريفية في لوحة الأدمن
+   لمسح ملف الـ Media اليتيم لما لينك/ملف جديد يستبدل القديم أو عند الحذف
+   عشان مايفضلش ياكل مساحة من قاعدة البيانات (نفس Zicola-Math) */
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    var { id } = await params
+    const { searchParams } = new URL(request.url)
+    const adminOk = await isAdmin(searchParams.get('adminId'))
+    if (!adminOk) {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 })
+    }
+    var removed = await db.media.delete({ where: { id } }).catch(function (e) {
+      return null
+    })
+    if (!removed) {
+      return NextResponse.json({ error: 'الملف مش موجود' }, { status: 404 })
+    }
+    return NextResponse.json({ ok: true, deleted: id })
+  } catch (error: any) {
+    console.error('File delete error:', error)
+    return NextResponse.json({ error: 'حذف الملف فشل' }, { status: 500 })
+  }
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -19,6 +47,32 @@ export async function GET(
   try {
     var { id } = await params
     const { searchParams } = new URL(request.url)
+
+    /* ===== (ص119) ميتاداتا الملف للوحة الأدمن — اسم/نوع/حجم/تاريخ بدون البلوب.
+       كارتا الفيديوهات التعريفية بيعرضوا «الحالة الحالية» (اسم الملف وتاريخه) منها.
+       محمي بـ adminId زي الحذف بالظبط (نفس Zicola-Math). ===== */
+    if (searchParams.get('meta') === '1') {
+      const adminOkMeta = await isAdmin(searchParams.get('adminId'))
+      if (!adminOkMeta) {
+        return NextResponse.json({ error: 'غير مصرح' }, { status: 403 })
+      }
+      var metaRowsOnly: any[] = await db.$queryRawUnsafe(
+        'SELECT id, filename, fileType, fileSize, category, createdAt FROM Media WHERE id = ? LIMIT 1',
+        id
+      ) as any[]
+      var metaOnly = metaRowsOnly && metaRowsOnly[0]
+      if (!metaOnly) {
+        return NextResponse.json({ error: 'الملف مش موجود' }, { status: 404 })
+      }
+      return NextResponse.json({
+        id: metaOnly.id,
+        filename: metaOnly.filename || '',
+        fileType: metaOnly.fileType || '',
+        fileSize: Number(metaOnly.fileSize || 0),
+        category: metaOnly.category || '',
+        createdAt: metaOnly.createdAt || null,
+      })
+    }
 
     /* ===== (تسريع الفيديو) القراءة بالبايت من غير تحميل الملف كله =====
        القديم: كل طلب — أول كل seek — بيجيب الـ base64 كامل من القاعدة ويفك
@@ -54,22 +108,25 @@ export async function GET(
 
     // ===== بوابة الفيديو: ملفات الفيديو محمية دايماً =====
     /* (و93) استثناء فيديوهات المعرض: category='gallery' عامة زي يوتيوب.
-       (2026-و84) الفيديو التعريفي العام — بيبص على القيمة الحالية كل طلب. */
+       (2026-و84 + ص119) الفيديوهات التعريفية العامة — بيبصوا على القيمة الحالية كل طلب:
+       أي مفتاح من (intro_video_url / teacher_video_url) قيمته الحالية فيها id الملف → عام */
     if (String(contentType).startsWith('video/') && meta.category !== 'gallery') {
       const token = searchParams.get('token')
       const reqId = searchParams.get('req') || ''
       const adminId = searchParams.get('adminId') || ''
       const tokenOk = token ? verifyVideoToken(token, id, reqId) : false
       const adminOk = adminId ? await isAdmin(adminId) : false
-      var isIntroPublic = false
+      var isPublicConfigVideo = false
       try {
-        var introRows: any[] = await db.$queryRawUnsafe(
-          "SELECT value FROM SiteConfig WHERE key = 'intro_video_url' LIMIT 1"
+        var pubRows: any[] = await db.$queryRawUnsafe(
+          "SELECT value FROM SiteConfig WHERE key IN ('intro_video_url', 'teacher_video_url')"
         ) as any[]
-        var introVal = introRows && introRows[0] ? String(introRows[0].value || '') : ''
-        isIntroPublic = !!introVal && introVal.indexOf(id) !== -1
+        for (var ri = 0; ri < pubRows.length; ri++) {
+          var pubVal = String(pubRows[ri].value || '')
+          if (pubVal && pubVal.indexOf(id) !== -1) { isPublicConfigVideo = true; break }
+        }
       } catch (e) { /* جدول ناقص — نكمل بالحماية العادية */ }
-      if (!tokenOk && !adminOk && !isIntroPublic) {
+      if (!tokenOk && !adminOk && !isPublicConfigVideo) {
         return NextResponse.json(
           { error: 'غير مسموح — الفيديو بيتشغل من داخل المنصة بس' },
           { status: 403 }
