@@ -261,7 +261,11 @@ export function AdminDashboard() {
     ;(async () => {
       let sweptAny = false
       try {
-        for (let i = 0; i < 40; i++) {
+        /* (ص119) كانت لحد 40 طلب sweep ورا بعض — وكل طلب بيصحح بالذكاء
+           الاصطناعي (ممكن ياخد دقايق) فكان بيخنق باقي طلبات اللوحة على
+           Vercel. بقت 4 طلبات في الفتح مع ثانية راحة بينهم — الباقي
+           بيكمّله sweep اللي بيشتغل من routes تانية بشكل طبيعي. */
+        for (let i = 0; i < 4; i++) {
           const res = await fetch('/api/grading/sweep', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -270,6 +274,7 @@ export function AdminDashboard() {
           const data = await res.json()
           if (data && (data.fixed > 0 || (data.cleanedOrphans && (data.cleanedOrphans.homework > 0 || data.cleanedOrphans.exam > 0)))) sweptAny = true
           if (!data || data.done || data.remaining === 0) break
+          await new Promise((r) => setTimeout(r, 1000))
         }
       } catch { /* silent — التنضيف بيتعمل كمان من routes تانية */ }
       if (sweptAny) fetchStats()
@@ -279,23 +284,26 @@ export function AdminDashboard() {
   const openSettings = async () => {
     setShowSettings(true)
     setSettingsLoading(true)
+    /* (ص119) الطلبين كانوا ورا بعض — بقوا بالتوازي عشان شاشة الإعدادات تفتح في نص الوقت */
+    var settingsPromise = fetch('/api/admin/settings')
+      .then(function (r) { return r.json() })
+      .catch(function () { return null })
+    var configPromise = fetch('/api/config?fresh=' + Date.now())
+      .then(function (r) { return r.json() })
+      .catch(function () { return null })
     try {
-      const res = await fetch('/api/admin/settings')
-      const data = await res.json()
-      if (data.admin) {
+      const [data, cfgData] = await Promise.all([settingsPromise, configPromise])
+      if (data && data.admin) {
         setSettingsEmail(data.admin.email || '')
         if (data.admin.email && setCurrentAdmin) setCurrentAdmin({ ...currentAdmin!, email: data.admin.email })
       }
-      // Load Resend API key
-      try {
-        const cfgRes = await fetch('/api/config?fresh=' + Date.now())
-        const cfgData = await cfgRes.json()
+      if (cfgData) {
         setResendApiKey(cfgData.resend_api_key || '')
         setHeroDevUrl(cfgData.hero_developer_url || '')
         setVodafoneCash(cfgData.payment_vodafone_cash || '')
         setInstapay(cfgData.payment_instapay || '')
         setFawry(cfgData.payment_fawry || '')
-      } catch { /* silent */ }
+      }
     } catch { /* silent */ }
     setSettingsLoading(false)
   }

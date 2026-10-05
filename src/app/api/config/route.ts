@@ -176,20 +176,28 @@ export async function PUT(request) {
     var body = await request.json()
     var keys = Object.keys(body)
 
+    /* (ص119) إصلاح «صفحة الأدمن بتاخد وقت عقبال ما تتحفظ»:
+     * كل مفتاح كان بيتكتب لوحده — حفظ الكونفج الكامل = عشرات الرحلات
+     * المتتالية على Turso = دقايق. دلوقتي كل المفاتيح في transaction
+     * واحدة (batch واحدة على قاعدة البيانات) = ثواني أو أقل. */
+    var upserts = []
     for (var i = 0; i < keys.length; i++) {
       var key = keys[i]
       var value = body[key]
       // Skip non-config keys that might come from error responses
       if (key === 'error' || key === 'defaults') continue
-      await safeWrite(function(k, v) {
-        return function() {
-          return db.siteConfig.upsert({
-            where: { key: k },
-            update: { value: v, updatedAt: new Date() },
-            create: { key: k, value: v },
-          })
-        }
-      }(key, value))
+      upserts.push(
+        db.siteConfig.upsert({
+          where: { key: key },
+          update: { value: String(value), updatedAt: new Date() },
+          create: { key: key, value: String(value) },
+        })
+      )
+    }
+    if (upserts.length > 0) {
+      await safeWrite(function () {
+        return db.$transaction(upserts)
+      })
     }
 
     return NextResponse.json({ message: 'Config updated' })
