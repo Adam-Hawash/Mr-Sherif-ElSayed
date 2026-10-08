@@ -117,20 +117,22 @@ export function Navbar() {
               <img
                 src={instructorPhoto}
                 alt="مستر شريف السيد"
-                width={36}
-                height={36}
-                className="h-9 w-9 rounded-xl object-cover border border-primary/40 shadow-sm"
+                width={40}
+                height={40}
+                className="h-10 w-10 rounded-xl object-cover border border-primary/40 shadow-sm"
               />
             ) : (
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                 <span className="text-xs font-bold">MS</span>
               </div>
             )}
+            {/* (تكبير الهيدر — طلب المستر: «كلمة اللي فوق كبّرها زي بقية المنصات»)
+               المرجع = منصة مس سحر: text-lg font-extrabold — كانت text-sm font-bold */}
             <div className="hidden sm:block">
-              <h1 className="text-sm font-bold leading-tight text-foreground">
+              <h1 className="text-lg font-extrabold leading-tight text-foreground whitespace-nowrap">
                 {navBrand}
               </h1>
-              <p className="text-[11px] text-muted-foreground leading-tight">
+              <p className="text-xs text-muted-foreground leading-tight">
                 {navSubtitle}
               </p>
             </div>
