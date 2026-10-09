@@ -21,6 +21,7 @@ import type { Video as VideoType, Homework, Exam, Announcement, Discussion, Exam
 import { MathKeyboard } from '@/components/student/MathKeyboard'
 import { PlatformLoader } from '@/components/PlatformLoader'
 import { SecurePlayerModal } from '@/components/student/SecurePlayerModal'
+import { ExamResultViewer } from '@/components/student/ExamResultViewer'
 import { StudentComplaints } from '@/components/student/StudentComplaints'
 import { InstallPwaButton } from '@/components/InstallPwaButton'
 /* (2026-و66) نظام منع الغش والتشتت الذكي — مراقبة مغادرة الامتحان */
@@ -3139,6 +3140,14 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
         >
           العودة إلى قائمة الامتحانات
         </Button>
+        {/* (2026-ي2) لو المستر مفعّل «إظهار النتيجة» — الطالب يشوف درجته من شاشة البلوك نفسها */}
+        {(() => {
+          var bxE: any = exams.find(function(e) { return e.id === blockedExamId })
+          var bxR: any = bxE ? results.find(function(r) { return r.examId === bxE.id }) : null
+          return bxE && (bxE as any).showResult === true ? (
+            <ExamResultViewer studentId={studentId} examId={bxE.id} examTitle={bxE.title} result={bxR} />
+          ) : null
+        })()}
       </div>
     )
   }
@@ -3661,6 +3670,14 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
                         <Badge className="text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
                           تم تسليم الامتحان
                         </Badge>
+                        {(exam as any).showResult === true && (
+                          <ExamResultViewer
+                            studentId={studentId}
+                            examId={exam.id}
+                            examTitle={exam.title}
+                            result={examResult}
+                          />
+                        )}
                       </div>
                     ) : isEnded115 ? (
                       <div className="flex items-center gap-2 flex-wrap">

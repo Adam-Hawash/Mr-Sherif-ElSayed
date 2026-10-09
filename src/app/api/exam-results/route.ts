@@ -28,8 +28,25 @@ export async function GET(request: NextRequest) {
       /* 2026-و12 — طلب المستر الصريح: النتيجة ممنوعة على الطالب — الرد
          بيرجع بس (سلّم إمتى) عشان حالة «تم التقديم» والقفل التسلسلي،
        من غير أي درجة أو تصحيح أو إجابة نموذجية (دي لمستر شريف بس) */
+      /* (2026-ي2) درجة الطالب توصله في أي وقت لو المستر مفعّل «إظهار النتيجة»
+         للامتحان نفسه — showResult=0 يفضل مقفول بالحرف (قرار 2026-و12 زي ما هو).
+         شكوى المستر: ناس كتير مش عارفة تشوف درجة الامتحان مع إن الخيار مفعّل */
+      var examShowMap2: Record<string, boolean> = {}
+      try {
+        var exIdList2: string[] = []
+        ;(rows || []).forEach(function(r: any) { if (r && r.examId && exIdList2.indexOf(r.examId) === -1) exIdList2.push(r.examId) })
+        if (exIdList2.length > 0) {
+          try { await db.$executeRawUnsafe('ALTER TABLE Exam ADD COLUMN showResult INTEGER DEFAULT 0') } catch (eS2) {}
+          var phS2 = exIdList2.map(function() { return '?' }).join(',')
+          var srRows2 = await db.$queryRawUnsafe('SELECT id, showResult FROM Exam WHERE id IN (' + phS2 + ')', ...exIdList2) as any[]
+          ;(srRows2 || []).forEach(function(sr: any) { examShowMap2[sr.id] = (sr.showResult === 1 || sr.showResult === true) })
+        }
+      } catch (eMap2) {}
       var minimal = (rows || []).map(function(r: any) {
-        return { id: r.id, examId: r.examId, submittedAt: r.submittedAt }
+        if (examShowMap2[r.examId] !== true) return { id: r.id, examId: r.examId, submittedAt: r.submittedAt }
+        var wgArr3: any[] = []
+        try { wgArr3 = r.writingGrades ? JSON.parse(r.writingGrades) : [] } catch (eW3) { wgArr3 = [] }
+        return { id: r.id, examId: r.examId, studentId: r.studentId, score: r.score, maxScore: r.maxScore, submittedAt: r.submittedAt, writingGrades: wgArr3 }
       })
 
       // self-heal: نتايج قديمة ناقصة التصحيح → إعادة تصحيح تلقائي بالذكاء الاصطناعي

@@ -1949,7 +1949,7 @@ function fileError(msg){
   var ov = document.getElementById('fileErrOv');
   if(!ov){
     ov = document.createElement('div'); ov.id = 'fileErrOv';
-    ov.style.cssText = 'position:absolute;inset:0;z-index:75;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(2,2,8,.92)';
+    ov.style.cssText = 'position:absolute;inset:0;z-index:85;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(2,2,8,.92)';
     ov.innerHTML = '<p style="color:#fff;font-size:13.5px;font-weight:700;max-width:82%;text-align:center;line-height:1.95;margin:0;direction:rtl"></p>' +
       '<button type="button" style="padding:10px 22px;border-radius:10px;border:0;background:#fff;color:#111;font-weight:800;font-size:13px;cursor:pointer;font-family:system-ui,sans-serif">حاول تاني ↻</button>';
     ov.getElementsByTagName('button')[0].addEventListener('click', function(){ try{ location.reload(); }catch(e){} });
@@ -2203,9 +2203,31 @@ function mountFile(){
   wrap.appendChild(v);
   fileApi = v;
   /* طبقة النقر — دوسة على الفيديو = تشغيل/إيقاف (سلوك المشغل العادي) */
-  var tap = document.createElement('div'); tap.id = 'tapLayer';
+    var tap = document.createElement('div'); tap.id = 'tapLayer';
   tap.addEventListener('click', function(){ if(!tapOk()) return; try{ if(v.paused){ v.play(); } else { v.pause(); } }catch(e){} });
   wrap.appendChild(tap);
+  /* (2026-ي1) شاشة بداية الملفات «اضغط للمشاهدة» — طلب المستر: ناس كتير مش
+     عارفة تشغّل الفيديو لأنه بيفتح على شاشة سودة وزرار التشغيل صغير في الشريط.
+     دلوقتي: شاشة بداية واضحة زي يوتيوب بالظبط — زرار تشغيل كبير + مدة الفيديو */
+  var fStart = document.createElement('div');
+  fStart.id = 'fileStartOv';
+  fStart.style.cssText = 'position:absolute;inset:0;z-index:80;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(2,2,8,.96);cursor:pointer';
+  fStart.innerHTML = '<div style="width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.35);display:flex;align-items:center;justify-content:center;color:#fff"><svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg></div>' +
+    '<p style="color:#fff;font-size:14.5px;font-weight:800;margin:0;font-family:system-ui,sans-serif">اضغط للمشاهدة</p>' +
+    '<div id="mgFDur" style="display:none;align-items:center;gap:6px;background:rgba(0,0,0,.7);border:1px solid rgba(255,255,255,.25);border-radius:10px;padding:5px 12px;color:#fff;font-weight:800;font-size:12.5px;font-family:system-ui,sans-serif;direction:ltr"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg><span id="mgFDurT"></span></div>';
+  var fStartGone = false;
+  function fStartKill(){ if(fStartGone) return; fStartGone = true; try{ if(fStart.parentNode) fStart.parentNode.removeChild(fStart); }catch(e){} }
+  function fStartGo(){ try{ fStartKill(); var pp = v.play(); if(pp && pp.catch) pp.catch(function(){}); }catch(e){} }
+  fStart.addEventListener('click', function(e){ e.preventDefault(); e.stopPropagation(); if(!tapOk()) return; fStartGo(); });
+  fStart.addEventListener('touchend', function(e){ e.preventDefault(); e.stopPropagation(); if(!tapOk()) return; fStartGo(); });
+  wrap.appendChild(fStart);
+  /* مدة الفيديو تظهر على شاشة البداية أول ما الميتاداتا تجهز (طلب المستر 2026-د) */
+  v.addEventListener('loadedmetadata', function(){
+    try{ var dchF = document.getElementById('mgFDur'); if(dchF && v.duration && isFinite(v.duration) && v.duration > 0){ dchF.style.display = 'flex'; var dtF = document.getElementById('mgFDurT'); if(dtF) dtF.textContent = fmtTime(v.duration); } }catch(e){}
+  });
+  /* لو اشتغل لوحده (تكملة من حيث وقفت) أو حصل خطأ → الشاشة تختفي فورًا */
+  v.addEventListener('play', function(){ fStartKill(); });
+  v.addEventListener('error', function(){ fStartKill(); });
   buildFileBar();
   /* المصدر: بث HLS له قايمة جودات حقيقية — Cloudinary ليه جودات حقيقية من الرابط — الملف المباشر بجودته الأصلية */
   var src = String(CFG.fileUrl || '');
