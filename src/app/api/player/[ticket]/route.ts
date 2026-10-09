@@ -561,11 +561,6 @@ const PLAYER_PAGE = `<!doctype html>
      RTL بيبقى تحت الشمال زي ما ظهر في سكرين شوت المستر والباتش القديم
      كان تحت يمين فكان مش بيوصله — وملء الشاشة بقى زرار جوه الشريط) */
   /* ===== حماية الفحص ===== */
-  #devshield{position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;background:rgba(5,5,10,.92);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
-  #devshield .box{text-align:center;color:#e5e7eb;direction:rtl;padding:24px}
-  #devshield .box .ic{font-size:44px;margin-bottom:10px}
-  #devshield .box p{font-size:16px;font-weight:700;line-height:2;margin:0}
-  #devshield .box small{display:block;margin-top:6px;color:#9ca3af;font-size:12px}
   #toast{position:fixed;top:18px;right:50%;transform:translateX(50%);z-index:10000;background:rgba(20,20,28,.95);color:#fff;
     border:1px solid rgba(255,255,255,.18);padding:10px 18px;border-radius:12px;font-size:13px;font-weight:600;direction:rtl;
     opacity:0;pointer-events:none;transition:opacity .25s;box-shadow:0 6px 24px rgba(0,0,0,.5)}
@@ -574,7 +569,6 @@ const PLAYER_PAGE = `<!doctype html>
 </head>
 <body>
 <div id="stage"><div id="wrap"></div></div>
-<div id="devshield"><div class="box"><div class="ic">🛡️</div><p>وضع الفحص مش مسموح هنا</p><small>اقفل أدوات المطوّر عشان تكمل مشاهدة الفيديو</small></div></div>
 <div id="toast"></div>
 <script>
 'use strict';
@@ -967,33 +961,14 @@ document.addEventListener('keydown', function(e){
    "لا أنا عاوزك ما تجبهاليش خالص". مفيش أي شاشة فوق الفيديو ولا أي
    إيقاف تلقائي خالص. الحماية الحقيقية دلوقتي: منع الاختصارات والكليك
    يمين + الووترمارك باسم الطالب ورقمه في كل إطار. */
-var devOpen = false, wasPlayingBeforeDev = false;
-// هنقيس على نافذة التاب العلوية (نفس الدومين فمسموح) — لو قسنا على الـ iframe
-// نفسه الفرق الطبيعي بين مقاس الـ iframe والنافذة هيعمل إنذار كاذب
-function devDelta(){
-  try{
-    var top = window.top;
-    if(top && top.outerWidth && top.innerWidth){
-      return Math.max(top.outerWidth - top.innerWidth, top.outerHeight - top.innerHeight);
-    }
-  }catch(e){}
-  return 0;
-}
-var devGraceUntil = Date.now() + 2500; // مهلة عند الفتح عشان أي قياس أول تشغيل
-setInterval(function(){
-  var deltaOk = Date.now() > devGraceUntil && devDelta() > 180;
-  if(deltaOk && !devOpen){
-    devOpen = true;
-    document.getElementById('devshield').style.display = 'flex';
-    try{ if(playerApi){ wasPlayingBeforeDev = !playerApi.paused(); playerApi.pause(); } }catch(e){}
-    try{ if(fileApi && !fileApi.paused){ wasPlayingBeforeDev = !fileApi.paused; fileApi.pause(); } }catch(e){}
-  } else if(!deltaOk && devOpen){
-    devOpen = false;
-    document.getElementById('devshield').style.display = 'none';
-    try{ if(playerApi && wasPlayingBeforeDev) playerApi.play(); }catch(e){}
-    try{ if(fileApi && wasPlayingBeforeDev) fileApi.play(); }catch(e){}
-  }
-}, 1200);
+/* (2026-ز11 — طلب المستر): درع «وضع الفحص مش مسموح هنا» اتشال خالص.
+   الكشف القديم كان بيقيس فرق مقاس نافذة المتصفح (outer - inner) وده
+   بيعمل إنذارات كاذبة كتير: زووم المتصفح 125%/150% (شايع على اللابتوبات)،
+   سايدبار المتصفح في إيدج/أوبرا/فايرفوكس، شريط التنزيلات، وإنفوبارات
+   الترجمة — فطلاب أبرياء كانوا بيلقوا الفيديو واقف برسالة «اقفل أدوات
+   المطوّر» مع إنهم مافتحوش أي أدوات. الحمايات اللي مفيهاش إنذارات كاذبة
+   فاضلة زي ما هي: منع اختصارات أدوات المطوّر + منع الكليك يمين + منع
+   الحفظ + الووترمارك باسم الطالب ورقمه في كل إطار. */
 
 /* ===== مشغّل يوتيوب — بدون أي شكل يوتيوب: كنترولز خاصة بينا + شاشات تغطية
    بتمنع ظهور العنوان/اللوجو نهائيًا. الـ ID بيتفك في الذاكرة بس زي ما هو ===== */

@@ -199,13 +199,30 @@ export async function POST(request: NextRequest) {
     // نفسه — الكود كان بيجيب واجهة يوتيوب ومفيش تحكم فعلي في الجودة.
     const finalUrl = String(url || '').trim()
 
-    /* (2026-ص) لو الصف ده مرتب يدويًا (فيه sortIndex > 0) — الفيديو الجديد
-       بيتمسك في الآخر (maxSort+1) عشان مايقفزش أول القايمة. */
+    /* (2026-ز11 — طلب المستر الحرفي): «اللي ينزل الجديد يبقى في الاول واللي
+       في الاخر يكون الاقدم» — الفيديو/الدرس الجديد بياخد أصغر رقم ترتيب
+       (minSort-1) فبيطلع أول القايمة حتى لو الصف مرتب يدويًا.
+       أما جزء جديد بيتركب على درس موجود (groupKey) فبياخد ترتيب درسه
+       عشان الدرس مايتنقلش من مكانه والأجزاء تفضل متسلسلة جواه. */
     let newSortIndex = 0
     try {
-      const agg = await db.video.aggregate({ _max: { sortIndex: true }, where: { grade: String(grade) } })
-      const maxSort = Number((agg._max && (agg._max as { sortIndex: number | null }).sortIndex) || 0)
-      if (maxSort > 0) newSortIndex = maxSort + 1
+      let inherited = false
+      if (finalGroupKey && !isMulti) {
+        const grpPart = await db.video.findFirst({
+          where: { groupKey: finalGroupKey },
+          orderBy: { sortIndex: 'asc' },
+          select: { sortIndex: true },
+        })
+        if (grpPart && Number(grpPart.sortIndex) !== 0) {
+          newSortIndex = Number(grpPart.sortIndex) || 0
+          inherited = true
+        }
+      }
+      if (!inherited) {
+        const agg = await db.video.aggregate({ _min: { sortIndex: true }, where: { grade: String(grade) } })
+        const minSort = Number((agg._min && (agg._min as { sortIndex: number | null }).sortIndex) || 0)
+        newSortIndex = minSort - 1
+      }
     } catch {}
 
     if (!finalUrl && !filePath) {

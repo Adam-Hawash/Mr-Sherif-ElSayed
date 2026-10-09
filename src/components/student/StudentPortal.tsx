@@ -607,8 +607,10 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
     return Object.assign({}, videoProgress, progressOverrides)
   }, [videoProgress, progressOverrides])
 
-  // ترتيب الدروس من الأقدم للأحدث — ده ترتيب نزول الدروس نفسه (الأول في المنهج فوق)
-  // (2026-ص) الترتيب اليدوي للمستر (▲▼ من لوحة التحكم) بيتقدم على التاريخ
+  /* (2026-ز11 — طلب المستر الحرفي): «اللي ينزل الجديد يبقى في الاول واللي
+     في الاخر يكون الاقدم» — الفيديو الجديد فوق والقديم تحت.
+     الترتيب اليدوي للمستر (▲▼) لسه بيتقدم على التاريخ، والفيديو الجديد
+     بياخد أصغر رقم ترتيب من السيرفر فبيطلع فوق حتى في الصفوف المرتبة. */
   const orderedVideos = useMemo(function () {
     return videos.slice().sort(function (a, b) {
       var sa = Number((a as any).sortIndex) || 0
@@ -616,7 +618,7 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
       if (sa !== sb) return sa - sb
       var ta = new Date((a as any).createdAt || 0).getTime()
       var tb = new Date((b as any).createdAt || 0).getTime()
-      return ta - tb
+      return tb - ta
     })
   }, [videos])
 
