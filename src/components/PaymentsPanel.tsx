@@ -189,16 +189,23 @@ export function PaymentsPanel({ onRefresh }: { onRefresh: () => void }) {
   }
 
   /* ===== Delete student ===== */
+  /* ===== (2026-ز12 — طلب المستر) زرار الحذف = رفض + حذف من المنصة:
+     الحساب بيتقفل نهائيًا — لو الطالب حاول يدخل أو يسجل تاني هيتقالده
+     «حسابك مرفوض من المنصة» — وبينختفي من القايمة ===== */
   var handleDeleteStudent = async function(studentId: string) {
-    if (!confirm('هل أنت متأكد من حذف هذا الطالب؟ سيتم حذفه نهائياً من المنصة.')) return
+    if (!confirm('رفض وحذف الطالب من المنصة؟ لو حاول يدخل تاني هيتقالده حسابك مرفوض.')) return
     try {
-      var res = await fetch('/api/students/' + studentId, { method: 'DELETE' })
+      var res = await fetch('/api/students/' + studentId, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'rejected' }),
+      })
       if (res.ok) {
-        toast.success('تم حذف الطالب نهائياً')
+        toast.success('تم رفض الطالب وحذفه من المنصة — لو حاول يدخل تاني هيتقالده حسابك مرفوض')
         if (expandedStudent === studentId) { setExpandedStudent(null); setStudentVideos([]) }
         loadStudents()
         onRefresh()
-      } else { toast.error('خطأ في الحذف') }
+      } else { toast.error('خطأ في رفض الطالب') }
     } catch { toast.error('خطأ في الاتصال') }
   }
 

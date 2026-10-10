@@ -549,7 +549,7 @@ function StatCard({ icon: Icon, label, value, color }: { icon: any; label: strin
 function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () => void; onViewImage: (src: string) => void }) {
   const [students, setStudents] = useState<Student[]>([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'paid'>('pending')
+  const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'paid' | 'rejected'>('pending')
   const [filterGrade, setFilterGrade] = useState('')
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null)
   const [studentProgress, setStudentProgress] = useState<any>(null)
@@ -601,9 +601,13 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
     } catch { toast.error('خطأ في تحديث حالة الطالب') }
   }
 
-  const handleDelete = async (id: string) => {
-    try { await fetch(`/api/students/${id}`, { method: 'DELETE' }); toast.success('تم حذف الطالب'); loadStudents(false); onStatsRefresh() }
-    catch { toast.error('خطأ في حذف الطالب') }
+  /* (2026-ز12 — طلب المستر): زرار الباسكت الوحيد = رفض + حذف من المنصة:
+     الحساب بيتقفل نهائيًا (status=rejected) — لو الطالب حاول يدخل أو يسجل
+     تاني هيتقالده «حسابك مرفوض من المنصة»، وبينختفي من كل قايمات الأدمن.
+     من غير حذف نهائي لصفوفه عشان الرقم يفضل محفوظ والرفض يفضل شغال. */
+  const handleRejectDelete = async (id: string) => {
+    try { await fetch(`/api/students/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'rejected' }) }); toast.success('تم رفض الطالب وحذفه من المنصة — لو حاول يدخل تاني هيتقالده حسابك مرفوض'); loadStudents(false); onStatsRefresh() }
+    catch { toast.error('خطأ في رفض الطالب') }
   }
 
   // ===== فك ربط الجهاز — الزرار الوحيد للمستر (منظومة الجهاز الواحد) =====
@@ -715,9 +719,9 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
               {GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
             </select>
             <div className="flex gap-1 bg-muted rounded-lg p-1">
-              {(['pending', 'all', 'approved', 'paid'] as const).map((f) => (
+              {(['pending', 'all', 'approved', 'paid', 'rejected'] as const).map((f) => (
                 <Button key={f} variant={filter === f ? 'default' : 'ghost'} size="sm" className="text-xs h-7 px-2" onClick={() => setFilter(f)}>
-                  {f === 'pending' ? 'بانتظار' : f === 'approved' ? 'مقبول (مجاني)' : f === 'paid' ? 'بفلوس' : 'الكل'}
+                  {f === 'pending' ? 'بانتظار' : f === 'approved' ? 'مقبول (مجاني)' : f === 'paid' ? 'بفلوس' : f === 'rejected' ? 'مرفوض' : 'الكل'}
                 </Button>
               ))}
             </div>
@@ -791,24 +795,22 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
                   {s.status === 'pending' && (<>
                     <Button size="icon" variant="ghost" className="h-8 w-8 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20" onClick={() => handleAction(s.id, 'approved')} title="مقبول - مجاني"><Check className="h-4 w-4" /></Button>
                     <Button size="icon" variant="ghost" className="h-8 w-8 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20" onClick={() => handleAction(s.id, 'paid')} title="بفلوس"><span className="text-sm font-bold">$</span></Button>
-                    <Button size="icon" variant="ghost" className="h-8 w-8 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20" onClick={() => handleAction(s.id, 'rejected')} title="رفض الطالب - مش هيدخل على المنصة"><X className="h-4 w-4" /></Button>
-                  </>)}
+                                      </>)}
                   {s.status === 'approved' && (
                     <>
                       <Button size="icon" variant="ghost" className="h-8 w-8 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20" onClick={() => handleAction(s.id, 'paid')} title="تحويل لبفلوس"><span className="text-sm font-bold">$</span></Button>
-                      <Button size="icon" variant="ghost" className="h-8 w-8 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20" onClick={() => handleAction(s.id, 'rejected')} title="رفض الطالب"><X className="h-4 w-4" /></Button>
-                    </>
+                                          </>
                   )}
                   {s.status === 'paid' && (
                     <>
                       <Button size="icon" variant="ghost" className="h-8 w-8 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20" onClick={() => handleAction(s.id, 'approved')} title="تحويل لمجاني"><Check className="h-4 w-4" /></Button>
-                      <Button size="icon" variant="ghost" className="h-8 w-8 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20" onClick={() => handleAction(s.id, 'rejected')} title="رفض الطالب"><X className="h-4 w-4" /></Button>
-                    </>
+                                          </>
                   )}
                   {s.status === 'rejected' && (
                     <Button size="icon" variant="ghost" className="h-8 w-8 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20" onClick={() => handleAction(s.id, 'approved')} title="إلغاء الرفض وقبول الطالب"><Check className="h-4 w-4" /></Button>
                   )}
-                  <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => handleDelete(s.id)} title="حذف من النظام"><Trash2 className="h-4 w-4" /></Button>
+                  {/* (2026-ز12 — طلب المستر): زرار الباسكت الوحيد = رفض + حذف من المنصة */}
+                  <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => handleRejectDelete(s.id)} title="رفض وحذف الطالب من المنصة — لو حاول يدخل تاني هيتقالده حسابك مرفوض"><Trash2 className="h-4 w-4" /></Button>
                 </div>
               </div>
             ))}

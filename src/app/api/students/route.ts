@@ -370,6 +370,11 @@ export async function GET(request: NextRequest) {
     var where: Record<string, unknown> = {}
     if (grade) where.grade = grade
     if (status) where.status = status
+    /* (2026-ز12 — طلب المستر): الطالب المرفوض = اتحذف من المنصة —
+       مش بيظهر في أي قايمة عادية للأدمن (بيظهر بس لو اتطلب
+       status=rejected صراحة زي تاب «مرفوض»)، ومحاولات دخوله أو
+       تسجيله من جديد بترد عليه «حسابك مرفوض من المنصة» */
+    else where.status = { notIn: ['rejected', 'refused'] }
     if (keyword) {
       where.OR = [
         { name: { contains: keyword } },
@@ -473,8 +478,17 @@ export async function POST(request: NextRequest) {
     // لو الرقم متسجل قبل كده → رسالة عربية ودودة فورًا — عمرها ما يوصل
     // للطالب أي خطأ تقني (زي SQLite UNIQUE اللي ظهر على الموبايل)
     try {
-      var dup = await db.student.findFirst({ where: { phone }, select: { id: true } })
+      var dup = await db.student.findFirst({ where: { phone }, select: { id: true, status: true } })
       if (dup) {
+        /* (2026-ز12 — طلب المستر): المرفوض لو حاول يسجل تاني بنفس الرقم
+           → رسالة الرفض الصريحة زي الدخول بالظبط */
+        var dupSt = String((dup as any).status || '')
+        if (dupSt === 'rejected' || dupSt === 'refused') {
+          return NextResponse.json(
+            { error: '❌ الحساب بتاعك مرفوض من المنصة. لو عندك استفسار تواصل مع المستر' },
+            { status: 403 }
+          )
+        }
         return NextResponse.json(
           { error: '⚠️ الرقم ده متسجل قبل كده في المنصة — لو الحساب ده بتاعك اعمل تسجيل دخول عادي بالرقم وكلمة السر، ولو نسيت كلمة السر أو قابلتك أي مشكلة اكتبها في قسم الشكاوي' },
           { status: 409 }
