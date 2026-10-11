@@ -193,7 +193,7 @@ export function PaymentsPanel({ onRefresh }: { onRefresh: () => void }) {
      الحساب بيتقفل نهائيًا — لو الطالب حاول يدخل أو يسجل تاني هيتقالده
      «حسابك مرفوض من المنصة» — وبينختفي من القايمة ===== */
   var handleDeleteStudent = async function(studentId: string) {
-    if (!confirm('رفض وحذف الطالب من المنصة؟ لو حاول يدخل تاني هيتقالده حسابك مرفوض.')) return
+    /* (2026-ز12-ب — طلب المستر): من غير تأكيد — ضغطة السلة الواحدة بترفض وتحذف على طول، والغلط بيتلغي من تاب «مرفوض» */
     try {
       var res = await fetch('/api/students/' + studentId, {
         method: 'PUT',
