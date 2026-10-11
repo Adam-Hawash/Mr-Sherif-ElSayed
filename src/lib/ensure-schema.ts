@@ -45,6 +45,25 @@ export var SCHEMA_TABLES = [
      (مش واتساب — طلب المستر) — كل صف = جهاز مشترك لرقم ولي أمر مطبّع */
   'CREATE TABLE IF NOT EXISTS ParentPushSubscription (id TEXT PRIMARY KEY, parentId TEXT NOT NULL DEFAULT \'\', endpoint TEXT NOT NULL UNIQUE, p256dh TEXT NOT NULL DEFAULT \'\', auth TEXT NOT NULL DEFAULT \'\', userAgent TEXT NOT NULL DEFAULT \'\', createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
   'CREATE INDEX IF NOT EXISTS idx_pps_parent ON ParentPushSubscription(parentId)',
+  /* (2026-ز13) ساحة التحدي — نقل DDL من Maths-Genius (النسخة المرجعية الأكمل):
+     الساحة كانت موجودة في الكود من و66 بس بدون DDL هنا — على DB جديد كانت هتكسر «no such table».
+     (2026-و66) غرف الجروبات + اللاعبين + تحدي المستر + الفلاش كاردز
+     (2026-و88) timed (بوقت/من غير وقت) + qSeconds (ثواني السؤال الواحد للأسئلة العامة) */
+  'CREATE TABLE IF NOT EXISTS BattleRoom (id TEXT PRIMARY KEY, code TEXT NOT NULL UNIQUE, title TEXT DEFAULT \'\', hostPlayerId TEXT DEFAULT \'\', status TEXT NOT NULL DEFAULT \'lobby\', questions TEXT NOT NULL DEFAULT \'[]\', currentIndex INTEGER NOT NULL DEFAULT 0, questionStartAt TEXT NOT NULL DEFAULT \'0\', startedAt TEXT DEFAULT \'\', mode TEXT DEFAULT \'general\', difficulty TEXT DEFAULT \'mixed\', cardSeconds INTEGER DEFAULT 15, timed INTEGER DEFAULT 1, qSeconds INTEGER DEFAULT 25, createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
+  'CREATE TABLE IF NOT EXISTS BattlePlayer (id TEXT PRIMARY KEY, roomId TEXT NOT NULL, name TEXT NOT NULL, token TEXT DEFAULT \'\', isHost INTEGER NOT NULL DEFAULT 0, score INTEGER NOT NULL DEFAULT 0, streak INTEGER NOT NULL DEFAULT 0, answers TEXT NOT NULL DEFAULT \'{}\', lastSeen TEXT NOT NULL DEFAULT \'0\', studentId TEXT DEFAULT \'\', qIndex INTEGER DEFAULT 0, qStartAt TEXT DEFAULT \'\', finishedAt TEXT DEFAULT \'\', finished INTEGER DEFAULT 0, status TEXT DEFAULT \'active\', createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
+  'CREATE TABLE IF NOT EXISTS TeacherChallenge (id TEXT PRIMARY KEY, title TEXT NOT NULL, question TEXT NOT NULL, options TEXT NOT NULL DEFAULT \'[]\', correctIndex INTEGER NOT NULL DEFAULT 0, points INTEGER NOT NULL DEFAULT 30, durationMin INTEGER NOT NULL DEFAULT 0, active INTEGER NOT NULL DEFAULT 1, closesAt DATETIME, createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
+  'CREATE TABLE IF NOT EXISTS ChallengeEntry (id TEXT PRIMARY KEY, challengeId TEXT NOT NULL, studentId TEXT DEFAULT \'\', name TEXT NOT NULL, isTeacher INTEGER NOT NULL DEFAULT 0, choice INTEGER NOT NULL DEFAULT -1, correct INTEGER NOT NULL DEFAULT 0, timeMs INTEGER NOT NULL DEFAULT 0, createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
+  'CREATE TABLE IF NOT EXISTS FlashcardScore (id TEXT PRIMARY KEY, studentId TEXT DEFAULT \'\', name TEXT NOT NULL, score INTEGER NOT NULL DEFAULT 0, correctCount INTEGER NOT NULL DEFAULT 0, totalCards INTEGER NOT NULL DEFAULT 10, createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
+  /* (2026-و66) الخرائط الذهنية التفاعلية */
+  'CREATE TABLE IF NOT EXISTS MindMap (id TEXT PRIMARY KEY, videoId TEXT DEFAULT \'\', title TEXT NOT NULL, sourceType TEXT DEFAULT \'youtube\', sourceUrl TEXT DEFAULT \'\', sourceName TEXT DEFAULT \'\', data TEXT NOT NULL DEFAULT \'{}\', createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
+  /* (2026-و68) بنك أسئلة التحدي — المستر يرفع ملفات → استخراج إنجليزي →
+     الطالب ياخد أسئلة عشوائية من كل الملفات + محاولات محفوظة بلوحة ترتيب */
+  'CREATE TABLE IF NOT EXISTS ChallengeBankQuestion (id TEXT PRIMARY KEY, fileName TEXT DEFAULT \'\', question TEXT NOT NULL, options TEXT NOT NULL DEFAULT \'[]\', correctIndex INTEGER NOT NULL DEFAULT 0, points INTEGER NOT NULL DEFAULT 10, active INTEGER NOT NULL DEFAULT 1, createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
+  'CREATE TABLE IF NOT EXISTS ChallengeAttempt (id TEXT PRIMARY KEY, studentId TEXT DEFAULT \'\', name TEXT NOT NULL, score INTEGER NOT NULL DEFAULT 0, correctCount INTEGER NOT NULL DEFAULT 0, totalQuestions INTEGER NOT NULL DEFAULT 10, timeMs INTEGER NOT NULL DEFAULT 0, createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
+  /* (و70-ج) كروت الفلاش بتاعة المستر — «تحدي على الـ flash cards والحاجات
+     اللي احنا بنحطها» — الأمام سؤال والظهر إجابة (بالإنجليزي) والطالب
+     بيتحدي عليها بنفس مؤقت الفلاش كاردز ولوحة الشرف */
+  'CREATE TABLE IF NOT EXISTS FlashcardCard (id TEXT PRIMARY KEY, fileName TEXT DEFAULT \'\', front TEXT NOT NULL, back TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
 ]
 
 var SCHEMA_COLUMNS = [
@@ -116,6 +135,33 @@ var SCHEMA_COLUMNS = [
   // (و43) الكتب بلينك خارجي — عمود جديد على Book للقواعد الموجودة
   // (بينفذ كـ: ALTER TABLE Book ADD COLUMN sourceUrl TEXT NOT NULL DEFAULT '')
   ['Book', 'sourceUrl', 'TEXT', "NOT NULL DEFAULT ''"],
+  // (2026-ز13) حرّاس ALTER للساحة — منقولة من Maths-Genius (L148-172):
+  // لقواعد قديمة عندها الجداول من و66 من غير الأعمدة اللي دخلت بعدين
+  // (2026-و68-إضافي) فيديو المستر في تحدي المستر — طلب المستر: «يصور فيديو ويعمله
+  // في التحديات» — videoUrl: لينك يوتيوب خام أو مسار /api/files/<id> لملف مرفوع،
+  // videoType: 'youtube' | 'file' | '' (فاضي = مفيش فيديو — الواجهة بتخفي البلوك)
+  ['TeacherChallenge', 'videoUrl', 'TEXT', "DEFAULT ''"],
+  ['TeacherChallenge', 'videoType', 'TEXT', "DEFAULT ''"],
+  /* (و72) السباق الفردي في تحدي الجروبات — كل لاعب ليه مؤقت وسؤال مستقل:
+     BattlePlayer.studentId (ربط الحساب + منع العودة بعد الخروج)
+     qIndex/qStartAt (سؤالي الحالي وبدايته — تقدم لكل لاعب لوحده)
+     finished/finishedAt (خلّص؟ وإمتى — لترتيب «مين خلّص الأول»)
+     status (active | left — الخروج من أي مرحلة)
+     BattleRoom.startedAt (بداية السباق — ساعة التوقيت) mode/difficulty/cardSeconds (خيارات الغرفة) */
+  ['BattlePlayer', 'studentId', 'TEXT', "DEFAULT ''"],
+  ['BattlePlayer', 'qIndex', 'INTEGER', 'DEFAULT 0'],
+  ['BattlePlayer', 'qStartAt', 'TEXT', "DEFAULT ''"],
+  ['BattlePlayer', 'finishedAt', 'TEXT', "DEFAULT ''"],
+  ['BattlePlayer', 'finished', 'INTEGER', 'DEFAULT 0'],
+  ['BattlePlayer', 'status', 'TEXT', "DEFAULT 'active'"],
+  ['BattleRoom', 'startedAt', 'TEXT', "DEFAULT ''"],
+  ['BattleRoom', 'mode', 'TEXT', "DEFAULT 'general'"],
+  ['BattleRoom', 'difficulty', 'TEXT', "DEFAULT 'mixed'"],
+  ['BattleRoom', 'cardSeconds', 'INTEGER', 'DEFAULT 15'],
+  // (2026-و88) وضع التوقيت في تحدي الجروبات — طلب المستر: في الأسئلة العامة
+  // «يقدر يحدد السؤال يبقى بوقت ولا من غير وقت ويختار الوقت بتاعه قد ايه»
+  ['BattleRoom', 'timed', 'INTEGER', 'DEFAULT 1'],
+  ['BattleRoom', 'qSeconds', 'INTEGER', 'DEFAULT 25'],
 ]
 
 var SCHEMA_FIXES = [
@@ -177,7 +223,7 @@ export var SCHEMA_INDEXES = [
   'CREATE INDEX IF NOT EXISTS idx_notification_created ON Notification(createdAt)',
 ]
 
-export var CORE_TABLES = ['Admin', 'Student', 'StudentActivity', 'Video', 'Homework', 'Exam', 'ExamResult', 'Announcement', 'Discussion', 'SiteConfig', 'Media', 'VideoProgress', 'GalleryImage', 'Payment', 'VideoAccess', 'Complaint', 'Parent', 'Book', 'Notification']
+export var CORE_TABLES = ['Admin', 'Student', 'StudentActivity', 'Video', 'Homework', 'Exam', 'ExamResult', 'Announcement', 'Discussion', 'SiteConfig', 'Media', 'VideoProgress', 'GalleryImage', 'Payment', 'VideoAccess', 'Complaint', 'Parent', 'Book', 'Notification', 'BattleRoom', 'BattlePlayer', 'TeacherChallenge', 'ChallengeEntry', 'FlashcardScore', 'MindMap', 'ChallengeBankQuestion', 'ChallengeAttempt', 'FlashcardCard']
 
 /* (2026-و38) مفتاح البصمة اتبدل — البصمة القديمة كانت اتخزنت على الإنتاج
  * بعد ما كود و37 نزل (والجدول وقتها مش معمول لسه في CORE_TABLES فالترميم
@@ -202,7 +248,13 @@ export var CORE_TABLES = ['Admin', 'Student', 'StudentActivity', 'Video', 'Homew
  * إشعارات Web Push لولي الأمر) دخل SCHEMA_TABLES — نفس الدرس الموثق
  * و38/و40/و43/و45: من غير تغيير المفتاح الجدول مش هيتعمل على
  * قواعد Turso الموجودة أول ريكوست بعد النشر. */
-var SCHEMA_HASH_KEY = 'schema_heal_hash_v2_w89_w115_examends'
+/* (2026-ز13) مفتاح البصمة اتبدّل سادس — جداول الساحة التسعة (BattleRoom /
+ * BattlePlayer / TeacherChallenge / ChallengeEntry / FlashcardScore / MindMap /
+ * ChallengeBankQuestion / ChallengeAttempt / FlashcardCard) دخلت SCHEMA_TABLES
+ * + CORE_TABLES وأعمدة الساحة دخلت SCHEMA_COLUMNS — نفس الدرس الموثق
+ * (و38/و40/و43/و45/و68/و72/و80): من غير البَمب الترميم ممكن ما يشتغلش
+ * على قواعد Turso القديمة أول ريكوست بعد النشر. */
+var SCHEMA_HASH_KEY = 'schema_heal_hash_v2_z13_arena'
 
 /* ============================================================
  * 2026-و23 — **إصلاح بطء المنصة** (طلب المستر: «المنصة بطيئة، تسجيل

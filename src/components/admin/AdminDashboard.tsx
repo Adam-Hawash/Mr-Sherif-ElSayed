@@ -22,7 +22,7 @@ import {
   PlayCircle, Pause, Film, Search, FileDown, PictureInPicture2, Save, Sparkles, Wallet,
   Video as VideoIcon, LinkIcon,
   ChevronLeft, CheckCircle2, Smartphone, RotateCcw, ShieldCheck, Monitor, Tablet, Flag, GraduationCap, UsersRound, PieChart, BookOpen, ChevronDown,
-  MessageCircle, MonitorPlay, Brain, Swords
+  MessageCircle, MonitorPlay, Brain, Swords, EyeOff
 } from 'lucide-react'
 import { AdminComplaints } from './AdminComplaints'
 import { CMSPanel } from './CMSPanel'
@@ -1062,6 +1062,45 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
     } catch { setAllStudents([]) }
   }
 
+  /* (2026-ز13) إخفاء درس كامل عن طلاب */
+  const [lessonHideOpen, setLessonHideOpen] = useState(false)
+  const [lessonHideGroup, setLessonHideGroup] = useState<{ key: string; title: string; grade: string; parts: number } | null>(null)
+  const [lessonHideStudents, setLessonHideStudents] = useState<any[]>([])
+  const [lessonHideSelected, setLessonHideSelected] = useState<string[]>([])
+  const [lessonHideSaving, setLessonHideSaving] = useState(false)
+
+  const openLessonHide = async function (gKey: string, grade: string, title: string, parts: number) {
+    setLessonHideGroup({ key: gKey, title: title, grade: grade, parts: parts })
+    setLessonHideOpen(true)
+    setLessonHideStudents([])
+    try {
+      var res = await fetch('/api/students?pageSize=200&grade=' + encodeURIComponent(grade))
+      var data = await res.json()
+      setLessonHideStudents((data.students || []).filter(function (s: any) { return s.status === 'approved' || s.status === 'paid' }))
+    } catch { setLessonHideStudents([]) }
+    try {
+      var r2 = await fetch('/api/lesson-hide?groupKey=' + encodeURIComponent(gKey))
+      var d2 = await r2.json()
+      setLessonHideSelected(d2.studentIds || [])
+    } catch { setLessonHideSelected([]) }
+  }
+  const handleLessonHideSave = async function () {
+    if (!lessonHideGroup) return
+    setLessonHideSaving(true)
+    try {
+      var res = await fetch('/api/lesson-hide', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groupKey: lessonHideGroup.key, grade: lessonHideGroup.grade, studentIds: lessonHideSelected }),
+      })
+      if (res.ok) {
+        toast.success(lessonHideSelected.length > 0 ? 'تم إخفاء الدرس كامل عن الطلاب المحددين — مش هيشوفوه خالص' : 'تم فك إخفاء الدرس — بقى ظاهر للكل')
+        setLessonHideOpen(false)
+      } else { toast.error('فشل الحفظ') }
+    } catch { toast.error('خطأ في الاتصال') }
+    setLessonHideSaving(false)
+  }
+
   const loadExistingSchedule = async (videoId: string) => {
     try {
       var res = await fetch('/api/video-schedule?videoId=' + videoId)
@@ -1366,6 +1405,11 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
                       <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setFormGroupKey(g.key); setFormGroupTitle(g.title); setFormGroupGrade(g.grade); setFormGrade(g.grade); setFormTitle(''); setFormUrl(''); setFormPrice(''); setFormFile(null); setFormThumbnailUrl(''); setShowForm(true) }}>
                         <Plus className="h-3.5 w-3.5 ml-1" />ضيف فيديو تاني للدرس ده
                       </Button>
+                      {g.key ? (
+                        <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 text-xs h-7" onClick={() => openLessonHide(g.key, g.grade, g.title, g.parts.length)} title="إخفاء الدرس كله (كل فيديوهاته) عن طلاب محددين">
+                          <EyeOff className="h-3.5 w-3.5 mr-1" />إخفاء الدرس كامل عن طلاب
+                        </Button>
+                      ) : null}
                       <Button size="sm" variant="ghost" className="h-7 px-1.5" onClick={() => setExpandedGroup(isExp ? '' : g.key)} aria-label={isExp ? 'إخفاء الأجزاء' : 'عرض الأجزاء'}>
                         <ChevronDown className={'h-4 w-4 transition-transform ' + (isExp ? 'rotate-180' : '')} />
                       </Button>
@@ -1546,6 +1590,50 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
                 {scheduleSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'حفظ الجدولة'}
               </Button>
               <Button variant="outline" onClick={() => setScheduleOpen(false)}>إلغاء</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* (2026-ز13) إخفاء درس كامل عن طلاب — كل فيديوهات الدرس بتختفي */}
+      {lessonHideOpen && lessonHideGroup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setLessonHideOpen(false)}>
+          <div className="bg-card border border-border rounded-xl p-5 shadow-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto" onClick={function (e) { e.stopPropagation() }}>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h3 className="font-bold text-sm">إخفاء الدرس: {lessonHideGroup.title}</h3>
+                <p className="text-[10px] text-muted-foreground">الدرس كله ({lessonHideGroup.parts} فيديو) هيختفي من الطلاب المحددين — مش هيشوفوه خالص لحد ما تفك الإخفاء</p>
+              </div>
+              <button type="button" onClick={() => setLessonHideOpen(false)} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="mb-3">
+              <Label className="text-xs font-semibold text-red-600">طلاب صف {lessonHideGroup.grade} — المحددين مخفيين عنهم ({lessonHideSelected.length})</Label>
+              <div className="max-h-[220px] overflow-y-auto border rounded-md p-2 space-y-1 mt-2">
+                {lessonHideStudents.length === 0 ? (
+                  <p className="text-[10px] text-muted-foreground text-center py-4">مفيش طلاب في الصف ده</p>
+                ) : (
+                  lessonHideStudents.map(function (s) {
+                    var isSel = lessonHideSelected.includes(s.id)
+                    return (
+                      <button key={'lh-' + s.id} type="button"
+                        onClick={function () { if (isSel) { setLessonHideSelected(lessonHideSelected.filter(function (id) { return id !== s.id })) } else { setLessonHideSelected([...lessonHideSelected, s.id]) } }}
+                        className={"w-full flex items-center gap-2 p-2 rounded-md text-xs transition-colors " + (isSel ? 'bg-red-50 dark:bg-red-900/20 border border-red-500/30' : 'bg-muted/30 hover:bg-muted/50')}>
+                        <div className={"h-4 w-4 rounded border-2 flex items-center justify-center " + (isSel ? 'border-red-500 bg-red-500' : 'border-muted-foreground/30')}>
+                          {isSel && <Check className="h-3 w-3 text-white" />}
+                        </div>
+                        <span className="font-medium">{s.name}</span>
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1">اللي مختارينهم بيتخفي عنهم الدرس بأكله — سيبهم فاضيين ودوس حفظ لو عايز تفك الإخفاء</p>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={handleLessonHideSave} disabled={lessonHideSaving} className="flex-1">
+                {lessonHideSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'حفظ'}
+              </Button>
+              <Button variant="outline" onClick={() => setLessonHideOpen(false)}>إلغاء</Button>
             </div>
           </div>
         </div>

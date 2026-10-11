@@ -193,7 +193,7 @@ export async function POST(request: Request) {
       var eid = 'ent_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
       await safeWrite(function () {
         return db.$executeRawUnsafe(
-          "INSERT INTO ChallengeEntry (id, challengeId, studentId, name, isTeacher, choice, correct, timeMs, createdAt) VALUES (?, ?, '', 'المستر وائل 👨‍🏫', 1, ?, 1, ?, CURRENT_TIMESTAMP)",
+          "INSERT INTO ChallengeEntry (id, challengeId, studentId, name, isTeacher, choice, correct, timeMs, createdAt) VALUES (?, ?, '', 'المستر شريف السيد 👨‍🏫', 1, ?, 1, ?, CURRENT_TIMESTAMP)",
           eid, id2, Number(ch.correctIndex || 0), Math.floor(Math.random() * 4000) + 2000
         )
       })

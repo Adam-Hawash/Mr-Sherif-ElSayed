@@ -28,6 +28,8 @@ import { InstallPwaButton } from '@/components/InstallPwaButton'
 import { useAntiCheat, AntiCheatModal, AntiCheatBadge } from '@/components/student/useAntiCheat'
 /* (2026-و66) الميزات الجديدة — ساحة التحدي + الخرائط الذهنية — منقولة من Maths-Genius (و106) */
 import { BattleArena } from '@/components/student/BattleArena'
+/* (2026-ز13) اتدرب أكتر — مولد التدريب الذكي (إنجليزي بطلب المستر) */
+import { PracticeGenerator } from '@/components/student/PracticeGenerator'
 import { MindMapView } from '@/components/student/MindMapView'
 import type { MindMapData } from '@/lib/question-gen'
 import { FractionText } from '@/components/FractionText'
@@ -411,8 +413,10 @@ function StudentPortalInner() {
     { id: 'videos', label: T('الدروس', 'Lessons'), icon: Video },
     { id: 'homework', label: T('الواجبات', 'Homework'), icon: ClipboardList },
     { id: 'exams', label: T('الامتحانات', 'Exams'), icon: FileText },
-    /* (2026-و66) ساحة التحدي — جروبات + تحدي المستر + فلاش كاردز */
-    { id: 'arena', label: T('ساحة التحدي', 'Arena'), icon: Swords },
+    /* (2026-و66) ساحة التحدي — جروبات + تحدي المستر + فلاش كاردز (ز13: التسمية إنجليزي بطلب المستر) */
+    { id: 'arena', label: 'Arena', icon: Swords },
+    /* (2026-ز13) اتدرب أكتر — Practice */
+    { id: 'practice', label: 'Practice', icon: Target },
     /* (2026-و40) الكتب والملازم — مكتبة PDF الطالب يفتحها/يحملها */
     { id: 'books', label: T('الكتب والملازم', 'Books'), icon: BookOpen },
     { id: 'announcements', label: T('التنبيهات', 'Alerts'), icon: Megaphone },
@@ -469,6 +473,7 @@ function StudentPortalInner() {
         {activeTab === 'exams' && <ExamsTab exams={dashboardData.exams} results={dashboardData.examResults} completedExamIds={completedExamIds} onExamSubmitted={(id) => setCompletedExamIds(prev => new Set([...prev, id]))} studentId={studentId} resultsLoaded={examResultsLoaded} onGoHome={() => setActiveTab('videos')} />}
         {/* (2026-و66) ساحة التحدي — جروبات + تحدي المستر + فلاش كاردز */}
         {activeTab === 'arena' && <BattleArena studentId={studentId} studentName={currentStudent?.name || ''} grade={grade} />}
+        {activeTab === 'practice' && <PracticeGenerator grade={grade} />}
         {activeTab === 'books' && <BooksTab grade={grade} />}
         {activeTab === 'announcements' && <AnnouncementsTab announcements={dashboardData.announcements} />}
         {activeTab === 'discussions' && <DiscussionsTab grade={grade} studentId={studentId} studentName={currentStudent?.name || ''} />}
@@ -525,6 +530,7 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
   // (2026-ف — رجعة نظام الجدولة القديم زي ما كان بالظبط)
   const [videoSchedules, setVideoSchedules] = useState<Record<string, any>>({})
   const [hiddenVideoIds, setHiddenVideoIds] = useState<Set<string>>(new Set())
+  const [hiddenGroupKeys, setHiddenGroupKeys] = useState<Set<string>>(new Set()) // (2026-ز13) الدروس المخفية كاملة عن الطالب
   const [activeLessonVideo, setActiveLessonVideo] = useState<VideoType | null>(null)
   /* (2026-و106) صفحة الدرس — مودال أجزاء الدرس المتعدد بالترتيب */
   const [activeLessonGroup, setActiveLessonGroup] = useState<{ title: string; parts: VideoType[] } | null>(null)
@@ -574,6 +580,15 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
         setHiddenVideoIds(new Set(data.hiddenVideoIds || []))
       })
       .catch(function() {})
+  }, [studentId])
+
+  // (2026-ز13) الدروس المخفية كاملة عن الطالب ده
+  useEffect(() => {
+    if (!studentId) return
+    fetch('/api/lesson-hide?studentId=' + studentId)
+      .then(function (r) { return r.json() })
+      .then(function (data) { setHiddenGroupKeys(new Set(data.hiddenGroupKeys || [])) })
+      .catch(function () {})
   }, [studentId])
 
   // Check if video is locked for this student (scheduled but not yet unlocked)
@@ -635,18 +650,20 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
       if (hiddenVideoIds.has(v.id)) return
       var k = String((v as any).groupKey || '')
       if (!k) { items.push({ type: 'single', video: v }); return }
+      // (2026-ز13) الدرس المخفي كامل — أجزاءه ما تتجمعش خالص
+      if (hiddenGroupKeys.has(k)) return
       ;(byKey[k] = byKey[k] || []).push(v)
     })
     orderedVideos.forEach(function (v) {
       if (hiddenVideoIds.has(v.id)) return
       var k = String((v as any).groupKey || '')
-      if (!k || groupInserted[k]) return
+      if (!k || hiddenGroupKeys.has(k) || groupInserted[k]) return
       groupInserted[k] = true
       var parts = (byKey[k] || []).slice().sort(function (a, b) { return (Number((a as any).orderIndex) || 0) - (Number((b as any).orderIndex) || 0) })
       items.push({ type: 'group', key: k, title: parts[0] ? parts[0].title : k, grade: parts[0] ? parts[0].grade : '', price: parts[0] ? Number(parts[0].price || 0) : 0, parts: parts })
     })
     return items
-  }, [orderedVideos, hiddenVideoIds])
+  }, [orderedVideos, hiddenVideoIds, hiddenGroupKeys])
 
   // قفل التسلسل (طلب المستر): الفيديو ميفتحش غير لما اللي قبله يتشاف كامل 100%
   // (2026-و106) واعي بالدروس المتعددة: أجزاء الدرس بتكمل السلسلة فيما بينها

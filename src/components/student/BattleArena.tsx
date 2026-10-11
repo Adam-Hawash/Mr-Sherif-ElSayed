@@ -419,7 +419,7 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
           qIndex: Number(m.qIndex || 0), total: Number(m.total || 0), finished: !!m.finished, finishedAt: String(m.finishedAt || ''),
           qStartAt: Number(m.qStartAt || 0), remainMs: Number(m.remainMs || 0), answers: m.answers || {}, revealed: m.revealed || {},
         }, data.room)
-        toast.success('رجعناك لغرفة ' + String(data.room.code) + ' 🎮')
+        toast.success('Welcome back to room ' + String(data.room.code) + ' 🎮')
       } catch (e) { /* الشبكة — السترك الجاي في البولينج يعوض */ }
     })()
     return function () { alive = false }
@@ -456,7 +456,7 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
           raceDoneRef.current = false
           setRaceDone(false)
           feedbackQIdxRef.current = -999
-          toast.error('الغرفة اتقفلت — ابدأ واحدة جديدة 💪')
+          toast.error('Room closed — start a new one 💪')
           return
         }
         if (res.status === 403) {
@@ -474,7 +474,7 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
           raceDoneRef.current = false
           setRaceDone(false)
           feedbackQIdxRef.current = -999
-          toast.error(String((err403 && err403.error) || 'جلسة غير صالحة — ادخل من الأول'))
+          toast.error(String((err403 && err403.error) || 'Invalid session — join again'))
           return
         }
         var data: any = await res.json()
@@ -487,7 +487,7 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
           setGRoom(null)
           setGMe(null)
           setMyFeedback(null)
-          toast.error('انت مش في الغرفة دي — ادخل تاني')
+          toast.error('You\'re not in this room — join again')
           return
         }
         var m = data.me
@@ -617,9 +617,9 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
   /* ===== الأفعال ===== */
   async function createRoom(): Promise<void> {
     var name = playerName.trim()
-    if (!name) { toast.error('اكتب اسمك الأول يا بطل'); return }
+    if (!name) { toast.error('Enter your name first, champ'); return }
     var custom = customCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
-    if (custom && custom.length < 4) { toast.error('الكود المخصص لازم 4 حروف على الأقل'); return }
+    if (custom && custom.length < 4) { toast.error('Custom code needs at least 4 characters'); return }
     setBusy('create')
     try {
       /* (و72) خيارات السباق بتتبعت مع الطلب — (و88) + التوقيت للأسئلة العامة */
@@ -635,8 +635,8 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
         qSeconds: optQSec,
       })
       var data = out.data
-      if (out.status === 404 || !out.data) { toast.error('مشكلة في إنشاء الغرفة — جرب تاني'); return }
-      if (!data.ok) { toast.error(String(data.error || 'مشكلة في إنشاء الغرفة')); return }
+      if (out.status === 404 || !out.data) { toast.error('Problem creating the room — try again'); return }
+      if (!data.ok) { toast.error(String(data.error || 'Problem creating the room')); return }
       applyJoined(String(data.room.code), { id: data.me.id, name: data.me.name, token: data.me.token, isHost: true, score: 0, streak: 0 }, {
         code: String(data.room.code),
         status: 'lobby',
@@ -657,9 +657,9 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
         leaderboard: [],
       })
       setCustomCode('')
-      toast.success('اتعملت الغرفة! شارك الكود مع صحابك 🎉')
+      toast.success('Room created! Share the code with your friends 🎉')
     } catch (e) {
-      toast.error('الشبكة بتلحس — جرب تاني')
+      toast.error('Network hiccup — try again')
     } finally {
       setBusy('')
     }
@@ -668,15 +668,15 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
   async function joinRoom(): Promise<void> {
     var code = joinCode.trim().toUpperCase()
     var name = playerName.trim()
-    if (code.length < 4) { toast.error('اكتب الكود كامل (4 حروف على الأقل)'); return }
-    if (!name) { toast.error('اكتب اسمك الأول'); return }
+    if (code.length < 4) { toast.error('Enter the full code (at least 4 characters)'); return }
+    if (!name) { toast.error('Enter your name first'); return }
     setBusy('join')
     try {
       /* (و72) studentId بيتبعت — نفس الحساب بيرجع لنفس اللاعب (ريأتاتش) */
       var out = await postJson('/api/arena/rooms/' + encodeURIComponent(code), { action: 'join', name: name, studentId: studentId || '' })
       var data = out.data
-      if (out.status === 404) { toast.error('الغرفة مش موجودة — راجع الكود'); return }
-      if (!data || !data.ok) { toast.error(String((data && data.error) || 'مشكلة في الدخول')); return }
+      if (out.status === 404) { toast.error('Room not found — check the code'); return }
+      if (!data || !data.ok) { toast.error(String((data && data.error) || 'Problem joining')); return }
       applyJoined(String(data.room.code), { id: data.me.id, name: data.me.name, token: data.me.token, isHost: !!data.me.isHost, score: Number(data.me.score || 0), streak: Number(data.me.streak || 0) }, {
         code: String(data.room.code),
         status: (data.room.status === 'live' ? 'live' : data.room.status === 'ended' ? 'ended' : 'lobby'),
@@ -697,9 +697,9 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
         leaderboard: [],
       })
       setJoinCode('')
-      toast.success('دخلت الغرفة ' + String(data.room.code) + ' 🔥')
+      toast.success('You joined room ' + String(data.room.code) + ' 🔥')
     } catch (e) {
-      toast.error('الشبكة بتلحس — جرب تاني')
+      toast.error('Network hiccup — try again')
     } finally {
       setBusy('')
     }
@@ -709,16 +709,16 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
     var me = gMeRef.current
     var room = gRoomRef.current
     if (!me || !room) return
-    if (action === 'end' && !window.confirm('متأكد إنك عايز تنهي التحدي؟')) return
+    if (action === 'end' && !window.confirm('End the challenge for everyone?')) return
     setBusy(action)
     try {
       var out = await postJson('/api/arena/rooms/' + encodeURIComponent(room.code), { action: action, playerId: me.id, token: me.token })
       var data = out.data
-      if (out.status === 404) { resetGroups(); toast.error('الغرفة اتقفلت'); return }
-      if (!data || !data.ok) { toast.error(String((data && data.error) || 'مشكلة في تنفيذ الطلب')); return }
-      if (action === 'start') toast.success('يلا يا شباب — السباق بدأ! 🚀')
+      if (out.status === 404) { resetGroups(); toast.error('Room closed'); return }
+      if (!data || !data.ok) { toast.error(String((data && data.error) || 'Problem with that request')); return }
+      if (action === 'start') toast.success('Let\'s go everyone — the race has started! 🚀')
     } catch (e) {
-      toast.error('الشبكة بتلحس — جرب تاني')
+      toast.error('Network hiccup — try again')
     } finally {
       setBusy('')
     }
@@ -740,23 +740,23 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
         action: 'answer', playerId: me.id, token: me.token, questionIndex: qIdx, choice: i, ms: ms,
       })
       var data = out.data
-      if (out.status === 404) { resetGroups(); toast.error('الغرفة اتقفلت'); return }
+      if (out.status === 404) { resetGroups(); toast.error('Room closed'); return }
       if (out.status === 403) {
-        var msg403 = String((data && data.error) || 'جلسة غير صالحة')
+        var msg403 = String((data && data.error) || 'Invalid session')
         resetGroups()
         toast.error(msg403)
         return
       }
       if (out.status === 409) {
         /* الوقت خلص على السؤال ده — فيدباك ⌛ والتقدّم هيجي من السيرفر */
-        var msg = String((data && data.error) || 'الوقت خلص')
+        var msg = String((data && data.error) || 'Time\'s up')
         toast.error(msg + ' ⌛')
         feedbackQIdxRef.current = qIdx
         setMyFeedback({ correct: false, gained: 0, streak: 0, choice: i, timeout: true, questionIndex: qIdx })
         scheduleAdvance(1100)
         return
       }
-      if (!data || !data.ok) { toast.error(String((data && data.error) || 'حصلت مشكلة في إجابتك')); return }
+      if (!data || !data.ok) { toast.error(String((data && data.error) || 'Problem with your answer')); return }
       /* (و72) فيدباك لحظي ~1 ثانية → السؤال اللي بعده فورًا (من غير انتظار حد) */
       feedbackQIdxRef.current = qIdx
       setMyFeedback({ correct: !!data.correct, gained: Number(data.gained || 0), streak: Number(data.streak || 0), choice: i, correctIndex: Number(data.correctIndex), questionIndex: qIdx })
@@ -769,7 +769,7 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
       if (data.finished) scheduleFinish(950)
       else scheduleAdvance(950)
     } catch (e) {
-      toast.error('الشبكة بتلحس — جرب تاني')
+      toast.error('Network hiccup — try again')
     } finally {
       setSendingAnswer(false)
       setPendingChoice(-1)
@@ -778,7 +778,7 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
 
   /* (و72) الخروج — مسموح في أي مرحلة (لوبي أو لايف) + ممنوع الرجوع بعده */
   async function exitRoom(ask: boolean): Promise<void> {
-    if (ask && !window.confirm('متأكد إنك عايز تخرج من التحدي؟ مش هتقدر ترجع تاني!')) return
+    if (ask && !window.confirm('Leave the challenge? You won\'t be able to come back!')) return
     var me = gMeRef.current
     var code = gRoomCodeRef.current
     if (me && code) {
@@ -789,7 +789,7 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
       setBusy('')
     }
     resetGroups()
-    toast('خرجت من التحدي')
+    toast('You left the challenge')
   }
 
   async function copyCode(): Promise<void> {
@@ -798,7 +798,7 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(code)
-        toast.success('اتنسخ الكود ✅')
+        toast.success('Code copied ✅')
         return
       }
       throw new Error('no clipboard')
@@ -812,9 +812,9 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
         ta.select()
         document.execCommand('copy')
         document.body.removeChild(ta)
-        toast.success('اتنسخ الكود ✅')
+        toast.success('Code copied ✅')
       } catch (e2) {
-        toast.error('انسخ الكود يدوي: ' + code)
+        toast.error('Copy the code manually: ' + code)
       }
     }
   }
@@ -858,18 +858,18 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
           <Card className="overflow-hidden border-emerald-200 dark:border-emerald-900/70">
             <div className="bg-gradient-to-l from-emerald-500 to-teal-600 px-5 py-4 text-white flex items-center gap-2">
               <Plus className="size-5" />
-              <h3 className="font-black text-lg">اعمل غرفة جديدة</h3>
+              <h3 className="font-black text-lg">Create a new room</h3>
             </div>
             <CardContent className="p-5 space-y-4">
               <p className="text-sm text-muted-foreground leading-relaxed">
-                اعمل غرفة وابعته الكود لصحابك — سباق فردي: كل واحد على موبايله واللي يخلص الأول يكسب! 🏁
+                Create a room and send the code to your friends — individual race: everyone on their own phone, first to finish wins! 🏁
               </p>
               <div>
-                <label className="text-xs font-bold text-muted-foreground mb-1.5 block">اسمك في اللعبة</label>
+                <label className="text-xs font-bold text-muted-foreground mb-1.5 block">Your in-game name</label>
                 <Input
                   value={playerName}
                   onChange={function (e) { setPlayerName(e.target.value) }}
-                  placeholder="اسمك"
+                  placeholder="Your name"
                   maxLength={40}
                   className="h-12 text-base"
                 />
@@ -877,38 +877,38 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
               {/* (2026-و68) كود مخصص — اختياري */}
               <div>
                 <label className="text-xs font-bold text-muted-foreground mb-1.5 block">
-                  كود مخصص (اختياري) — اكتب الكود اللي يعجبك
+                  Custom code (optional) — pick a code you like
                 </label>
                 <Input
                   value={customCode}
                   onChange={function (e) { setCustomCode(e.target.value.toUpperCase().replace(/[^A-Za-z0-9]/g, '').slice(0, 8)) }}
-                  placeholder="مثلاً: MATH7"
+                  placeholder="e.g. MATH7"
                   dir="ltr"
                   maxLength={8}
                   className="h-11 text-center font-mono font-bold tracking-widest"
                 />
-                <p className="mt-1 text-[11px] text-muted-foreground">من 4 لـ 8 حروف/أرقام — لو مستخدم هيجيلك رسالة تختار غيره</p>
+                <p className="mt-1 text-[11px] text-muted-foreground">4 to 8 letters/numbers — if it's taken, you'll get a message to pick another one</p>
               </div>
 
               {/* (2026-و72) خيارات السباق */}
               <div className="rounded-2xl border-2 border-dashed border-emerald-200 dark:border-emerald-900/70 p-3 space-y-3">
                 <div>
-                  <p className="text-xs font-bold text-muted-foreground mb-1.5">نوع الأسئلة</p>
+                  <p className="text-xs font-bold text-muted-foreground mb-1.5">Question type</p>
                   <div className="grid grid-cols-2 gap-2">
-                    <OptionChip active={optMode === 'general'} onClick={function () { setOptMode('general') }}>📝 أسئلة عامة</OptionChip>
-                    <OptionChip active={optMode === 'flash'} onClick={function () { setOptMode('flash') }}>⚡ فلاش كاردز</OptionChip>
+                    <OptionChip active={optMode === 'general'} onClick={function () { setOptMode('general') }}>📝 General questions</OptionChip>
+                    <OptionChip active={optMode === 'flash'} onClick={function () { setOptMode('flash') }}>⚡ Flashcards</OptionChip>
                   </div>
                 </div>
                 <div>
-                  <p className="text-xs font-bold text-muted-foreground mb-1.5">الصعوبة</p>
+                  <p className="text-xs font-bold text-muted-foreground mb-1.5">Difficulty</p>
                   <div className="grid grid-cols-3 gap-2">
-                    <OptionChip active={optDiff === 'easy'} onClick={function () { setOptDiff('easy') }}>سهل</OptionChip>
-                    <OptionChip active={optDiff === 'medium'} onClick={function () { setOptDiff('medium') }}>متوسط</OptionChip>
-                    <OptionChip active={optDiff === 'hard'} onClick={function () { setOptDiff('hard') }}>صعب</OptionChip>
+                    <OptionChip active={optDiff === 'easy'} onClick={function () { setOptDiff('easy') }}>Easy</OptionChip>
+                    <OptionChip active={optDiff === 'medium'} onClick={function () { setOptDiff('medium') }}>Medium</OptionChip>
+                    <OptionChip active={optDiff === 'hard'} onClick={function () { setOptDiff('hard') }}>Hard</OptionChip>
                   </div>
                 </div>
                 <div>
-                  <p className="text-xs font-bold text-muted-foreground mb-1.5">عدد الأسئلة</p>
+                  <p className="text-xs font-bold text-muted-foreground mb-1.5">Number of questions</p>
                   <div className="grid grid-cols-4 gap-2">
                     {[5, 8, 10, 15].map(function (n) {
                       return (
@@ -923,20 +923,20 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
                   /* (2026-و88) طلب المستر: السؤال يبقى بوقت ولا من غير وقت + يختار الوقت قد ايه */
                   <>
                     <div>
-                      <p className="text-xs font-bold text-muted-foreground mb-1.5">⏱ التوقيت</p>
+                      <p className="text-xs font-bold text-muted-foreground mb-1.5">⏱ Timing</p>
                       <div className="grid grid-cols-2 gap-2">
-                        <OptionChip active={optTimed} onClick={function () { setOptTimed(true) }}>⏱ بوقت</OptionChip>
-                        <OptionChip active={!optTimed} onClick={function () { setOptTimed(false) }}>♾️ من غير وقت</OptionChip>
+                        <OptionChip active={optTimed} onClick={function () { setOptTimed(true) }}>⏱ Timed</OptionChip>
+                        <OptionChip active={!optTimed} onClick={function () { setOptTimed(false) }}>♾️ No timer</OptionChip>
                       </div>
                     </div>
                     {optTimed ? (
                       <div>
-                        <p className="text-xs font-bold text-muted-foreground mb-1.5">⏱ وقت السؤال الواحد</p>
+                        <p className="text-xs font-bold text-muted-foreground mb-1.5">⏱ Time per question</p>
                         <div className="grid grid-cols-4 gap-2">
                           {[10, 15, 20, 25, 30, 45, 60, 90].map(function (s) {
                             return (
                               <OptionChip key={s} active={optQSec === s} onClick={function () { setOptQSec(s) }}>
-                                <span dir="ltr">{s}</span> ث
+                                <span dir="ltr">{s}</span> s
                               </OptionChip>
                             )
                           })}
@@ -947,12 +947,12 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
                 ) : null}
                 {optMode === 'flash' ? (
                   <div>
-                    <p className="text-xs font-bold text-muted-foreground mb-1.5">⚡ وقت البطاقة الواحدة</p>
+                    <p className="text-xs font-bold text-muted-foreground mb-1.5">⚡ Time per card</p>
                     <div className="grid grid-cols-5 gap-2">
                       {[8, 10, 15, 20, 30].map(function (s) {
                         return (
                           <OptionChip key={s} active={optCardSec === s} onClick={function () { setOptCardSec(s) }}>
-                            <span dir="ltr">{s}</span> ث
+                            <span dir="ltr">{s}</span> s
                           </OptionChip>
                         )
                       })}
@@ -967,7 +967,7 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
                 className="w-full min-h-12 bg-gradient-to-l from-emerald-500 to-teal-600 text-white font-black text-base shadow-lg shadow-emerald-500/20"
               >
                 {busy === 'create' ? <Loader2 className="size-5 animate-spin" /> : <Swords className="size-5" />}
-                اعمل الغرفة
+                Create room
               </Button>
             </CardContent>
           </Card>
@@ -976,14 +976,14 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
           <Card className="overflow-hidden border-teal-200 dark:border-teal-900/70">
             <div className="bg-gradient-to-l from-teal-500 to-emerald-600 px-5 py-4 text-white flex items-center gap-2">
               <UserPlus className="size-5" />
-              <h3 className="font-black text-lg">ادخل بكود</h3>
+              <h3 className="font-black text-lg">Join with a code</h3>
             </div>
             <CardContent className="p-5 space-y-4">
               <p className="text-sm text-muted-foreground leading-relaxed">
-                صحابك عملوا غرفة؟ اكتب الكود اللي بعتهولك ودوس ادخل 🚪
+                Friends created a room? Enter the code they sent you and hit join 🚪
               </p>
               <div>
-                <label className="text-xs font-bold text-muted-foreground mb-1.5 block">كود الغرفة</label>
+                <label className="text-xs font-bold text-muted-foreground mb-1.5 block">Room code</label>
                 <Input
                   value={joinCode}
                   onChange={function (e) { setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8)) }}
@@ -1001,12 +1001,12 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
                 className="w-full min-h-12 bg-gradient-to-l from-teal-500 to-emerald-600 text-white font-black text-base shadow-lg shadow-teal-500/20"
               >
                 {busy === 'join' ? <Loader2 className="size-5 animate-spin" /> : <LogIn className="size-5" />}
-                ادخل الغرفة
+                Join room
               </Button>
             </CardContent>
           </Card>
         </div>
-        <p className="text-center text-xs text-muted-foreground font-bold">من 2 لـ 6 لاعبين — سباق فردي: الدقة + السرعة + اللي يخلص الأول 🏁</p>
+        <p className="text-center text-xs text-muted-foreground font-bold">2 to 6 players — individual race: accuracy + speed + first to finish 🏁</p>
       </div>
     )
   }
@@ -1016,25 +1016,25 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
     return (
       <Card className="overflow-hidden">
         <div className="bg-gradient-to-l from-emerald-500 to-teal-600 px-5 py-4 text-white text-center">
-          <h3 className="font-black text-lg">{gRoom?.title || 'غرفة التحدي'}</h3>
+          <h3 className="font-black text-lg">{gRoom?.title || 'Challenge room'}</h3>
           <p className="text-sm text-emerald-50/90 font-bold">
-            {gRoom?.mode === 'flash' ? '⚡ فلاش كاردز' : '📝 أسئلة عامة'}
+            {gRoom?.mode === 'flash' ? '⚡ Flashcards' : '📝 General questions'}
             {' • '}
-            {gRoom?.difficulty === 'easy' ? 'سهل' : gRoom?.difficulty === 'hard' ? 'صعب' : 'متوسط'}
+            {gRoom?.difficulty === 'easy' ? 'Easy' : gRoom?.difficulty === 'hard' ? 'Hard' : 'Medium'}
             {' • '}
-            <span dir="ltr">{gRoom?.totalRounds || 0}</span> أسئلة
+            <span dir="ltr">{gRoom?.totalRounds || 0}</span> questions
             {gRoom?.mode === 'flash' ? (
-              <> • <span dir="ltr">{gRoom?.cardSeconds || 15}</span> ث للبطاقة</>
+              <> • <span dir="ltr">{gRoom?.cardSeconds || 15}</span> s per card</>
             ) : (
               /* (و88) عرض وضع التوقيت للأسئلة العامة */
               gRoom?.timed === 0 ? (
-                <> • ♾️ من غير وقت</>
+                <> • ♾️ No timer</>
               ) : (
-                <> • <span dir="ltr">{gRoom?.qSeconds || 25}</span> ث للسؤال</>
+                <> • <span dir="ltr">{gRoom?.qSeconds || 25}</span> s per question</>
               )
             )}
           </p>
-          <p className="text-sm text-emerald-50/90 font-bold">شارك الكود مع صحابك 👇</p>
+          <p className="text-sm text-emerald-50/90 font-bold">Share the code with your friends 👇</p>
         </div>
         <CardContent className="p-5 space-y-4">
           {/* الكود الضخم */}
@@ -1043,14 +1043,14 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
               {gRoom?.code}
             </span>
             <Button variant="outline" size="sm" onClick={function () { copyCode() }} className="min-h-10 font-bold shrink-0">
-              <Copy className="size-4" /> نسخ
+              <Copy className="size-4" /> Copy
             </Button>
           </div>
 
           {/* اللاعبين */}
           <div className={'rounded-2xl border p-2 space-y-1.5 ' + SCROLL_CLS}>
             {players.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-3">استنى اللاعبين يدخلوا… ⏳</p>
+              <p className="text-sm text-muted-foreground text-center py-3">Waiting for players to join… ⏳</p>
             ) : (
               players.map(function (p) {
                 return (
@@ -1058,17 +1058,17 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
                     <span className={'size-2.5 rounded-full shrink-0 ' + (p.status === 'left' ? 'bg-stone-300 dark:bg-stone-700' : p.online ? 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.8)]' : 'bg-stone-300 dark:bg-stone-700')} />
                     <span className={'flex-1 font-bold text-sm truncate ' + (p.status === 'left' ? 'line-through' : '')}>
                       {p.name}
-                      {gMe && p.id === gMe.id ? <span className="text-xs text-muted-foreground font-normal"> (انت)</span> : null}
+                      {gMe && p.id === gMe.id ? <span className="text-xs text-muted-foreground font-normal"> (you)</span> : null}
                     </span>
                     {p.status === 'left' ? (
                       <Badge variant="outline" className="text-[11px] font-black text-stone-500 border-stone-300 dark:border-stone-700 gap-1">
-                        <LogOut className="size-3" /> خرج
+                        <LogOut className="size-3" /> Left
                       </Badge>
                     ) : null}
                     {p.streak >= 2 ? <span className="text-orange-500 text-xs font-black">🔥 ×{p.streak}</span> : null}
                     {p.isHost ? (
                       <Badge className="bg-amber-100 text-amber-700 border border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 gap-1">
-                        <Crown className="size-3" /> الهوست
+                        <Crown className="size-3" /> Host
                       </Badge>
                     ) : null}
                   </div>
@@ -1086,11 +1086,11 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
                 className="w-full min-h-14 bg-gradient-to-l from-emerald-500 to-teal-600 text-white font-black text-lg shadow-lg shadow-emerald-500/25"
               >
                 {busy === 'start' ? <Loader2 className="size-5 animate-spin" /> : <Play className="size-5" />}
-                ابدأ السباق 🚀
+                Start the race 🚀
               </Button>
               {activeCount < 2 ? (
                 <p className="text-xs text-amber-600 dark:text-amber-400 text-center font-bold">
-                  تقدر تجري لوحدك ضد الوقت ⏱ — أو استنى صحابك والأحلى 3-4! ⏳
+                  You can race solo against the clock ⏱ — or wait for your friends, 3-4 is even better! ⏳
                 </p>
               ) : null}
             </div>
@@ -1100,7 +1100,7 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
               transition={{ repeat: Infinity, duration: 1.8 }}
               className="rounded-xl bg-stone-100 dark:bg-stone-900 py-4 text-center font-black text-muted-foreground"
             >
-              استنى الهوست يبدأ… ⏳
+              Waiting for the host to start… ⏳
             </motion.div>
           )}
 
@@ -1112,7 +1112,7 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
             className="w-full min-h-12 border-2 border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-900 dark:hover:bg-red-950/40 font-black"
           >
             {busy === 'leave' ? <Loader2 className="size-4 animate-spin" /> : <LogOut className="size-4" />}
-            خروج من التحدي
+            Leave challenge
           </Button>
         </CardContent>
       </Card>
@@ -1128,20 +1128,20 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <Card className="overflow-hidden self-start">
           <div className="bg-gradient-to-l from-emerald-500 to-teal-600 px-5 py-4 text-white text-center">
-            <h3 className="font-black text-lg">خلصت كل أسئلتك! 🏁</h3>
+            <h3 className="font-black text-lg">You finished all your questions! 🏁</h3>
             <p className="text-sm text-emerald-50/90 font-bold">
-              زمنك: <span className="font-black" dir="ltr">⏱ {myTimeTxt}</span> — نقاطك: <span className="font-black" dir="ltr">{gMe ? gMe.score : 0}</span>
+              Your time: <span className="font-black" dir="ltr">⏱ {myTimeTxt}</span> — Your points: <span className="font-black" dir="ltr">{gMe ? gMe.score : 0}</span>
             </p>
           </div>
           <CardContent className="p-5 space-y-4">
             <div className="rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 px-4 py-3 text-center font-black text-amber-700 dark:text-amber-300">
-              استنى الباقيين يخلصوا — الترتيب بيتحدث لايف 👇
+              Wait for the others to finish — the leaderboard updates live 👇
             </div>
 
             {/* مين خلّص الأول */}
             <div>
               <h4 className="font-black flex items-center gap-1.5 mb-2">
-                <Trophy className="size-4 text-amber-500" /> مين خلّص الأول
+                <Trophy className="size-4 text-amber-500" /> First to finish
               </h4>
               <div className={'space-y-1.5 ' + SCROLL_CLS}>
                 {boardRows.map(function (r) {
@@ -1159,13 +1159,13 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
                         <p className="font-bold text-sm truncate flex items-center gap-1">
                           {r.name}
                           {r.isHost ? <Crown className="size-3.5 text-amber-500 shrink-0" /> : null}
-                          {r.isMe ? <span className="text-[10px] text-muted-foreground font-normal">(انت)</span> : null}
+                          {r.isMe ? <span className="text-[10px] text-muted-foreground font-normal">(you)</span> : null}
                         </p>
                         <p className="text-[11px] font-bold">
                           {r.finished ? (
                             <span className="text-emerald-600" dir="ltr">⏱ {rt}</span>
                           ) : (
-                            <span className="text-stone-400">بيحل… سؤال <span dir="ltr">{Math.min(r.qIndex + 1, totalQ)}/{totalQ}</span></span>
+                            <span className="text-stone-400">solving… question <span dir="ltr">{Math.min(r.qIndex + 1, totalQ)}/{totalQ}</span></span>
                           )}
                         </p>
                       </div>
@@ -1183,7 +1183,7 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
                 disabled={busy === 'end'}
                 className="w-full min-h-11 font-black text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-950/40"
               >
-                إنهاء التحدي للكل (هوست)
+                End challenge for everyone (host)
               </Button>
             ) : null}
 
@@ -1195,7 +1195,7 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
               className="w-full min-h-12 border-2 border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-900 dark:hover:bg-red-950/40 font-black"
             >
               {busy === 'leave' ? <Loader2 className="size-4 animate-spin" /> : <LogOut className="size-4" />}
-              خروج من التحدي
+              Leave challenge
             </Button>
           </CardContent>
         </Card>
@@ -1246,7 +1246,7 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
                 </div>
                 <div className="flex items-center gap-2 text-sm font-black">
                   {gMe && gMe.streak >= 2 ? <span className="text-orange-500 flex items-center gap-1"><Flame className="size-4" /> ×{gMe.streak}</span> : null}
-                  <Badge variant="outline" className="font-black" dir="ltr">{gMe ? gMe.score : 0} نقطة</Badge>
+                  <Badge variant="outline" className="font-black" dir="ltr">{gMe ? gMe.score : 0} points</Badge>
                 </div>
               </div>
               {/* البار البنفسجي + عدد الثواني — زي الصورة */}
@@ -1276,11 +1276,11 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
                           : 'bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300')}
                   >
                     {myFeedback.timeout ? (
-                      <>⌛ الوقت خلص! الإجابة الصح: {myFeedback.correctIndex != null && myFeedback.correctIndex >= 0 ? <span dir="ltr" className="inline-block"><FractionText text={shownQ.options[myFeedback.correctIndex] || ''} /></span> : '—'}</>
+                      <>⌛ Time's up! Correct answer: {myFeedback.correctIndex != null && myFeedback.correctIndex >= 0 ? <span dir="ltr" className="inline-block"><FractionText text={shownQ.options[myFeedback.correctIndex] || ''} /></span> : '—'}</>
                     ) : myFeedback.correct ? (
-                      <>صح! <span dir="ltr">+{myFeedback.gained}</span>{myFeedback.streak >= 3 ? ' 🔥' : ''}</>
+                      <>Correct! <span dir="ltr">+{myFeedback.gained}</span>{myFeedback.streak >= 3 ? ' 🔥' : ''}</>
                     ) : (
-                      <>غلط — الإجابة الصح: {myFeedback.correctIndex != null && myFeedback.correctIndex >= 0 ? <span dir="ltr" className="inline-block"><FractionText text={shownQ.options[myFeedback.correctIndex] || ''} /></span> : '—'}</>
+                      <>Wrong — correct answer: {myFeedback.correctIndex != null && myFeedback.correctIndex >= 0 ? <span dir="ltr" className="inline-block"><FractionText text={shownQ.options[myFeedback.correctIndex] || ''} /></span> : '—'}</>
                     )}
                   </motion.div>
                 ) : null}
@@ -1320,7 +1320,7 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
                     disabled={busy === 'end'}
                     className="w-full min-h-10 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 text-xs font-bold"
                   >
-                    إنهاء التحدي للكل (هوست)
+                    End challenge for everyone (host)
                   </Button>
                 ) : null}
                 <Button
@@ -1330,7 +1330,7 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
                   className="w-full min-h-12 border-2 border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-900 dark:hover:bg-red-950/40 font-black"
                 >
                   {busy === 'leave' ? <Loader2 className="size-4 animate-spin" /> : <LogOut className="size-4" />}
-                  خروج من التحدي
+                  Leave challenge
                 </Button>
               </div>
             </CardContent>
@@ -1340,7 +1340,7 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
         <Card className="overflow-hidden self-start">
           <div className="bg-gradient-to-l from-emerald-500 to-teal-600 px-5 py-3 text-white space-y-2">
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <span className="font-black text-sm">سؤال <span dir="ltr">{Math.min(myQIdx + 1, totalQ || 1)}</span> من <span dir="ltr">{totalQ || 1}</span></span>
+              <span className="font-black text-sm">Question <span dir="ltr">{Math.min(myQIdx + 1, totalQ || 1)}</span> of <span dir="ltr">{totalQ || 1}</span></span>
               {/* (و72) ساعة التوقيت — من بداية السباق */}
               <span className="flex items-center gap-1.5 font-black text-lg" dir="ltr">
                 <Timer className="size-5" />
@@ -1350,7 +1350,7 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
             </div>
             {/* بار الوقت — (و88) مخفي في وضع «من غير وقت» */}
             {roomUntimed ? (
-              <p className="text-[11px] font-black text-emerald-50/90">♾️ السؤال ده من غير وقت — خد وقتك براحتك</p>
+              <p className="text-[11px] font-black text-emerald-50/90">♾️ This question has no timer — take your time</p>
             ) : (
               <div className="h-1.5 rounded-full bg-white/25 overflow-hidden">
                 <div
@@ -1380,14 +1380,14 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
               >
                 <p className="flex items-center gap-2">
                   {myFeedback.timeout ? (
-                    <><Timer className="size-4 shrink-0" /> الوقت خلص على السؤال ده ⌛</>
+                    <><Timer className="size-4 shrink-0" /> Time's up on this question ⌛</>
                   ) : myFeedback.correct ? (
-                    <><Check className="size-4 shrink-0" /> صح! <span dir="ltr">+{myFeedback.gained}</span> نقطة{myFeedback.streak >= 2 ? ' — ستريك ×' + myFeedback.streak + '! 🔥' : ''}</>
+                    <><Check className="size-4 shrink-0" /> Correct! <span dir="ltr">+{myFeedback.gained}</span> points{myFeedback.streak >= 2 ? ' — streak ×' + myFeedback.streak + '! 🔥' : ''}</>
                   ) : (
-                    <><X className="size-4 shrink-0" /> غلط — الإجابة الصح: {myFeedback.correctIndex != null && myFeedback.correctIndex >= 0 ? <span dir="ltr" className="inline-block"><FractionText text={shownQ.options[myFeedback.correctIndex] || ''} /></span> : '—'}</>
+                    <><X className="size-4 shrink-0" /> Wrong — correct answer: {myFeedback.correctIndex != null && myFeedback.correctIndex >= 0 ? <span dir="ltr" className="inline-block"><FractionText text={shownQ.options[myFeedback.correctIndex] || ''} /></span> : '—'}</>
                   )}
                 </p>
-                <p className="text-[11px] font-bold opacity-80">جاري نقلك للسؤال اللي بعده…</p>
+                <p className="text-[11px] font-bold opacity-80">Moving you to the next question…</p>
               </motion.div>
             ) : null}
 
@@ -1428,7 +1428,7 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
                   disabled={busy === 'end'}
                   className="w-full min-h-10 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 text-xs font-bold"
                 >
-                  إنهاء التحدي للكل (هوست)
+                  End challenge for everyone (host)
                 </Button>
               ) : null}
               <Button
@@ -1438,7 +1438,7 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
                 className="w-full min-h-12 border-2 border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-900 dark:hover:bg-red-950/40 font-black"
               >
                 {busy === 'leave' ? <Loader2 className="size-4 animate-spin" /> : <LogOut className="size-4" />}
-                خروج من التحدي
+                Leave challenge
               </Button>
             </div>
           </CardContent>
@@ -1453,7 +1453,7 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
               return (
                 <div key={r.id || i} className="flex items-center gap-1.5 rounded-full border bg-white dark:bg-stone-900 px-3 py-1.5 shadow-sm shrink-0">
                   <span className="text-sm">{rankMedal(r.rank) || (r.rank)}</span>
-                  <span className="font-bold text-xs max-w-[90px] truncate">{r.name}{r.isMe ? ' (انت)' : ''}</span>
+                  <span className="font-bold text-xs max-w-[90px] truncate">{r.name}{r.isMe ? ' (you)' : ''}</span>
                   {r.finished ? <span className="text-xs">🏁</span> : <span className="text-[10px] text-stone-400 font-bold" dir="ltr">{r.qIndex + 1}/{totalQ}</span>}
                   <span className="font-black text-xs text-emerald-600" dir="ltr">{r.score}</span>
                 </div>
@@ -1466,10 +1466,10 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
         <Card className="hidden lg:block self-start sticky top-4">
           <CardContent className="p-4">
             <h4 className="font-black flex items-center gap-1.5 mb-1">
-              <Trophy className="size-4 text-amber-500" /> مين خلّص الأول
+              <Trophy className="size-4 text-amber-500" /> First to finish
             </h4>
             <p className="text-[11px] text-muted-foreground font-bold mb-3 flex items-center gap-1">
-              <Timer className="size-3" /> السباق شغال — <span dir="ltr">{fmtCountdown(swMs)}</span>
+              <Timer className="size-3" /> Race running — <span dir="ltr">{fmtCountdown(swMs)}</span>
             </p>
             <div className={'space-y-2 ' + SCROLL_CLS}>
               {boardRows.map(function (r) {
@@ -1488,16 +1488,16 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
                       <p className="font-bold text-sm truncate flex items-center gap-1">
                         {r.name}
                         {r.isHost ? <Crown className="size-3.5 text-amber-500 shrink-0" /> : null}
-                        {r.isMe ? <span className="text-[10px] text-muted-foreground font-normal">(انت)</span> : null}
+                        {r.isMe ? <span className="text-[10px] text-muted-foreground font-normal">(you)</span> : null}
                       </p>
                       <div className="flex items-center gap-2 text-[11px]">
                         {r.finished ? (
-                          <span className="text-emerald-600 font-black">خلّص 🏁</span>
+                          <span className="text-emerald-600 font-black">Finish 🏁</span>
                         ) : (
-                          <span className="text-stone-400 font-bold" dir="ltr">سؤال {Math.min(r.qIndex + 1, totalQ)}/{totalQ}</span>
+                          <span className="text-stone-400 font-bold" dir="ltr">Question {Math.min(r.qIndex + 1, totalQ)}/{totalQ}</span>
                         )}
-                        {!r.online && r.status !== 'left' ? <span className="text-stone-400">أوفلاين</span> : null}
-                        {r.status === 'left' ? <span className="text-stone-400">خرج</span> : null}
+                        {!r.online && r.status !== 'left' ? <span className="text-stone-400">Offline</span> : null}
+                        {r.status === 'left' ? <span className="text-stone-400">Left</span> : null}
                       </div>
                     </div>
                     <span className="font-black text-emerald-600" dir="ltr">{r.score}</span>
@@ -1537,8 +1537,8 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
       <div className="space-y-4">
         <Card className="overflow-hidden">
           <div className="bg-gradient-to-l from-emerald-500 to-teal-600 px-5 py-4 text-white text-center">
-            <h3 className="font-black text-xl">خلص السباق! 🎉</h3>
-            <p className="text-sm text-emerald-50/90 font-bold">{gRoom.title || 'غرفة ' + gRoom.code}</p>
+            <h3 className="font-black text-xl">Race finished! 🎉</h3>
+            <p className="text-sm text-emerald-50/90 font-bold">{gRoom.title || 'Room ' + gRoom.code}</p>
           </div>
           <CardContent className="p-5 space-y-5">
             {/* البوديوم — التاني شمال والأول في النص والتالت يمين */}
@@ -1569,7 +1569,7 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
                 })}
               </div>
             ) : (
-              <p className="text-center text-sm text-muted-foreground">مفيش لاعبين في النتيجة</p>
+              <p className="text-center text-sm text-muted-foreground">No players in the results</p>
             )}
 
             {/* مكاني */}
@@ -1580,9 +1580,9 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
                 className="rounded-xl border-2 border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 p-4 flex items-center justify-between gap-3"
               >
                 <div className="min-w-0">
-                  <p className="font-black">مكانك: {rankMedal(myRank) || '#' + myRank} من {boardRows.length}</p>
+                  <p className="font-black">Your place: {rankMedal(myRank) || '#' + myRank} of {boardRows.length}</p>
                   <p className="text-sm text-muted-foreground font-bold truncate">
-                    {gMe.name} — كسبت <span dir="ltr">{gMe.score}</span> نقطة
+                    {gMe.name} — You earned <span dir="ltr">{gMe.score}</span> points
                     {gMe.streak >= 2 ? ' 🔥' : ''}
                   </p>
                   {myEndTime ? (
@@ -1597,7 +1597,7 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
             {finals.length > 0 ? (
               <div className="space-y-2">
                 <h4 className="font-black flex items-center gap-1.5">
-                  <ListChecks className="size-4 text-emerald-600" /> مراجعة الأسئلة
+                  <ListChecks className="size-4 text-emerald-600" /> Question review
                 </h4>
                 <div className={SCROLL_CLS + ' space-y-2.5 pe-1'}>
                   {finals.map(function (q, qi) {
@@ -1608,13 +1608,13 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
                         <p dir="ltr" className="text-left font-bold text-sm leading-relaxed">{qi + 1}. <FractionText text={q.text} /></p>
                         {ans ? (
                           <p className={'text-sm font-black ' + (Number(ans.correct) ? 'text-emerald-600' : 'text-red-600')}>
-                            {Number(ans.correct) ? '✅ إجابتك: ' : '❌ إجابتك: '}<span dir="ltr" className="inline-block"><FractionText text={myChoiceText} /></span>
+                            {Number(ans.correct) ? '✅ Your answer: ' : '❌ Your answer: '}<span dir="ltr" className="inline-block"><FractionText text={myChoiceText} /></span>
                           </p>
                         ) : (
-                          <p className="text-sm text-stone-400 font-bold">⌛ ما جاوبتش في السؤال ده</p>
+                          <p className="text-sm text-stone-400 font-bold">⌛ You didn't answer this question</p>
                         )}
                         {!ans || !Number(ans.correct) ? (
-                          <p className="text-sm text-emerald-600 font-bold">الإجابة الصح: <span dir="ltr" className="inline-block"><FractionText text={q.options[q.correctIndex]} /></span></p>
+                          <p className="text-sm text-emerald-600 font-bold">Correct answer: <span dir="ltr" className="inline-block"><FractionText text={q.options[q.correctIndex]} /></span></p>
                         ) : null}
                         {q.explanation ? (
                           <p className="text-xs text-muted-foreground leading-relaxed">💡 <FractionText text={q.explanation} /></p>
@@ -1631,10 +1631,10 @@ function GroupsMode({ studentId, studentName }: { studentId: string; studentName
                 onClick={function () { resetGroups() }}
                 className="min-h-12 bg-gradient-to-l from-emerald-500 to-teal-600 text-white font-black"
               >
-                <RotateCcw className="size-4" /> العب تاني 🔁
+                <RotateCcw className="size-4" /> Play again 🔁
               </Button>
               <Button variant="outline" onClick={function () { exitRoom(false) }} className="min-h-12 font-black">
-                <LogOut className="size-4" /> خروج
+                <LogOut className="size-4" /> Leave
               </Button>
             </div>
           </CardContent>
@@ -1753,7 +1753,7 @@ function BankChallenge({ studentId, studentName }: { studentId: string; studentN
       var d: any = await res.json()
       var qs: BankQ[] = (d && d.ok && Array.isArray(d.questions)) ? d.questions : []
       if (!d || !d.ok || qs.length === 0) {
-        toast.error('البنك فاضي — استنى المستر يرفع ملفات التحدي')
+        toast.error('The bank is empty — wait for the teacher to upload challenge files')
         return
       }
       qRef.current = qs
@@ -1768,7 +1768,7 @@ function BankChallenge({ studentId, studentName }: { studentId: string; studentN
       setRemainMs(BANK_Q_LIMIT_MS)
       setPhase('play')
     } catch (e) {
-      toast.error('الشبكة بتلحس — جرب تاني')
+      toast.error('Network hiccup — try again')
     } finally {
       setLoadingRound(false)
     }
@@ -1786,17 +1786,17 @@ function BankChallenge({ studentId, studentName }: { studentId: string; studentN
       })
       var d = out.data
       if (!d || !d.ok) {
-        toast.error(String((d && d.error) || 'مشكلة في تسليم التحدي'))
+        toast.error(String((d && d.error) || 'Problem submitting the challenge'))
         setPhase('idle')
         return
       }
       setResult({ score: Number(d.score || 0), correctCount: Number(d.correctCount || 0), total: Number(d.total || answers.length), timeMs: Number(d.timeMs || totalMs) })
       setMyRankKey(studentName + '-' + Number(d.score || 0))
       setPhase('done')
-      toast.success('خلصت التحدي! درجتك: ' + String(d.score || 0) + ' 🎯')
+      toast.success('Challenge complete! Your score: ' + String(d.score || 0) + ' 🎯')
       await refreshBoard()
     } catch (e) {
-      toast.error('الشبكة بتلحس — جرب تاني')
+      toast.error('Network hiccup — try again')
       setPhase('idle')
     } finally {
       setSubmitting(false)
@@ -1823,7 +1823,7 @@ function BankChallenge({ studentId, studentName }: { studentId: string; studentN
       <Card className="overflow-hidden border-violet-300 dark:border-violet-800">
         <div className="bg-gradient-to-l from-violet-600 to-fuchsia-600 px-5 py-4 text-white">
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <Badge className="bg-white/25 text-white border-0 font-black">🎯 تحدي ملفات المستر</Badge>
+            <Badge className="bg-white/25 text-white border-0 font-black">🎯 Teacher's files challenge</Badge>
             <span className="text-sm font-black" dir="ltr">{idx + 1} / {qs.length}</span>
           </div>
           <div className="mt-3 h-2 w-full rounded-full bg-white/20">
@@ -1849,7 +1849,7 @@ function BankChallenge({ studentId, studentName }: { studentId: string; studentN
           {submitting ? (
             <div className="py-8 flex flex-col items-center gap-2">
               <Loader2 className="size-7 animate-spin text-violet-500" />
-              <p className="text-sm font-bold text-muted-foreground">بتسلّم المحاولة…</p>
+              <p className="text-sm font-bold text-muted-foreground">Submitting your attempt…</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1883,29 +1883,29 @@ function BankChallenge({ studentId, studentName }: { studentId: string; studentN
     return (
       <Card className="overflow-hidden border-emerald-300 dark:border-emerald-800">
         <div className="bg-gradient-to-l from-emerald-500 to-teal-600 px-5 py-4 text-white text-center">
-          <h3 className="font-black text-lg">خلصت التحدي! 🎉</h3>
+          <h3 className="font-black text-lg">Challenge complete! 🎉</h3>
         </div>
         <CardContent className="p-5 space-y-4">
           <div className="grid grid-cols-3 gap-2 text-center">
             <div className="rounded-xl border bg-muted/40 p-3">
-              <p className="text-[11px] font-bold text-muted-foreground">الدرجة</p>
+              <p className="text-[11px] font-bold text-muted-foreground">Score</p>
               <p className="text-2xl font-black text-teal-600 dark:text-teal-400" dir="ltr">{result.score}</p>
             </div>
             <div className="rounded-xl border bg-muted/40 p-3">
-              <p className="text-[11px] font-bold text-muted-foreground">صح</p>
+              <p className="text-[11px] font-bold text-muted-foreground">Correct</p>
               <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400" dir="ltr">{result.correctCount}/{result.total}</p>
             </div>
             <div className="rounded-xl border bg-muted/40 p-3">
-              <p className="text-[11px] font-bold text-muted-foreground">الزمن</p>
+              <p className="text-[11px] font-bold text-muted-foreground">Time</p>
               <p className="text-2xl font-black" dir="ltr">{Math.round(result.timeMs / 1000)}s</p>
             </div>
           </div>
           <div className="flex gap-2">
             <Button onClick={function () { startRound() }} disabled={loadingRound} className="flex-1 min-h-12 bg-gradient-to-l from-violet-600 to-fuchsia-600 text-white font-black">
               {loadingRound ? <Loader2 className="size-5 animate-spin" /> : <RefreshCw className="size-5" />}
-              جولة تانية — أسئلة جديدة
+              Another round — new questions
             </Button>
-            <Button variant="outline" onClick={function () { setPhase('idle') }} className="min-h-12 font-black">رجوع</Button>
+            <Button variant="outline" onClick={function () { setPhase('idle') }} className="min-h-12 font-black">Back</Button>
           </div>
         </CardContent>
       </Card>
@@ -1917,11 +1917,11 @@ function BankChallenge({ studentId, studentName }: { studentId: string; studentN
     <Card className="overflow-hidden border-violet-300 dark:border-violet-800">
       <div className="bg-gradient-to-l from-violet-600 to-fuchsia-600 px-5 py-4 text-white">
         <div className="flex items-center justify-between gap-2 flex-wrap">
-          <Badge className="bg-white/25 text-white border-0 font-black">🎯 تحدي ملفات المستر</Badge>
-          <Badge className="bg-white text-violet-700 border-0 font-black" dir="ltr">{bankCount} سؤال</Badge>
+          <Badge className="bg-white/25 text-white border-0 font-black">🎯 Teacher's files challenge</Badge>
+          <Badge className="bg-white text-violet-700 border-0 font-black" dir="ltr">{bankCount} questions</Badge>
         </div>
-        <h3 className="mt-2 font-black text-lg leading-snug">أسئلة عشوائية من كل ملفات المستر — كل جولة مختلفة!</h3>
-        <p className="text-sm text-violet-100 font-bold">10 أسئلة إنجليزي • دقيقة لكل سؤال • الدرجة = الدقة + السرعة</p>
+        <h3 className="mt-2 font-black text-lg leading-snug">Random questions from all the teacher's files — every round is different!</h3>
+        <p className="text-sm text-violet-100 font-bold">10 English questions • 1 minute per question • score = accuracy + speed</p>
       </div>
       <CardContent className="p-5 space-y-4">
         <Button
@@ -1930,15 +1930,15 @@ function BankChallenge({ studentId, studentName }: { studentId: string; studentN
           className="w-full min-h-14 bg-gradient-to-l from-violet-600 to-fuchsia-600 text-white font-black text-lg shadow-lg shadow-violet-500/25"
         >
           {loadingRound ? <Loader2 className="size-5 animate-spin" /> : <Swords className="size-5" />}
-          ابدأ التحدي 🚀
+          Start 🚀
         </Button>
 
         <div className="rounded-2xl border p-3 space-y-2">
           <h4 className="font-black flex items-center gap-1.5 text-sm">
-            <Trophy className="size-4 text-violet-500" /> لوحة ترتيب التحدي
+            <Trophy className="size-4 text-violet-500" /> Challenge leaderboard
           </h4>
           {board.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-2 font-bold">لسه محدش خلص — كن انت الأول! 🏃</p>
+            <p className="text-sm text-muted-foreground text-center py-2 font-bold">Nobody has finished yet — be the first! 🏃</p>
           ) : (
             <div className={SCROLL_CLS + ' space-y-1.5'}>
               {board.map(function (row) {
@@ -1953,7 +1953,7 @@ function BankChallenge({ studentId, studentName }: { studentId: string; studentN
                     </span>
                     <span className="flex-1 truncate text-sm font-bold">
                       {row.name}
-                      {isMe ? <span className="text-[10px] text-muted-foreground font-normal"> (انت)</span> : null}
+                      {isMe ? <span className="text-[10px] text-muted-foreground font-normal"> (you)</span> : null}
                     </span>
                     <span dir="ltr" className="text-xs text-muted-foreground font-bold shrink-0">{row.correctCount}/{row.totalQuestions}</span>
                     <Badge variant="outline" className="font-black shrink-0" dir="ltr">{row.score}</Badge>
@@ -1988,7 +1988,7 @@ function ChallengeVideo({ url, type }: { url: string; type: string }) {
       <div className="overflow-hidden rounded-xl border border-amber-200 bg-black shadow-sm dark:border-amber-800" dir="ltr">
         <iframe
           src={'https://www.youtube.com/embed/' + ytId + '?modestbranding=1&rel=0&playsinline=1'}
-          title="فيديو المستر"
+          title="Teacher's video"
           className="aspect-video w-full"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
           allowFullScreen
@@ -2069,12 +2069,12 @@ function TeacherMode({ studentId, studentName }: { studentId: string; studentNam
         timeMs: Date.now() - seenAtRef.current,
       })
       var res = out.data
-      if (out.status === 404) { toast.error('التحدي مش موجود'); await loadChallenges(); return }
-      if (!res || !res.ok) { toast.error(String((res && res.error) || 'مشكلة في تسجيل إجابتك')); return }
-      toast.success('اتسجلت! شوف نفسك في اللوحة 🎯')
+      if (out.status === 404) { toast.error('Challenge not found'); await loadChallenges(); return }
+      if (!res || !res.ok) { toast.error(String((res && res.error) || 'Problem saving your answer')); return }
+      toast.success('Submitted! Find yourself on the board 🎯')
       await loadChallenges()
     } catch (e) {
-      toast.error('الشبكة بتلحس — جرب تاني')
+      toast.error('Network hiccup — try again')
     } finally {
       setSubmitting(false)
     }
@@ -2102,15 +2102,15 @@ function TeacherMode({ studentId, studentName }: { studentId: string; studentNam
         <Card className="border-dashed">
           <CardContent className="p-8 text-center space-y-2">
             <div className="text-5xl">😴</div>
-            <p className="font-black text-lg">مفيش تحدي شغال دلوقتي</p>
-            <p className="text-sm text-muted-foreground font-bold">استنى تحدي المستر الجديد!</p>
+            <p className="font-black text-lg">No active challenge right now</p>
+            <p className="text-sm text-muted-foreground font-bold">Wait for the teacher's next challenge!</p>
           </CardContent>
         </Card>
         {data && data.history.length > 0 ? (
           <Card>
             <CardContent className="p-4">
               <h4 className="font-black text-sm text-muted-foreground mb-2.5 flex items-center gap-1.5">
-                <GraduationCap className="size-4" /> تحديات قديمة
+                <GraduationCap className="size-4" /> Past challenges
               </h4>
               <div className="space-y-1.5">
                 {data.history.slice(0, 8).map(function (h) {
@@ -2136,13 +2136,13 @@ function TeacherMode({ studentId, studentName }: { studentId: string; studentNam
       <Card className="overflow-hidden border-amber-300 dark:border-amber-800">
         <div className="bg-gradient-to-l from-amber-500 to-orange-600 px-5 py-4 text-white space-y-2">
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <Badge className="bg-white/25 text-white border-0 font-black">👨‍🏫 تحدي المستر</Badge>
-            <Badge className="bg-white text-amber-700 border-0 font-black" dir="ltr">+{active.points} نقطة</Badge>
+            <Badge className="bg-white/25 text-white border-0 font-black">👨‍🏫 Teacher challenge</Badge>
+            <Badge className="bg-white text-amber-700 border-0 font-black" dir="ltr">+{active.points} points</Badge>
           </div>
           <h3 className="font-black text-lg leading-snug">{active.title}</h3>
           {active.closesAt && remainMs > 0 ? (
             <p className="text-sm font-black flex items-center gap-1.5 text-amber-100">
-              <Timer className="size-4" /> الوقت المتبقي: <span dir="ltr">{fmtCountdown(remainMs)}</span>
+              <Timer className="size-4" /> Time left: <span dir="ltr">{fmtCountdown(remainMs)}</span>
             </p>
           ) : null}
         </div>
@@ -2159,7 +2159,7 @@ function TeacherMode({ studentId, studentName }: { studentId: string; studentNam
               animate={{ opacity: 1, scale: 1 }}
               className="rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 p-4 text-center font-black text-emerald-700 dark:text-emerald-300"
             >
-              جاوبت خلاص ✅ — شوف نتيجتك في لوحة الترتيب 👇
+              You're done ✅ — check your result on the leaderboard 👇
             </motion.div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2186,10 +2186,10 @@ function TeacherMode({ studentId, studentName }: { studentId: string; studentNam
           {/* لوحة الترتيب */}
           <div className="rounded-2xl border p-3 space-y-2">
             <h4 className="font-black flex items-center gap-1.5 text-sm">
-              <Trophy className="size-4 text-amber-500" /> لوحة الترتيب
+              <Trophy className="size-4 text-amber-500" /> Leaderboard
             </h4>
             {!data || data.leaderboard.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-2 font-bold">لسه محدش جاوب — كن انت الأول! 🏃</p>
+              <p className="text-sm text-muted-foreground text-center py-2 font-bold">Nobody has answered yet — be the first! 🏃</p>
             ) : (
               <div className={SCROLL_CLS + ' space-y-1.5'}>
                 {data.leaderboard.map(function (row) {
@@ -2208,10 +2208,10 @@ function TeacherMode({ studentId, studentName }: { studentId: string; studentNam
                         {rankMedal(row.rank) || <span dir="ltr" className="font-black text-sm text-muted-foreground">{row.rank}</span>}
                       </span>
                       <span className={'flex-1 truncate text-sm ' + (row.isTeacher ? 'font-black text-amber-800 dark:text-amber-300' : 'font-bold')}>
-                        {row.isTeacher ? 'المستر وائل 👨‍🏫' : row.name}
-                        {isMe ? <span className="text-[10px] text-muted-foreground font-normal"> (انت)</span> : null}
+                        {row.isTeacher ? 'Mr. Sherif 👨‍🏫' : row.name}
+                        {isMe ? <span className="text-[10px] text-muted-foreground font-normal"> (you)</span> : null}
                       </span>
-                      <span dir="ltr" className="text-xs text-muted-foreground font-bold shrink-0">{Math.round(row.timeMs / 1000)} ث</span>
+                      <span dir="ltr" className="text-xs text-muted-foreground font-bold shrink-0">{Math.round(row.timeMs / 1000)} s</span>
                       {row.correct ? <Check className="size-4 text-emerald-600 shrink-0" /> : <X className="size-4 text-red-500 shrink-0" />}
                     </div>
                   )
@@ -2301,7 +2301,7 @@ function FlashcardsMode({ studentId, studentName }: { studentId: string; student
       var res = await fetch('/api/arena/flashcards?mode=round&count=' + fcCount + '&seconds=' + fcSeconds + '&difficulty=' + fcDiff, { cache: 'no-store' })
       var d: any = await res.json()
       if (!d || !d.ok || !(d.cards || []).length) {
-        toast.error(String((d && d.error) || 'مشكلة في تجهيز الجولة'))
+        toast.error(String((d && d.error) || 'Problem setting up the round'))
         return
       }
       setDeckSource(String(d.source || 'generated'))
@@ -2325,7 +2325,7 @@ function FlashcardsMode({ studentId, studentName }: { studentId: string; student
       setMyRowKey('')
       setPhase('play')
     } catch (e) {
-      toast.error('الشبكة بتلحس — جرب تاني')
+      toast.error('Network hiccup — try again')
     } finally {
       setLoadingRound(false)
     }
@@ -2361,10 +2361,10 @@ function FlashcardsMode({ studentId, studentName }: { studentId: string; student
       if (d && d.ok && d.hint) {
         setHint(String(d.hint).slice(0, 200))
       } else {
-        toast.error(String((d && d.error) || 'التلميح مش متاح دلوقتي'))
+        toast.error(String((d && d.error) || 'Hint not available right now'))
       }
     } catch (e) {
-      toast.error('الشبكة بتلحس — جرب تاني')
+      toast.error('Network hiccup — try again')
     } finally {
       setHintLoading(false)
     }
@@ -2409,21 +2409,21 @@ function FlashcardsMode({ studentId, studentName }: { studentId: string; student
       var out = await postJson('/api/arena/flashcards', {
         action: 'submit',
         studentId: studentId || '',
-        name: studentName || 'طالب',
+        name: studentName || 'Student',
         score: scoreRef.current,
         correctCount: correctRef.current,
         totalCards: Math.max(1, cardsRef.current.length),
       })
       var d = out.data
       if (out.status === 200 && d && d.ok) {
-        setMyRowKey((studentName || 'طالب') + '|' + scoreRef.current)
+        setMyRowKey((studentName || 'Student') + '|' + scoreRef.current)
         await refreshBoard()
-        toast.success('اتحفظت نتيجتك في لوحة الشرف 🏆')
+        toast.success('Your score was saved to the Hall of Fame 🏆')
       } else {
-        toast.error(String((d && d.error) || 'مشكلة في حفظ النتيجة'))
+        toast.error(String((d && d.error) || 'Problem saving your score'))
       }
     } catch (e) {
-      toast.error('الشبكة بتلحس — النتيجة ماتحفظتش')
+      toast.error('Network hiccup — your score wasn\'t saved')
     } finally {
       setSubmitting(false)
     }
@@ -2460,16 +2460,16 @@ function FlashcardsMode({ studentId, studentName }: { studentId: string; student
         <Card className="overflow-hidden border-violet-200 dark:border-violet-900/70">
           <div className="bg-gradient-to-l from-violet-500 to-fuchsia-600 px-5 py-4 text-white flex items-center gap-2">
             <Zap className="size-5" />
-            <h3 className="font-black text-lg">فلاش كاردز سريعة</h3>
+            <h3 className="font-black text-lg">Quick Flashcards</h3>
           </div>
           <CardContent className="p-5 space-y-4">
             <p className="leading-relaxed text-sm font-bold">
-              <span dir="ltr">{fcCount}</span> بطاقة سريعة — انت اللي بتظبط وقت كل بطاقة والصعوبة! الدقة + السرعة = نقاط. <span dir="ltr">3</span> صح ورا بعض = بونص 🔥
+              <span dir="ltr">{fcCount}</span> quick cards — you set the time per card and the difficulty! Accuracy + speed = points. <span dir="ltr">3</span> correct in a row = bonus 🔥
             </p>
             {/* (و72) تحكم الطالب في جولته: العدد + وقت البطاقة + الصعوبة */}
             <div className="rounded-2xl border-2 border-dashed border-violet-200 dark:border-violet-900/70 p-3 space-y-3">
               <div>
-                <p className="text-xs font-bold text-muted-foreground mb-1.5">عدد البطاقات</p>
+                <p className="text-xs font-bold text-muted-foreground mb-1.5">Number of cards</p>
                 <div className="grid grid-cols-4 gap-2">
                   {[5, 10, 15, 20].map(function (n) {
                     return (
@@ -2482,22 +2482,22 @@ function FlashcardsMode({ studentId, studentName }: { studentId: string; student
                 </div>
               </div>
               <div>
-                <p className="text-xs font-bold text-muted-foreground mb-1.5">وقت البطاقة الواحدة</p>
+                <p className="text-xs font-bold text-muted-foreground mb-1.5">Time per card</p>
                 <div className="grid grid-cols-5 gap-2">
                   {[8, 10, 15, 20, 30].map(function (s) {
                     return (
                       <button key={s} type="button" onClick={function () { setFcSeconds(s) }}
                         className={'min-h-10 rounded-xl border-2 px-2 text-[13px] font-black transition-colors ' + (fcSeconds === s ? 'border-violet-500 bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300' : 'border-stone-200 bg-white text-stone-500 hover:border-violet-300 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-400')}>
-                        <span dir="ltr">{s}</span> ث
+                        <span dir="ltr">{s}</span> s
                       </button>
                     )
                   })}
                 </div>
               </div>
               <div>
-                <p className="text-xs font-bold text-muted-foreground mb-1.5">الصعوبة</p>
+                <p className="text-xs font-bold text-muted-foreground mb-1.5">Difficulty</p>
                 <div className="grid grid-cols-4 gap-2">
-                  {([['easy', 'سهل'], ['medium', 'متوسط'], ['hard', 'صعب'], ['mixed', 'مختلط']] as [string, string][]).map(function (d) {
+                  {([['easy', 'Easy'], ['medium', 'Medium'], ['hard', 'Hard'], ['mixed', 'Mixed']] as [string, string][]).map(function (d) {
                     return (
                       <button key={d[0]} type="button" onClick={function () { setFcDiff(d[0] as 'easy' | 'medium' | 'hard' | 'mixed') }}
                         className={'min-h-10 rounded-xl border-2 px-2 text-[13px] font-black transition-colors ' + (fcDiff === d[0] ? 'border-violet-500 bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300' : 'border-stone-200 bg-white text-stone-500 hover:border-violet-300 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-400')}>
@@ -2509,7 +2509,7 @@ function FlashcardsMode({ studentId, studentName }: { studentId: string; student
               </div>
               {deckSource === 'deck' ? (
                 <p className="rounded-xl bg-fuchsia-500/10 px-3 py-2 text-[12px] font-black text-fuchsia-700 dark:text-fuchsia-300 ring-1 ring-fuchsia-400/30">
-                  🎯 كروت المستر الجاهزة ليها الأولوية — ووقت البطاقة اللي اخترته بيتطبق عليها
+                  🎯 The teacher's ready-made cards take priority — and your chosen card time applies to them
                 </p>
               ) : null}
             </div>
@@ -2519,7 +2519,7 @@ function FlashcardsMode({ studentId, studentName }: { studentId: string; student
               className="w-full min-h-14 bg-gradient-to-l from-violet-500 to-fuchsia-600 text-white font-black text-lg shadow-lg shadow-violet-500/25"
             >
               {loadingRound ? <Loader2 className="size-5 animate-spin" /> : <Play className="size-5" />}
-              ابدأ الجولة ⚡
+              Start the round ⚡
             </Button>
           </CardContent>
         </Card>
@@ -2527,12 +2527,12 @@ function FlashcardsMode({ studentId, studentName }: { studentId: string; student
         <Card>
           <CardContent className="p-4">
             <h4 className="font-black flex items-center gap-1.5 mb-3">
-              <Trophy className="size-4 text-violet-500" /> لوحة الشرف — أعلى <span dir="ltr">10</span>
+              <Trophy className="size-4 text-violet-500" /> Hall of Fame — top <span dir="ltr">10</span>
             </h4>
             {boardLoading ? (
               <div className="py-6 flex justify-center"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>
             ) : top10.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-3 font-bold">لسه مفيش نتيجات — كن انت أول واحد! 🚀</p>
+              <p className="text-sm text-muted-foreground text-center py-3 font-bold">No scores yet — be the very first! 🚀</p>
             ) : (
               <div className={SCROLL_CLS + ' space-y-1.5'}>
                 {top10.map(function (r) {
@@ -2578,7 +2578,7 @@ function FlashcardsMode({ studentId, studentName }: { studentId: string; student
             {streak >= 2 ? (
               <span className="text-orange-500 flex items-center gap-1"><Flame className="size-4" /> ×{streak}</span>
             ) : null}
-            <Badge variant="outline" className="font-black" dir="ltr">{score} نقطة</Badge>
+            <Badge variant="outline" className="font-black" dir="ltr">{score} points</Badge>
           </div>
         </div>
 
@@ -2646,11 +2646,11 @@ function FlashcardsMode({ studentId, studentName }: { studentId: string; student
                   className={'text-center font-black text-sm ' + (feedback.correct ? 'text-emerald-600' : 'text-red-500')}
                 >
                   {feedback.correct ? (
-                    <>صح! <span dir="ltr">+{feedback.gained}</span>{streak >= 3 ? ' 🔥 بونص الستريك' : ''}</>
+                    <>Correct! <span dir="ltr">+{feedback.gained}</span>{streak >= 3 ? ' 🔥 Streak bonus' : ''}</>
                   ) : feedback.timeout ? (
-                    <>⌛ الوقت خلص! الإجابة الصح: <span dir="ltr" className="inline-block"><FractionText text={cardNow.options[Number(cardNow.correctIndex)]} /></span></>
+                    <>⌛ Time's up! Correct answer: <span dir="ltr" className="inline-block"><FractionText text={cardNow.options[Number(cardNow.correctIndex)]} /></span></>
                   ) : (
-                    <>❌ غلط — الإجابة الصح: <span dir="ltr" className="inline-block"><FractionText text={cardNow.options[Number(cardNow.correctIndex)]} /></span></>
+                    <>❌ Wrong — correct answer: <span dir="ltr" className="inline-block"><FractionText text={cardNow.options[Number(cardNow.correctIndex)]} /></span></>
                   )}
                 </motion.p>
               ) : null}
@@ -2663,8 +2663,8 @@ function FlashcardsMode({ studentId, studentName }: { studentId: string; student
           type="button"
           onClick={function () { askHint() }}
           disabled={!!feedback || hintLoading || !!hint}
-          aria-label="مساعدة ذكية"
-          title="تلميح ذكي ✨"
+          aria-label="Smart help"
+          title="Smart hint ✨"
           className="fixed bottom-24 right-5 z-50 size-14 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white shadow-xl shadow-violet-500/30 grid place-items-center active:scale-95 transition-transform disabled:opacity-60"
         >
           {hintLoading ? <Loader2 className="size-6 animate-spin" /> : <Sparkles className="size-6" />}
@@ -2680,36 +2680,36 @@ function FlashcardsMode({ studentId, studentName }: { studentId: string; student
       <Card className="overflow-hidden">
         <div className="bg-gradient-to-l from-violet-500 to-fuchsia-600 px-5 py-6 text-white text-center space-y-1">
           <p className="text-3xl">🎉</p>
-          <h3 className="font-black text-xl">خلصت الجولة!</h3>
+          <h3 className="font-black text-xl">Round complete!</h3>
           <p className="text-5xl font-black pt-1" dir="ltr">{score}</p>
-          <p className="text-sm text-violet-100 font-bold">نقطة</p>
+          <p className="text-sm text-violet-100 font-bold">points</p>
         </div>
         <CardContent className="p-5 space-y-4">
           <div className="grid grid-cols-2 gap-2 text-center">
             <div className="rounded-xl bg-stone-50 dark:bg-stone-900/50 p-3">
               <p className="font-black text-lg" dir="ltr">{correctCount}/{cards.length || 10}</p>
-              <p className="text-xs text-muted-foreground font-bold">إجابات صح</p>
+              <p className="text-xs text-muted-foreground font-bold">Correct answers</p>
             </div>
             <div className="rounded-xl bg-stone-50 dark:bg-stone-900/50 p-3">
               <p className="font-black text-lg flex items-center justify-center gap-1">
                 <Flame className="size-4 text-orange-500" /><span dir="ltr">{bestStreak}</span>
               </p>
-              <p className="text-xs text-muted-foreground font-bold">أطول ستريك</p>
+              <p className="text-xs text-muted-foreground font-bold">Best streak</p>
             </div>
           </div>
 
           {submitting ? (
             <p className="text-xs text-center text-muted-foreground flex items-center justify-center gap-1.5 font-bold">
-              <Loader2 className="size-3.5 animate-spin" /> بيحفظ نتيجتك…
+              <Loader2 className="size-3.5 animate-spin" /> Saving your score…
             </p>
           ) : null}
 
           <div className="rounded-2xl border p-3">
             <h4 className="font-black text-sm flex items-center gap-1.5 mb-2">
-              <Trophy className="size-4 text-violet-500" /> لوحة الشرف
+              <Trophy className="size-4 text-violet-500" /> Hall of Fame
             </h4>
             {top10End.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-2 font-bold">{submitting ? 'بنجهز اللوحة…' : 'اللوحة فاضية لسه'}</p>
+              <p className="text-sm text-muted-foreground text-center py-2 font-bold">{submitting ? 'Preparing the board…' : 'The board is still empty'}</p>
             ) : (
               <div className={SCROLL_CLS + ' space-y-1.5'}>
                 {top10End.map(function (r) {
@@ -2726,7 +2726,7 @@ function FlashcardsMode({ studentId, studentName }: { studentId: string; student
                         {rankMedal(r.rank) || <span dir="ltr" className="font-black text-sm text-muted-foreground">{r.rank}</span>}
                       </span>
                       <span className="flex-1 truncate text-sm font-bold">
-                        {r.name}{isMeRow ? ' (انت)' : ''}
+                        {r.name}{isMeRow ? ' (you)' : ''}
                       </span>
                       <span className="text-xs text-muted-foreground font-bold shrink-0" dir="ltr">{r.correctCount}/{r.totalCards}</span>
                       <span className="font-black text-violet-600 shrink-0" dir="ltr">{r.score}</span>
@@ -2743,10 +2743,10 @@ function FlashcardsMode({ studentId, studentName }: { studentId: string; student
               disabled={loadingRound}
               className="min-h-12 bg-gradient-to-l from-violet-500 to-fuchsia-600 text-white font-black"
             >
-              {loadingRound ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4" />} جولة تانية 🔁
+              {loadingRound ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4" />} Another round 🔁
             </Button>
             <Button variant="outline" onClick={function () { setPhase('idle') }} className="min-h-12 font-black">
-              <Trophy className="size-4" /> اللوحة الكاملة
+              <Trophy className="size-4" /> Full board
             </Button>
           </div>
         </CardContent>
@@ -2762,9 +2762,9 @@ export function BattleArena({ studentId, studentName, grade }: { studentId: stri
   var [tab, setTab] = useState<'groups' | 'teacher' | 'flash'>('groups')
 
   var TABS: { id: 'groups' | 'teacher' | 'flash'; label: string; grad: string }[] = [
-    { id: 'groups', label: '👥 تحدي الجروبات', grad: 'from-emerald-500 to-teal-600' },
-    { id: 'teacher', label: '👨‍🏫 تحدي المستر', grad: 'from-amber-500 to-orange-600' },
-    { id: 'flash', label: '⚡ فلاش كاردز', grad: 'from-violet-500 to-fuchsia-600' },
+    { id: 'groups', label: '👥 Groups battle', grad: 'from-emerald-500 to-teal-600' },
+    { id: 'teacher', label: '👨‍🏫 Teacher challenge', grad: 'from-amber-500 to-orange-600' },
+    { id: 'flash', label: '⚡ Flashcards', grad: 'from-violet-500 to-fuchsia-600' },
   ]
 
   return (
@@ -2776,8 +2776,8 @@ export function BattleArena({ studentId, studentName, grade }: { studentId: stri
             <Swords className="size-6" />
           </span>
           <div>
-            <h2 className="text-xl sm:text-2xl font-black leading-tight">⚔️ ساحة التحدي</h2>
-            <p className="text-xs text-muted-foreground font-bold">اتسابق مع صحابك واكسب نقاط</p>
+            <h2 className="text-xl sm:text-2xl font-black leading-tight">⚔️ Arena</h2>
+            <p className="text-xs text-muted-foreground font-bold">Compete with your friends and earn points</p>
           </div>
         </div>
         {grade ? <Badge variant="outline" className="font-black shrink-0">{grade}</Badge> : null}
