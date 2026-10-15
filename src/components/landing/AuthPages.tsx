@@ -7,7 +7,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
-import { useAppStore, GRADES } from '@/stores/app-store'
+import { useAppStore, gradesFromConfig } from '@/stores/app-store'
 import { getDeviceId, getDeviceCandidates, getDeviceType, getDeviceTraits } from '@/lib/device'
 import { ArrowRight, Phone, Lock, GraduationCap, Users, Loader2, AlertCircle, AlertTriangle, Eye, EyeOff } from 'lucide-react'
 import { toast } from 'sonner'
@@ -400,7 +400,7 @@ export function RegisterView() {
                     <GraduationCap className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <select id="reg-grade" value={grade} onChange={function (e) { setGrade(e.target.value) }} className={'flex h-11 w-full rounded-md border border-input bg-transparent pr-10 pl-3 py-1 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring min-h-[44px] appearance-none cursor-pointer' + (errors.grade ? ' border-destructive' : '')}>
                       <option value="">{T('اختر الصف الدراسي', 'Select your grade')}</option>
-                      {GRADES.map(function (g) { return <option key={g} value={g}>{g}</option> })}
+                      {gradesFromConfig(store.siteConfig).map(function (g) { return <option key={g.ar} value={g.ar}>{(g.emoji ? g.emoji + ' ' : '') + g.ar}</option> })}
                     </select>
                   </div>
                   {errors.grade && <p className="text-xs text-destructive flex items-center gap-1"><AlertCircle className="h-3 w-3" />{errors.grade}</p>}

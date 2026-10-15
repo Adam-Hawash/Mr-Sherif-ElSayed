@@ -165,6 +165,69 @@ export const GRADES_EN = [
   { ar: 'أولى بكالوريا', en: '1 Bac', icon: '1B' },
 ] as const
 
+// ============================================================
+// (ز15 — طلب المستر: «خليها زي وائل — أقدر أغير الصفوف الدراسية»)
+// الصفوف بقت ديناميكية من لوحة الأدمن: GradesSchedulePanel بيحفظ
+// grades_data في SiteConfig وكل شاشات العرض بتقرأ من gradesFromConfig.
+// (متلمةسش GRADES وGRADE_SHORT_NAMES وGRADES_EN — توافق خلفي مع باقي الكود)
+// ============================================================
+export interface GradeItem {
+  ar: string
+  en: string
+  emoji: string
+  short: string
+}
+
+export const DEFAULT_GRADES: GradeItem[] = [
+  { ar: 'الصف السادس الابتدائي', en: 'Grade 6', emoji: '6️⃣', short: 'G6' },
+  { ar: 'أولى إعدادي', en: 'Prep 1', emoji: '1️⃣', short: '1' },
+  { ar: 'تانية إعدادي', en: 'Prep 2', emoji: '2️⃣', short: '2' },
+  { ar: 'تالتة إعدادي', en: 'Prep 3', emoji: '3️⃣', short: '3' },
+  { ar: 'أولى بكالوريا', en: '1 Bac', emoji: '🅱️', short: '1B' },
+]
+
+// بتفك JSON من siteConfig.grades_data (المفتاح اللي لوحة الأدمن بتكتب فيه)
+// ولو فاشل/فاضي بترجّع DEFAULT_GRADES — الترتيب = ترتيب لوحة الأدمن بالظبط
+export function gradesFromConfig(siteConfig: SiteConfig | null | undefined): GradeItem[] {
+  try {
+    var raw = siteConfig ? siteConfig.grades_data : null
+    if (typeof raw === 'string' && raw.trim() !== '') {
+      var parsed = JSON.parse(raw)
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        var items: GradeItem[] = []
+        for (var i = 0; i < parsed.length; i++) {
+          var g: any = parsed[i] || {}
+          items.push({
+            ar: typeof g.ar === 'string' ? g.ar : '',
+            en: typeof g.en === 'string' ? g.en : '',
+            emoji: typeof g.emoji === 'string' ? g.emoji : '',
+            short: typeof g.short === 'string' ? g.short : (typeof g.en === 'string' && g.en ? g.en : (typeof g.ar === 'string' ? g.ar : '')),
+          })
+        }
+        // لو في صف واحد على الأقل ليه اسم عربي نرجع القايمة، غير كده فولباك
+        var hasAny = false
+        for (var j = 0; j < items.length; j++) {
+          if (items[j].ar.trim() !== '') { hasAny = true; break }
+        }
+        if (hasAny) {
+          // قايمة الصفوف = اللي في لوحة الأدمن بالظبط — من غير أي إضافة
+          // أو إعادة ترتيب تلقائية من الكود + شيل أي صف فاضي أو مكرر
+          var seen: Record<string, boolean> = {}
+          var clean: GradeItem[] = []
+          for (var m = 0; m < items.length; m++) {
+            var ar = (items[m].ar || '').trim()
+            if (!ar || seen[ar]) continue
+            seen[ar] = true
+            clean.push({ ar: ar, en: items[m].en, emoji: items[m].emoji, short: items[m].short })
+          }
+          if (clean.length > 0) return clean
+        }
+      }
+    }
+  } catch (e) { /* فولباك تحت */ }
+  return DEFAULT_GRADES
+}
+
 export interface Stats {
   totalStudents: number
   pendingStudents: number

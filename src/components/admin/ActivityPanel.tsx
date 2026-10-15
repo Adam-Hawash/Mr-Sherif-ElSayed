@@ -8,7 +8,7 @@ import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import type { StudentActivity, Student } from '@/stores/app-store'
 
-import { GRADES } from '@/stores/app-store'
+import { gradesFromConfig, useAppStore } from '@/stores/app-store'
 
 const ACTION_STYLES: Record<string, { label: string; color: string; icon: string }> = {
   login: { label: 'تسجيل دخول', color: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20', icon: '🔑' },
@@ -24,6 +24,8 @@ const ACTION_STYLES: Record<string, { label: string; color: string; icon: string
 }
 
 export function ActivityPanel() {
+  /* (ز15) القايمة الديناميكية من لوحة الأدمن — زي Maths-Genius */
+  const GRADES = gradesFromConfig(useAppStore(function (s) { return s.siteConfig })).map(function (g) { return g.ar })
   const [activities, setActivities] = useState<StudentActivity[]>([])
   const [loading, setLoading] = useState(true)
   const [filterGrade, setFilterGrade] = useState('')

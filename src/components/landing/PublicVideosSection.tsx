@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Card } from '@/components/ui/card'
 import { Lock, Play } from 'lucide-react'
 import { PlatformLoader } from '@/components/PlatformLoader'
-import { useAppStore, GRADES } from '@/stores/app-store'
+import { useAppStore, gradesFromConfig } from '@/stores/app-store'
 
 interface VideoItem {
   id: string
@@ -25,6 +25,9 @@ function getYouTubeThumbnail(url: string) {
 
 export function PublicVideosSection() {
   var setView = useAppStore(function (s) { return s.setView })
+  /* (ز15) القايمة الديناميكية من لوحة الأدمن — زي Maths-Genius */
+  var siteConfig = useAppStore(function (s) { return s.siteConfig })
+  var gradeItems = gradesFromConfig(siteConfig)
   var [videos, setVideos] = useState<VideoItem[]>([])
   var [loading, setLoading] = useState(true)
   var [gradeFilter, setGradeFilter] = useState('all')
@@ -73,14 +76,10 @@ export function PublicVideosSection() {
 
         {/* Grade filter tabs - Arabic only */}
         <div className="flex flex-wrap justify-center gap-2 mb-8">
-          {[
-            { value: 'all', label: 'الكل' },
-            { value: 'الصف السادس الابتدائي', label: 'الصف السادس' },
-            { value: 'أولى إعدادي', label: 'الأول الإعدادي' },
-            { value: 'تانية إعدادي', label: 'التاني الإعدادي' },
-            { value: 'تالتة إعدادي', label: 'التالت الإعدادي' },
-            { value: 'أولى بكالوريا', label: 'أولى بكالوريا' },
-          ].map(function (g) {
+          {/* (ز15) القايمة من لوحة الأدمن — مفيش صفوف مكتوبة في الكود */}
+          {[{ value: 'all', label: 'الكل' }].concat(gradeItems.map(function (g) {
+            return { value: g.ar, label: g.emoji ? g.emoji + ' ' + g.ar : g.ar }
+          })).map(function (g) {
             var isActive = gradeFilter === g.value
             return (
               <button

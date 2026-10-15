@@ -1,9 +1,10 @@
 'use client'
 
-import { useAppStore, GRADES, type Student, type Video, type Homework, type Exam, type Announcement, type ExamResult, type GalleryImage, type Stats } from '@/stores/app-store'
+import { useAppStore, gradesFromConfig, type GradeItem, type Student, type Video, type Homework, type Exam, type Announcement, type ExamResult, type GalleryImage, type Stats } from '@/stores/app-store'
 import { chunkedUpload } from '@/lib/chunked-upload'
 import { PlatformLoader } from '@/components/PlatformLoader'
 import { QuestionsEditorDialog, EditQuestionsButton, RegradeButton, RegradeAllButton, OverrideButton } from '@/components/admin/QuestionsEditor'
+import { GradesSchedulePanel } from '@/components/admin/GradesSchedulePanel'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -60,6 +61,13 @@ import { InstallPwaButton } from '@/components/InstallPwaButton'
 import { useState, useEffect, useRef, useMemo, Fragment } from 'react'
 import Image from 'next/image'
 import { toast } from 'sonner'
+
+/* (ز15) قايمة الصفوف الديناميكية من إعدادات الأدمن (grades_data) — المستر بقدر
+   يضيف/يمسح/يرتب الصفوف من تاب «الصفوف والمواعيد» وبتظهر في كل المنصة فورًا */
+function useGradesList(): GradeItem[] {
+  const siteConfig = useAppStore(function (s) { return s.siteConfig })
+  return useMemo(function () { return gradesFromConfig(siteConfig) }, [siteConfig])
+}
 
 // Extract ALL image URLs/paths from student answer text
 function extractAllImagePaths(text: string): string[] {
@@ -380,6 +388,8 @@ export function AdminDashboard() {
             <TabsTrigger value="payments" className="text-xs sm:text-sm gap-1 text-amber-600 dark:text-amber-400"><Wallet className="h-4 w-4" /><span className="hidden sm:inline">{T('المدفوعات', 'Payments')}</span></TabsTrigger>
             <TabsTrigger value="ai-extract" className="text-xs sm:text-sm gap-1 text-purple-600 dark:text-purple-400"><Sparkles className="h-4 w-4" /><span className="hidden sm:inline">{T('استخراج AI', 'AI Extract')}</span></TabsTrigger>
             <TabsTrigger value="complaints" className="text-xs sm:text-sm gap-1 text-red-600 dark:text-red-400"><Flag className="h-4 w-4" /><span className="hidden sm:inline">{T('الشكاوي', 'Complaints')}</span>{newComplaints > 0 && <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold">{newComplaints}</span>}</TabsTrigger>
+            {/* (ز15) الصفوف الدراسية + مواعيد السنتر — زي Maths-Genius */}
+            <TabsTrigger value="grades-schedule" className="text-xs sm:text-sm gap-1 text-emerald-600 dark:text-emerald-400"><GraduationCap className="h-4 w-4" /><span className="hidden sm:inline">{T('الصفوف والمواعيد', 'Grades')}</span></TabsTrigger>
           </TabsList>
 
           <TabsContent value="students"><StudentsManager onStatsRefresh={fetchStats} onViewImage={setImageModalSrc} /></TabsContent>
@@ -414,6 +424,8 @@ export function AdminDashboard() {
           <TabsContent value="payments"><PaymentsPanel onRefresh={fetchStats} /></TabsContent>
           <TabsContent value="ai-extract"><AIExtractionPanel onRefresh={fetchStats} adminId={(currentAdmin && currentAdmin.id) || ''} /></TabsContent>
           <TabsContent value="complaints"><AdminComplaints /></TabsContent>
+          {/* (ز15) لوحة الصفوف الدراسية + مواعيد السنتر */}
+          <TabsContent value="grades-schedule"><GradesSchedulePanel /></TabsContent>
         </Tabs>
 
         {/* Admin Settings Dialog */}
@@ -547,6 +559,7 @@ function StatCard({ icon: Icon, label, value, color }: { icon: any; label: strin
 
 /* ========== STUDENTS MANAGER ========== */
 function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () => void; onViewImage: (src: string) => void }) {
+  const gradesList = useGradesList()
   const [students, setStudents] = useState<Student[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'paid' | 'rejected'>('pending')
@@ -716,7 +729,7 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
           <div className="flex gap-1 flex-wrap items-center">
             <select value={filterGrade} onChange={(e) => setFilterGrade(e.target.value)} className="h-8 rounded-md border border-input bg-transparent px-2 text-xs">
               <option value="">كل الصفوف</option>
-              {GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
+              {gradesList.map((g) => <option key={g.ar} value={g.ar}>{(g.emoji ? g.emoji + ' ' : '') + g.ar}</option>)}
             </select>
             <div className="flex gap-1 bg-muted rounded-lg p-1">
               {(['pending', 'all', 'approved', 'paid', 'rejected'] as const).map((f) => (
@@ -825,6 +838,7 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
 
 /* ========== VIDEO MANAGER (with REAL XHR upload progress) ========== */
 function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
+  const gradesList = useGradesList()
   const currentAdminId = useAppStore(function (s) { return s.currentAdmin?.id || '' })
   const [videos, setVideos] = useState<Video[]>([])
   const [loading, setLoading] = useState(true)
@@ -1248,7 +1262,7 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
           <div className="flex gap-2 items-center flex-wrap">
             <select value={filterGrade} onChange={(e) => setFilterGrade(e.target.value)} className="h-9 rounded-md border border-input bg-transparent px-3 text-sm">
               <option value="">كل الصفوف</option>
-              {GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
+              {gradesList.map((g) => <option key={g.ar} value={g.ar}>{(g.emoji ? g.emoji + ' ' : '') + g.ar}</option>)}
             </select>
             <Button size="sm" onClick={() => setShowForm(!showForm)}><Plus className="h-4 w-4 ml-1" />إضافة فيديو</Button>
             {/* (2026-و106) تثبيت المنصة كتطبيق على الموبايل — PWA */}
@@ -1268,7 +1282,7 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
               <div className="space-y-1.5">
                 <Label className="text-xs">الصف الدراسي *</Label>
                 <select value={formGrade} onChange={(e) => setFormGrade(e.target.value)} className="w-full h-9 rounded-md border border-input bg-transparent px-3 text-sm">
-                  <option value="">اختر الصف</option>{GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
+                  <option value="">اختر الصف</option>{gradesList.map((g) => <option key={g.ar} value={g.ar}>{(g.emoji ? g.emoji + ' ' : '') + g.ar}</option>)}
                 </select>
               </div>
               <div className="space-y-1.5">
@@ -1839,6 +1853,7 @@ function ExamSettingsRow({ exam, adminId, onChanged }: { exam: any; adminId: str
 }
 
 function ExamTrackingPanel({ onViewImage }: { onViewImage?: (src: string) => void }) {
+  const gradesList = useGradesList()
   /* (25-ب1) إثبات الأدمن للـ GET (شوف العناصر المجدولة) + للـ PATCH */
   const currentAdminId = useAppStore(function (s) { return s.currentAdmin?.id || '' })
   const [examEditTarget, setExamEditTarget] = useState<any>(null)
@@ -2113,7 +2128,7 @@ function ExamTrackingPanel({ onViewImage }: { onViewImage?: (src: string) => voi
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5"><Label className="text-xs">الصف</Label>
                 <select value={formGrade} onChange={(e) => setFormGrade(e.target.value)} className="w-full h-9 rounded-md border border-input bg-transparent px-3 text-sm">
-                  <option value="">اختر الصف</option>{GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
+                  <option value="">اختر الصف</option>{gradesList.map((g) => <option key={g.ar} value={g.ar}>{(g.emoji ? g.emoji + ' ' : '') + g.ar}</option>)}
                 </select>
               </div>
               <div className="space-y-1.5"><Label className="text-xs">العنوان</Label>
@@ -2985,6 +3000,7 @@ interface StudentAnalytics {
 }
 
 function MyStudentsPanel({ onViewImage }: { onViewImage?: (src: string) => void }) {
+  const gradesList = useGradesList()
   const [grade, setGrade] = useState('')
   const [students, setStudents] = useState<StudentAnalytics[]>([])
   const [summary, setSummary] = useState<any>(null)
@@ -3078,7 +3094,7 @@ function MyStudentsPanel({ onViewImage }: { onViewImage?: (src: string) => void 
               </div>
               <select value={grade} onChange={(e) => setGrade(e.target.value)} className="h-9 rounded-md border border-input bg-transparent px-3 text-sm min-w-[200px]">
                 <option value="">اختر الصف لعرض التحليلات</option>
-                {GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
+                {gradesList.map((g) => <option key={g.ar} value={g.ar}>{(g.emoji ? g.emoji + ' ' : '') + g.ar}</option>)}
               </select>
             </div>
           </div>
@@ -3623,6 +3639,7 @@ interface CMProps<T extends { id: string; grade: string; createdAt: string }> {
 }
 
 function ContentManager<T extends { id: string; grade: string; createdAt: string }>({ title, apiPath, itemName, fields, renderTitle, renderSubtitle, supportFileUpload, fileCategory, acceptedTypes, supportAnswerKey, supportThumbnail, supportMCQ, onRefresh }: CMProps<T>) {
+  const gradesList = useGradesList()
   const [items, setItems] = useState<T[]>([])
   /* (25-ب1) إثبات الأدمن: GET يشوف المجدول + PATCH موعد الواجب */
   const currentAdminId = useAppStore(function (s) { return s.currentAdmin?.id || '' })
@@ -3879,7 +3896,7 @@ function ContentManager<T extends { id: string; grade: string; createdAt: string
           <div className="flex gap-2 items-center flex-wrap">
             <select value={filterGrade} onChange={(e) => setFilterGrade(e.target.value)} className="h-9 rounded-md border border-input bg-transparent px-3 text-sm">
               <option value="">كل الصفوف</option>
-              {GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
+              {gradesList.map((g) => <option key={g.ar} value={g.ar}>{(g.emoji ? g.emoji + ' ' : '') + g.ar}</option>)}
             </select>
             <Button size="sm" onClick={() => setShowForm(!showForm)}><Plus className="h-4 w-4 ml-1" />إضافة</Button>
           </div>
@@ -3892,7 +3909,7 @@ function ContentManager<T extends { id: string; grade: string; createdAt: string
             <div className="space-y-1.5">
               <Label className="text-xs">الصف الدراسي</Label>
               <select value={formGrade} onChange={(e) => setFormGrade(e.target.value)} className="w-full h-9 rounded-md border border-input bg-transparent px-3 text-sm">
-                <option value="">اختر الصف</option>{GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
+                <option value="">اختر الصف</option>{gradesList.map((g) => <option key={g.ar} value={g.ar}>{(g.emoji ? g.emoji + ' ' : '') + g.ar}</option>)}
               </select>
             </div>
             {Object.entries(fields).map(([key, field]) => (
@@ -4155,6 +4172,7 @@ function ContentManager<T extends { id: string; grade: string; createdAt: string
 
 /* ========== AI EXTRACTION PANEL ========== */
 function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; adminId?: string }) {
+  const gradesList = useGradesList()
   const [step, setStep] = useState<1 | 2 | 3>(1)
   const [extractType, setExtractType] = useState<'exam' | 'homework'>('exam')
   const [grade, setGrade] = useState('')
@@ -4980,7 +4998,7 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
           <Label className="text-xs font-medium">الصف الدراسي *</Label>
           <select value={grade} onChange={function(e) { setGrade(e.target.value) }} className="w-full h-10 rounded-lg border border-input bg-transparent px-3 text-sm">
             <option value="">اختر الصف</option>
-            {GRADES.map(function(g) { return <option key={g} value={g}>{g}</option> })}
+            {gradesList.map(function(g) { return <option key={g.ar} value={g.ar}>{(g.emoji ? g.emoji + ' ' : '') + g.ar}</option> })}
           </select>
         </div>
         <div className="space-y-1.5">
@@ -5190,7 +5208,7 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
                 <Label className="text-xs font-bold text-sky-700 dark:text-sky-300">١) اختار مرحلة الكتاب</Label>
                 <select value={bookGradeFilter} onChange={function(e) { setBookGradeFilter(e.target.value); if (e.target.value && savedBooks.length === 0 && !savedBooksLoading) loadSavedBooks(); if (e.target.value) setShowSavedBooks(true) }} className="w-full h-9 rounded-md border border-sky-300/60 bg-transparent px-3 text-sm">
                   <option value="">كل الكتب — أو اختار مرحلة تتصفي بيها</option>
-                  {GRADES.map(function (g) { return <option key={g} value={g}>{g}</option> })}
+                  {gradesList.map(function (g) { return <option key={g.ar} value={g.ar}>{(g.emoji ? g.emoji + ' ' : '') + g.ar}</option> })}
                 </select>
               </div>
               <button type="button" onClick={function () { var next = !showSavedBooks; setShowSavedBooks(next); if (next && savedBooks.length === 0 && !savedBooksLoading) loadSavedBooks() }} className="w-full flex items-center justify-between rounded-md border border-sky-300/60 bg-white/70 dark:bg-transparent px-3 py-2 text-sm font-bold text-sky-700 dark:text-sky-300 hover:bg-sky-100/60 dark:hover:bg-sky-900/30 transition-colors cursor-pointer">

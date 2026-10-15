@@ -7,17 +7,12 @@ import { Badge } from '@/components/ui/badge'
 import { Send, Loader2, MessageSquare, Users } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
-import type { Discussion } from '@/stores/app-store'
-
-const GRADES = [
-  'الصف السادس الابتدائي',
-  'أولى إعدادي',
-  'تانية إعدادي',
-  'تالتة إعدادي',
-  'أولى بكالوريا',
-]
+import { gradesFromConfig, useAppStore, type Discussion } from '@/stores/app-store'
 
 export function CommunityPanel() {
+  /* (ز15) القايمة الديناميكية من لوحة الأدمن — زي Maths-Genius */
+  var siteConfig = useAppStore(function (s) { return s.siteConfig })
+  var GRADES = gradesFromConfig(siteConfig).map(function (g) { return g.ar })
   const [selectedGrade, setSelectedGrade] = useState('')
   const [discussions, setDiscussions] = useState<Discussion[]>([])
   const [loading, setLoading] = useState(true)

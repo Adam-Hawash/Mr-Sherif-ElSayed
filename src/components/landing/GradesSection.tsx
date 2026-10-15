@@ -1,9 +1,11 @@
 'use client'
 
 import { Card, CardContent } from '@/components/ui/card'
-import { useAppStore, GRADES, GRADES_EN } from '@/stores/app-store'
+import { useAppStore, gradesFromConfig } from '@/stores/app-store'
 import { toast } from 'sonner'
 
+/* (ز15) fallback للأيقونات والأسماء الإنجليزية للصفوف القديمة اللي مش
+   متسجلة في الكونفج — الجديد بييجي من grades_data بتاعة لوحة الأدمن */
 var gradeIcons: Record<string, string> = {
   'الصف السادس الابتدائي': 'G6',
   'أولى إعدادي': '1',
@@ -20,11 +22,12 @@ var gradeEnNames: Record<string, string> = {
   'أولى بكالوريا': '1 Bac',
 }
 
-var grades = GRADES.map(function(g) { return { id: g, name: g, icon: gradeIcons[g] || g[0], enName: gradeEnNames[g] || '' } })
-
 export function GradesSection() {
   var { siteConfig } = useAppStore()
   var cfg = siteConfig
+  // (ز15) القايمة بقت ديناميكية من لوحة الأدمن (GradesSchedulePanel) —
+  // المستر يضيف/يمسح/يرتب الصفوف وبتظهر هنا فورًا (زي Maths-Genius)
+  var grades = gradesFromConfig(siteConfig)
 
   var handleGradeClick = function(gradeName: string) {
     toast.info('سجّل أولاً ثم ادخل حسابك للوصول إلى مواد ' + gradeName)
@@ -44,22 +47,22 @@ export function GradesSection() {
           {grades.map(function(grade) {
             return (
               <Card
-                key={grade.id}
+                key={grade.ar}
                 className="group cursor-pointer hover:shadow-lg transition-all duration-300 hover:-translate-y-1 hover:border-primary/50 border-border/50"
-                onClick={function() { handleGradeClick(grade.name) }}
+                onClick={function() { handleGradeClick(grade.ar) }}
               >
                 <CardContent className="p-4 sm:p-6 text-center space-y-3">
                   <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 group-hover:bg-primary/20 transition-colors">
                     <span className="text-lg font-bold text-primary">
-                      {grade.icon}
+                      {grade.emoji || gradeIcons[grade.ar] || grade.short || grade.ar[0]}
                     </span>
                   </div>
                   <div className="space-y-0.5">
                     <h3 className="font-semibold text-sm leading-tight">
-                      {grade.name}
+                      {grade.ar}
                     </h3>
                     <p className="text-[11px] text-muted-foreground font-medium tracking-wide" dir="ltr">
-                      {grade.enName}
+                      {gradeEnNames[grade.ar] || grade.en}
                     </p>
                   </div>
                 </CardContent>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { useAppStore, GRADES } from '@/stores/app-store'
+import { useAppStore, gradesFromConfig } from '@/stores/app-store'
 import { Badge } from '@/components/ui/badge'
 import { BookOpen, Lock, PlayCircle, ChevronLeft, ChevronRight } from 'lucide-react'
 import { PlatformLoader } from '@/components/PlatformLoader'
@@ -102,7 +102,7 @@ export default function LessonsSection() {
             className="h-10 rounded-lg border border-primary/30 bg-card text-foreground px-4 text-sm appearance-none cursor-pointer"
           >
             <option value="">كل الصفوف</option>
-            {GRADES.map(function(g) { return <option key={g} value={g}>{g}</option> })}
+            {gradesFromConfig(store.siteConfig).map(function(g) { return <option key={g.ar} value={g.ar}>{g.ar}</option> })}
           </select>
         </div>
 
