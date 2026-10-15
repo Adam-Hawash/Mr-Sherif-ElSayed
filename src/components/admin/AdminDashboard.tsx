@@ -606,8 +606,8 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
      تاني هيتقالده «حسابك مرفوض من المنصة»، وبينختفي من كل قايمات الأدمن.
      من غير حذف نهائي لصفوفه عشان الرقم يفضل محفوظ والرفض يفضل شغال. */
   const handleRejectDelete = async (id: string) => {
-    try { await fetch(`/api/students/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'rejected' }) }); toast.success('تم رفض الطالب وحذفه من المنصة — لو حاول يدخل تاني هيتقالده حسابك مرفوض'); loadStudents(false); onStatsRefresh() }
-    catch { toast.error('خطأ في رفض الطالب') }
+    try { await fetch(`/api/students/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'rejected' }) }); toast.success('Student rejected and removed — if he tries to log in again he will get "Your account has been rejected"'); loadStudents(false); onStatsRefresh() }
+    catch { toast.error('Error rejecting student') }
   }
 
   // ===== فك ربط الجهاز — الزرار الوحيد للمستر (منظومة الجهاز الواحد) =====
@@ -626,7 +626,7 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
   // أسماء أنواع الأجهزة بالعربي — تظهر في بادج الطالب
   const deviceTypeLabels: Record<string, string> = { mobile: 'موبايل', tablet: 'تابلت', computer: 'كمبيوتر' }
   const deviceIcon = (t?: string) => t === 'computer' ? <Monitor className="h-2.5 w-2.5" /> : t === 'tablet' ? <Tablet className="h-2.5 w-2.5" /> : <Smartphone className="h-2.5 w-2.5" />
-  const statusLabels: Record<string, string> = { pending: 'قيد المراجعة', approved: 'مقبول (مجاني)', paid: 'بفلوس', rejected: 'مرفوض', refused: 'مرفوض' }
+  const statusLabels: Record<string, string> = { pending: 'قيد المراجعة', approved: 'مقبول (مجاني)', paid: 'بفلوس', rejected: 'Rejected', refused: 'Refused' }
 
   // Student Details Panel
   if (selectedStudentId && studentProgress) {
@@ -721,7 +721,7 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
             <div className="flex gap-1 bg-muted rounded-lg p-1">
               {(['pending', 'all', 'approved', 'paid', 'rejected'] as const).map((f) => (
                 <Button key={f} variant={filter === f ? 'default' : 'ghost'} size="sm" className="text-xs h-7 px-2" onClick={() => setFilter(f)}>
-                  {f === 'pending' ? 'بانتظار' : f === 'approved' ? 'مقبول (مجاني)' : f === 'paid' ? 'بفلوس' : f === 'rejected' ? 'مرفوض' : 'الكل'}
+                  {f === 'pending' ? 'بانتظار' : f === 'approved' ? 'مقبول (مجاني)' : f === 'paid' ? 'بفلوس' : f === 'rejected' ? 'Rejected' : 'الكل'}
                 </Button>
               ))}
             </div>
@@ -807,10 +807,10 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
                                           </>
                   )}
                   {s.status === 'rejected' && (
-                    <Button size="icon" variant="ghost" className="h-8 w-8 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20" onClick={() => handleAction(s.id, 'approved')} title="إلغاء الرفض وقبول الطالب"><Check className="h-4 w-4" /></Button>
+                    <Button size="icon" variant="ghost" className="h-8 w-8 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20" onClick={() => handleAction(s.id, 'approved')} title="Un-reject and approve student"><Check className="h-4 w-4" /></Button>
                   )}
                   {/* (2026-ز12 — طلب المستر): زرار الباسكت الوحيد = رفض + حذف من المنصة */}
-                  <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => handleRejectDelete(s.id)} title="رفض وحذف الطالب من المنصة — لو حاول يدخل تاني هيتقالده حسابك مرفوض"><Trash2 className="h-4 w-4" /></Button>
+                  <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => handleRejectDelete(s.id)} title="Reject & remove student from the platform"><Trash2 className="h-4 w-4" /></Button>
                 </div>
               </div>
             ))}
@@ -1094,10 +1094,10 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
         body: JSON.stringify({ groupKey: lessonHideGroup.key, grade: lessonHideGroup.grade, studentIds: lessonHideSelected }),
       })
       if (res.ok) {
-        toast.success(lessonHideSelected.length > 0 ? 'تم إخفاء الدرس كامل عن الطلاب المحددين — مش هيشوفوه خالص' : 'تم فك إخفاء الدرس — بقى ظاهر للكل')
+        toast.success(lessonHideSelected.length > 0 ? 'Lesson hidden from the selected students — they will not see it at all' : 'Lesson unhidden — it is visible to everyone again')
         setLessonHideOpen(false)
-      } else { toast.error('فشل الحفظ') }
-    } catch { toast.error('خطأ في الاتصال') }
+      } else { toast.error('Failed to save') }
+    } catch { toast.error('Connection error') }
     setLessonHideSaving(false)
   }
 
@@ -1406,8 +1406,8 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
                         <Plus className="h-3.5 w-3.5 ml-1" />ضيف فيديو تاني للدرس ده
                       </Button>
                       {g.key ? (
-                        <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 text-xs h-7" onClick={() => openLessonHide(g.key, g.grade, g.title, g.parts.length)} title="إخفاء الدرس كله (كل فيديوهاته) عن طلاب محددين">
-                          <EyeOff className="h-3.5 w-3.5 mr-1" />إخفاء الدرس كامل عن طلاب
+                        <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 text-xs h-7" onClick={() => openLessonHide(g.key, g.grade, g.title, g.parts.length)} title="Hide the whole lesson (all its videos) from selected students">
+                          <EyeOff className="h-3.5 w-3.5 mr-1" />Hide full lesson
                         </Button>
                       ) : null}
                       <Button size="sm" variant="ghost" className="h-7 px-1.5" onClick={() => setExpandedGroup(isExp ? '' : g.key)} aria-label={isExp ? 'إخفاء الأجزاء' : 'عرض الأجزاء'}>
@@ -1601,16 +1601,16 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
           <div className="bg-card border border-border rounded-xl p-5 shadow-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto" onClick={function (e) { e.stopPropagation() }}>
             <div className="flex items-center justify-between mb-3">
               <div>
-                <h3 className="font-bold text-sm">إخفاء الدرس: {lessonHideGroup.title}</h3>
-                <p className="text-[10px] text-muted-foreground">الدرس كله ({lessonHideGroup.parts} فيديو) هيختفي من الطلاب المحددين — مش هيشوفوه خالص لحد ما تفك الإخفاء</p>
+                <h3 className="font-bold text-sm">Hide lesson: {lessonHideGroup.title}</h3>
+                <p className="text-[10px] text-muted-foreground">The whole lesson ({lessonHideGroup.parts} videos) will be hidden from the selected students — they will not see it until you unhide it</p>
               </div>
               <button type="button" onClick={() => setLessonHideOpen(false)} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
             </div>
             <div className="mb-3">
-              <Label className="text-xs font-semibold text-red-600">طلاب صف {lessonHideGroup.grade} — المحددين مخفيين عنهم ({lessonHideSelected.length})</Label>
+              <Label className="text-xs font-semibold text-red-600">Grade {lessonHideGroup.grade} students — selected ({lessonHideSelected.length})</Label>
               <div className="max-h-[220px] overflow-y-auto border rounded-md p-2 space-y-1 mt-2">
                 {lessonHideStudents.length === 0 ? (
-                  <p className="text-[10px] text-muted-foreground text-center py-4">مفيش طلاب في الصف ده</p>
+                  <p className="text-[10px] text-muted-foreground text-center py-4">No students in this grade</p>
                 ) : (
                   lessonHideStudents.map(function (s) {
                     var isSel = lessonHideSelected.includes(s.id)
@@ -1627,13 +1627,13 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
                   })
                 )}
               </div>
-              <p className="text-[10px] text-muted-foreground mt-1">اللي مختارينهم بيتخفي عنهم الدرس بأكله — سيبهم فاضيين ودوس حفظ لو عايز تفك الإخفاء</p>
+              <p className="text-[10px] text-muted-foreground mt-1">The selected students will have the whole lesson hidden — leave them empty and press Save to unhide it</p>
             </div>
             <div className="flex gap-2">
               <Button onClick={handleLessonHideSave} disabled={lessonHideSaving} className="flex-1">
-                {lessonHideSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'حفظ'}
+                {lessonHideSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
               </Button>
-              <Button variant="outline" onClick={() => setLessonHideOpen(false)}>إلغاء</Button>
+              <Button variant="outline" onClick={() => setLessonHideOpen(false)}>Cancel</Button>
             </div>
           </div>
         </div>

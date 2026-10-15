@@ -234,7 +234,7 @@ export async function GET(request: NextRequest) {
         var st = (student as any).status
         if (st === 'rejected' || st === 'refused') {
           return NextResponse.json(
-            { students: [], deviceBlocked: false, error: '❌ الحساب بتاعك مرفوض من المنصة. لو عندك استفسار تواصل مع المستر' },
+            { students: [], deviceBlocked: false, error: '❌ Your account has been rejected from the platform. If you have any questions, contact the teacher' },
             { status: 403 }
           )
         }
@@ -485,7 +485,7 @@ export async function POST(request: NextRequest) {
         var dupSt = String((dup as any).status || '')
         if (dupSt === 'rejected' || dupSt === 'refused') {
           return NextResponse.json(
-            { error: '❌ الحساب بتاعك مرفوض من المنصة. لو عندك استفسار تواصل مع المستر' },
+            { error: '❌ Your account has been rejected from the platform. If you have any questions, contact the teacher' },
             { status: 403 }
           )
         }

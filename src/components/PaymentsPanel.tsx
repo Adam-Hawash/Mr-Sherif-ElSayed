@@ -201,11 +201,11 @@ export function PaymentsPanel({ onRefresh }: { onRefresh: () => void }) {
         body: JSON.stringify({ status: 'rejected' }),
       })
       if (res.ok) {
-        toast.success('تم رفض الطالب وحذفه من المنصة — لو حاول يدخل تاني هيتقالده حسابك مرفوض')
+        toast.success('Student rejected and removed — if he tries to log in again he will get "Your account has been rejected"')
         if (expandedStudent === studentId) { setExpandedStudent(null); setStudentVideos([]) }
         loadStudents()
         onRefresh()
-      } else { toast.error('خطأ في رفض الطالب') }
+      } else { toast.error('Error rejecting student') }
     } catch { toast.error('خطأ في الاتصال') }
   }
 
@@ -377,7 +377,7 @@ export function PaymentsPanel({ onRefresh }: { onRefresh: () => void }) {
                   </div>
                   <div className="flex gap-1 bg-muted rounded-lg p-1">
                     {(['pending', 'all', 'approved', 'rejected'] as const).map(function(f) {
-                      return (<Button key={f} variant={filter === f ? 'default' : 'ghost'} size="sm" className="text-xs h-7 px-2" onClick={function() { setFilter(f) }}>{f === 'pending' ? 'معلق' : f === 'approved' ? 'مقبول' : f === 'rejected' ? 'مرفوض' : 'الكل'}</Button>)
+                      return (<Button key={f} variant={filter === f ? 'default' : 'ghost'} size="sm" className="text-xs h-7 px-2" onClick={function() { setFilter(f) }}>{f === 'pending' ? 'معلق' : f === 'approved' ? 'مقبول' : f === 'rejected' ? 'Rejected' : 'الكل'}</Button>)
                     })}
                   </div>
                 </div>
