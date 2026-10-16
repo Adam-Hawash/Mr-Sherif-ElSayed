@@ -4,7 +4,7 @@
    (و106) PWA — تثبيت المنصة كتطبيق + صفحة أوفلاين للتنقلات
    ============================================================ */
 
-var PWA_CACHE = 'sherif-pwa-v1'
+var PWA_CACHE = 'sherif-pwa-v2'
 var OFFLINE_URL = '/offline.html'
 
 self.addEventListener('install', function (event) {
@@ -34,10 +34,16 @@ self.addEventListener('activate', function (event) {
 self.addEventListener('fetch', function (event) {
   var req = event.request
   if (req.mode === 'navigate') {
+    /* (ز17) فشل أول fetch؟ غالبًا خدعة شبكة لحظية — إعادة محاولة بعد ٧٠٠ms
+       قبل ما نطوع صفحة الأوفلاين (المستر: الصفحة كانت بتظهر مع إن النت شغال) */
     event.respondWith(
       fetch(req).catch(function () {
-        return caches.match(OFFLINE_URL).then(function (hit) {
-          return hit || fetch(req)
+        return new Promise(function (resolveRetry) {
+          setTimeout(function () {
+            fetch(req).then(resolveRetry).catch(function () {
+              caches.match(OFFLINE_URL).then(function (hit) { resolveRetry(hit || Response.error()) })
+            })
+          }, 700)
         })
       })
     )

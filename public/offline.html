@@ -19,6 +19,20 @@
     <h1>مفيش اتصال بالإنترنت</h1>
     <p>المنصة محتاجة إنترنت شغال — اتأكد من الاتصال واعمل إعادة محاولة</p>
     <button onclick="location.reload()">إعادة المحاولة</button>
+  <script>
+  /* (ز17) الأوفلاين الذكي: النت رجع؟ نرجعك للمنصة لوحدك — من غير ما تدوس حاجة */
+  (function () {
+    function probe() {
+      try {
+        fetch(location.origin, { cache: 'no-store' }).then(function (r) {
+          if (r && r.status < 500) location.reload()
+        }).catch(function () {})
+      } catch (e) {}
+    }
+    window.addEventListener('online', function () { setTimeout(probe, 400) })
+    setInterval(probe, 8000)
+  })()
+  </script>
   </div>
 </body>
 </html>
