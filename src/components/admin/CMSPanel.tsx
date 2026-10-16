@@ -252,7 +252,8 @@ export function CMSPanel() {
       var keys = Object.keys(config)
       for (var i = 0; i < keys.length; i++) {
         var key = keys[i]
-        if (key === 'error' || key === 'defaults') continue
+        /* (ز16) مفاتيح الصفوف والمواعيد حصراً للوحة GradesSchedulePanel — ما تترجعش قديمة من هنا */
+        if (key === 'error' || key === 'defaults' || key === 'grades_data' || key === 'schedule_data' || key === 'favicon_reset_v1') continue
         cleanConfig[key] = config[key]
       }
       var res = await fetch('/api/config', {
@@ -333,7 +334,8 @@ export function CMSPanel() {
       var cleanConfig: Record<string, string> = {}
       var keys = Object.keys(newConfig)
       for (var i = 0; i < keys.length; i++) {
-        if (keys[i] === 'error' || keys[i] === 'defaults') continue
+        /* (ز16) مفاتيح الصفوف والمواعيد حصراً للوحة GradesSchedulePanel — ما تترجعش قديمة من هنا */
+        if (keys[i] === 'error' || keys[i] === 'defaults' || keys[i] === 'grades_data' || keys[i] === 'schedule_data' || keys[i] === 'favicon_reset_v1') continue
         cleanConfig[keys[i]] = newConfig[keys[i]]
       }
       var res = await fetch('/api/config', {

@@ -197,6 +197,10 @@ var SCHEMA_FIXES = [
   'UPDATE ExamResult SET score = 0 WHERE score IS NULL',
   'UPDATE ExamResult SET maxScore = 100 WHERE maxScore IS NULL',
   'UPDATE Payment SET amount = 0 WHERE amount IS NULL',
+  // ===== (ز16) إزالة تكرار SiteConfig قبل إنشاء الفهرس الفريد — علة 500 في upsert على جداول قديمة
+  // بنحتفظ بأحدث صف لكل مفتاح (أكبر rowid) — لو مفيش تكرار الاستعلام مش بيمسح حاجة (idempotent)
+  'DELETE FROM SiteConfig WHERE rowid NOT IN (SELECT MAX(rowid) FROM SiteConfig GROUP BY key)',
+
 ]
 
 /* ============================================================
@@ -221,6 +225,9 @@ export var SCHEMA_INDEXES = [
   'CREATE INDEX IF NOT EXISTS idx_parent_student ON Parent(studentId)',
   'CREATE INDEX IF NOT EXISTS idx_notification_student ON Notification(studentId, read)',
   'CREATE INDEX IF NOT EXISTS idx_notification_created ON Notification(createdAt)',
+  // (ز16) فهرس فريد على مفتاح الكونفج — بدون ON CONFLICT فريد، upsert بيفشل 500 على الجداول القديمة
+  'CREATE UNIQUE INDEX IF NOT EXISTS idx_siteconfig_key_unique ON SiteConfig(key)',
+
 ]
 
 export var CORE_TABLES = ['Admin', 'Student', 'StudentActivity', 'Video', 'Homework', 'Exam', 'ExamResult', 'Announcement', 'Discussion', 'SiteConfig', 'Media', 'VideoProgress', 'GalleryImage', 'Payment', 'VideoAccess', 'Complaint', 'Parent', 'Book', 'Notification', 'BattleRoom', 'BattlePlayer', 'TeacherChallenge', 'ChallengeEntry', 'FlashcardScore', 'MindMap', 'ChallengeBankQuestion', 'ChallengeAttempt', 'FlashcardCard']

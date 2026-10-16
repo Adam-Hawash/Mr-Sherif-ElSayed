@@ -184,8 +184,11 @@ export async function PUT(request) {
     for (var i = 0; i < keys.length; i++) {
       var key = keys[i]
       var value = body[key]
+        /* (ز16) grades_data وschedule_data حصراً لـ /api/site-config (لوحة الصفوف والمواعيد) —
+         * منع أي حفظ كونفج كامل من مسحهم بقيمة قديمة (علة «التعديلات بترجع»)،
+         * وfavicon_reset_v1 بصمة ترميم داخلية مش من الكونفج */
       // Skip non-config keys that might come from error responses
-      if (key === 'error' || key === 'defaults') continue
+      if (key === 'error' || key === 'defaults' || key === 'grades_data' || key === 'schedule_data' || key === 'favicon_reset_v1') continue
       upserts.push(
         db.siteConfig.upsert({
           where: { key: key },
