@@ -70,6 +70,8 @@ export function PaymentsPanel({ onRefresh }: { onRefresh: () => void }) {
   const [viewingReceipt, setViewingReceipt] = useState<string | null>(null)
   const [receiptBlobUrl, setReceiptBlobUrl] = useState<string | null>(null)
   const [receiptLoading, setReceiptLoading] = useState(false)
+  /* (ز19) تكبير الإيصال بالكامل — طلب المستر: «أقدر أكبرها وأشوفها» */
+  const [receiptZoomUrl, setReceiptZoomUrl] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [showRejectNotes, setShowRejectNotes] = useState<string | null>(null)
   const [rejectNotes, setRejectNotes] = useState('')
@@ -279,11 +281,15 @@ export function PaymentsPanel({ onRefresh }: { onRefresh: () => void }) {
     setReceiptLoading(false)
   }
 
+  var notifyPaymentsChanged = function() {
+    try { window.dispatchEvent(new Event('mg_payments_changed')) } catch (e) {}
+  }
+
   var handleApprove = async function(paymentId: string) {
     setActionLoading(paymentId)
     try {
       var res = await fetch('/api/payments/' + paymentId, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'approved' }) })
-      if (res.ok) { toast.success('تم قبول الدفع بنجاح'); loadPayments(false); onRefresh(); setShowApproveConfirm(null) }
+      if (res.ok) { toast.success('تم قبول الدفع بنجاح'); loadPayments(false); onRefresh(); notifyPaymentsChanged(); setShowApproveConfirm(null) }
       else { var d = await res.json(); toast.error(d.error || 'خطأ') }
     } catch { toast.error('خطأ') }
     setActionLoading(null)
@@ -293,7 +299,7 @@ export function PaymentsPanel({ onRefresh }: { onRefresh: () => void }) {
     setActionLoading(paymentId)
     try {
       var res = await fetch('/api/payments/' + paymentId, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'rejected', adminNotes: rejectNotes }) })
-      if (res.ok) { toast.success('تم رفض الدفع'); loadPayments(false); onRefresh(); setShowRejectNotes(null); setRejectNotes('') }
+      if (res.ok) { toast.success('تم رفض الدفع'); loadPayments(false); onRefresh(); notifyPaymentsChanged(); setShowRejectNotes(null); setRejectNotes('') }
       else { var d = await res.json(); toast.error(d.error || 'خطأ') }
     } catch { toast.error('خطأ') }
     setActionLoading(null)
@@ -303,7 +309,7 @@ export function PaymentsPanel({ onRefresh }: { onRefresh: () => void }) {
     if (!confirm('هل أنت متأكد؟')) return
     try {
       var res = await fetch('/api/payments/' + paymentId, { method: 'DELETE' })
-      if (res.ok) { toast.success('تم الحذف'); loadPayments(false); onRefresh() }
+      if (res.ok) { toast.success('تم الحذف'); loadPayments(false); onRefresh(); notifyPaymentsChanged() }
       else { toast.error('خطأ') }
     } catch { toast.error('خطأ') }
   }
@@ -554,8 +560,29 @@ export function PaymentsPanel({ onRefresh }: { onRefresh: () => void }) {
               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={closeReceiptDialog}><X className="h-4 w-4" /></Button>
             </div>
             {receiptLoading ? (<PlatformLoader variant="compact" label="جاري فتح صورة الإيصال..." />) : receiptBlobUrl ? (
-              <div className="relative rounded-lg overflow-hidden border bg-black/5 aspect-[3/4] max-h-[70vh]"><Image src={receiptBlobUrl} alt="إيصال" fill className="object-contain" unoptimized /></div>
+              <div
+                className="relative rounded-lg overflow-hidden border bg-black/5 aspect-[3/4] max-h-[70vh] cursor-zoom-in"
+                onClick={function() { setReceiptZoomUrl(receiptBlobUrl) }}
+                title="اضغط تكبير الصورة بالكامل"
+              >
+                <Image src={receiptBlobUrl} alt="إيصال" fill className="object-contain" unoptimized />
+                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-black/75 text-white text-[11px] font-bold px-3 py-1 pointer-events-none">🔍 اضغط تكبير الصورة بالكامل</div>
+              </div>
             ) : (<p className="text-center py-10 text-sm text-muted-foreground">فشل التحميل</p>)}
+          </div>
+        </div>
+      )}
+
+      {/* (ز19) تكبير الإيصال — الشاشة الكاملة بالحجم الطبيعي (سكرول + تكبير بنص فوق الصورة) */}
+      {receiptZoomUrl && (
+        <div className="fixed inset-0 z-[120] bg-black/95 overflow-auto" onClick={function() { setReceiptZoomUrl(null) }}>
+          <div className="min-h-full w-full flex items-start justify-center p-3 sm:p-6">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={receiptZoomUrl} alt="إيصال بحجم كامل" className="max-w-none w-auto" style={{ minWidth: 'min(90vw, 640px)' }} onClick={function(e) { e.stopPropagation() }} />
+          </div>
+          <div className="fixed top-3 left-3 flex items-center gap-2">
+            <Button variant="outline" size="sm" className="bg-black/60 text-white border-white/30 hover:bg-black/80" onClick={function() { setReceiptZoomUrl(null) }}><X className="h-4 w-4 ml-1" />قفل</Button>
+            <span className="rounded-full bg-black/60 text-white text-[11px] font-bold px-3 py-1.5">دوس في أي مكان برة الصورة تقفل</span>
           </div>
         </div>
       )}

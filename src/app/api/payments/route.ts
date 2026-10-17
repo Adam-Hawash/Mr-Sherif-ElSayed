@@ -1,53 +1,68 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
+export const runtime = 'nodejs'
+
 // POST - Student submits a payment/activation request
-/* 2026-و25 — حذف تخزين الإيصالات نهائيًا (طلب المستر: «بتاع الإقرار بتاع الـ PDF
-   ده طباعة الإيصال هياخد من مساحة قاعدة البيانات، فشكله ملوش لزوم»):
-   - مفيش ملف إيصال بيتخزن خالص (كان بيتحفظ base64 في جدول Media = مساحة قاعدة بيانات)
-   - الطلب بقى نص بس (طريقة دفع + مرجع عملية اختياري)
-   - إيصالات قديمة متسجلة في قاعدة البيانات فضلت زي ما هي والأدمن لسه يشوفها
-   - قبول JSON (صفحة /payment العامة) و FormData (البورتال) — كان فيه باج:
-     صفحة الدفع العامة كانت بتبعت JSON والـ API بيقرأ formData فيرجع 500 */
+/* (ز19 — طلب المستر الحرفي: «لما الطالب يجي يدفع لازم اجباري يحط صورة
+   الدفع — وصل الدفع — والصورة تجيلي في صفحة الأدمن وأقدر أكبرها»):
+   - صورة الوصل بقت **إجبارية** — أي طلب من غير صورة بيرد 400 برسالة واضحة
+   - الصورة بتتخزن في جدول Media (base64) زي باقي صور المنصة وتتسلم
+     للأدمن عبر /api/files/<id> — بتتمسح أوتوماتيك مع مسح الدفع (media-cleanup)
+   - مرجع العملية فضل نص اختياري زي ما هو (بيتحط في note)
+   - FormData بس — الـ JSON القديم اتشال لأن الصورة إجبارية
+   - هوية الطالب: برقم تليفونه المسجل في المنصة (زي ما هو) */
 export async function POST(request: NextRequest) {
   try {
-    var videoId = '', videoTitle = '', paymentMethod = '', notes = '', studentId = '', studentName = '', studentPhone = '', studentGrade = ''
-    var amount = 0
     var contentType = request.headers.get('content-type') || ''
-    if (contentType.indexOf('application/json') !== -1) {
-      var body = await request.json()
-      videoId = String(body.videoId || '')
-      videoTitle = String(body.videoTitle || '')
-      amount = Number(body.amount) || 0
-      paymentMethod = String(body.method || body.paymentMethod || '')
-      notes = String(body.note || body.notes || '')
-      studentId = String(body.studentId || '')
-      studentName = String(body.studentName || '')
-      studentPhone = String(body.studentPhone || '')
-      studentGrade = String(body.studentGrade || '')
-    } else {
-      var formData = await request.formData()
-      videoId = String(formData.get('videoId') || '')
-      videoTitle = String(formData.get('videoTitle') || '')
-      amount = parseFloat(String(formData.get('amount') || '0')) || 0
-      paymentMethod = String(formData.get('paymentMethod') || formData.get('method') || '')
-      notes = String(formData.get('notes') || formData.get('note') || '')
-      studentId = String(formData.get('studentId') || '')
-      studentName = String(formData.get('studentName') || '')
-      studentPhone = String(formData.get('studentPhone') || '')
-      studentGrade = String(formData.get('studentGrade') || '')
+    if (contentType.indexOf('multipart/form-data') === -1) {
+      return NextResponse.json({ error: 'صورة وصل الدفع إجبارية — ابعت الطلب من غير صورة مش هيتقبل' }, { status: 400 })
     }
+    var formData = await request.formData()
+    var videoId = String(formData.get('videoId') || '')
+    var videoTitle = String(formData.get('videoTitle') || '')
+    var amount = parseFloat(String(formData.get('amount') || '0')) || 0
+    var paymentMethod = String(formData.get('paymentMethod') || formData.get('method') || '')
+    var notes = String(formData.get('notes') || formData.get('note') || '')
+    var studentId = String(formData.get('studentId') || '')
+    var studentName = String(formData.get('studentName') || '')
+    var studentPhone = String(formData.get('studentPhone') || '')
+    var studentGrade = String(formData.get('studentGrade') || '')
 
     if (!videoId || !paymentMethod) {
       return NextResponse.json({ error: 'videoId and paymentMethod are required' }, { status: 400 })
     }
 
-    /* (و25) إصلاح جذري تاني — عمودي القاعدة أسماءهم method وnote
-       (الكود القديم كان بيكتب paymentMethod/notes = Unknown argument = 500
-       يعني تسليم الدفع كان بايظ من الأول خالص!). وهوية الطالب:
-       الصفحة العامة بتبعت temp-id لو مش مسجل دخول → نلحق الطالب برقم
-       تليفونه (مطلوب من فورم «رقم الهاتف المسجل بالمنصة») — لو مش
-       موجود في المنصة نرد برسالة واضحة. */
+    /* (ز19) صورة الوصل — إجبارية */
+    var receiptFile: any = formData.get('receipt') || formData.get('file')
+    if (!receiptFile || typeof receiptFile === 'string') {
+      return NextResponse.json({ error: 'صورة وصل الدفع إجبارية — ارفع سكرين شوت رسالة تأكيد التحويل' }, { status: 400 })
+    }
+    var mime = String(receiptFile.type || '')
+    if (mime.indexOf('image/') !== 0) {
+      return NextResponse.json({ error: 'الإيصال لازم يكون صورة (سكرين شوت رسالة تأكيد التحويل)' }, { status: 400 })
+    }
+    var MAX_RECEIPT_BYTES = 10 * 1024 * 1024
+    if (Number(receiptFile.size || 0) > MAX_RECEIPT_BYTES) {
+      return NextResponse.json({ error: 'الصورة كبيرة أوي — أقصى حد 10 ميجا' }, { status: 400 })
+    }
+    var buf = Buffer.from(await receiptFile.arrayBuffer())
+    if (!buf.length) {
+      return NextResponse.json({ error: 'صورة الوصل فاضية — جرّب تاني' }, { status: 400 })
+    }
+    var receiptMedia = await db.media.create({
+      data: {
+        filename: String(receiptFile.name || 'payment-receipt.jpg').slice(0, 120),
+        filePath: '',
+        fileType: mime,
+        fileSize: String(buf.length),
+        data: buf.toString('base64'),
+        category: 'payment-receipt',
+      },
+    })
+    var receiptPath = '/api/files/' + receiptMedia.id
+
+    /* هوية الطالب — نفس منطق و25 (الرقم المسجل في المنصة) */
     var resolvedStudent: any = null
     if (studentId && studentId.indexOf('temp-') !== 0) {
       try { resolvedStudent = await db.student.findUnique({ where: { id: studentId } }) } catch (e) { resolvedStudent = null }
@@ -56,11 +71,10 @@ export async function POST(request: NextRequest) {
       try { resolvedStudent = await db.student.findUnique({ where: { phone: studentPhone.trim() } }) } catch (e) { resolvedStudent = null }
     }
     if (!resolvedStudent) {
+      // ننضف الملف اللي اتخزن لو الطلب فشل — مفيش ملف يتيم
+      try { await db.media.delete({ where: { id: receiptMedia.id } }) } catch (e) {}
       return NextResponse.json({ error: 'الرقم ده مش مسجل في المنصة — اعمل حساب الأول أو اتأكد من رقم تليفونك' }, { status: 400 })
     }
-
-    // مفيش تخزين إيصالات — receiptPath فاضي دايمًا (توفير مساحة قاعدة البيانات)
-    var receiptPath = ''
 
     var payment = await db.payment.create({
       data: {
@@ -73,6 +87,7 @@ export async function POST(request: NextRequest) {
         videoId,
         videoTitle,
         receiptPath,
+        receiptType: mime,
         note: notes,
         status: 'pending',
       },

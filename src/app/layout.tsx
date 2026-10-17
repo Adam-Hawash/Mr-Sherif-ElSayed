@@ -6,6 +6,7 @@ import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AIAssistant } from "@/components/student/AIAssistant";
 import { RecordingGuard } from "@/components/RecordingGuard";
+import { DevToolsGuard } from "@/components/DevToolsGuard";
 import { FloatingInstallButton } from "@/components/InstallPwaButton";
 import { DeviceMessages } from "@/components/DeviceMessages";
 import { LangBoot } from "@/lib/i18n";
@@ -141,6 +142,8 @@ export default async function RootLayout({
         <DeviceMessages />
         {/* حماية عامة من التسجيل/التصوير + أدوات المطوّر في كل الصفحات */}
         <RecordingGuard />
+        {/* (ز19) حارس أدوات المطوّر — شاشة سودة + عداد 35 ثانية + مسح الحساب (طلب المستر) */}
+        <DevToolsGuard />
         <Toaster />
         {/* Toaster بتاع sonner — كل رسائل التنبيه في المنصة بتستخدمه */}
         <SonnerToaster position="top-center" richColors closeButton expand={false} />

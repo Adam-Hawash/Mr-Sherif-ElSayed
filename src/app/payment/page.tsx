@@ -15,6 +15,9 @@ import {
   Lock,
   ShieldCheck,
   Store,
+  Image as ImageIcon,
+  Camera,
+  Trash2,
 } from "lucide-react";
 
 import { PlatformLoader } from "@/components/PlatformLoader";
@@ -36,6 +39,9 @@ function PaymentContent() {
   const [studentGrade, setStudentGrade] = useState(student?.grade || "أولى بكالوريا");
   const [transactionRef, setTransactionRef] = useState("");
   const [note, setNote] = useState("");
+  /* (ز19) صورة وصل الدفع — إجبارية بطلب المستر */
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptPreview, setReceiptPreview] = useState("");
   const [loading, setLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
@@ -85,30 +91,38 @@ function PaymentContent() {
       return;
     }
 
+    /* (ز19) صورة الوصل إجبارية — من غيرها الطلب مش بيتقبل */
+    if (!receiptFile) {
+      setErrorMsg("صورة وصل الدفع إجبارية — ارفع سكرين شوت رسالة تأكيد التحويل الأول");
+      return;
+    }
+
     try {
       setLoading(true);
+      const fd = new FormData();
+      fd.append("studentId", student?.id || "temp-" + Date.now());
+      fd.append("studentName", studentName || "طالب جديد");
+      fd.append("studentPhone", studentPhone);
+      fd.append("studentGrade", studentGrade);
+      fd.append("method", method);
+      fd.append("amount", String(Number(amount)));
+      fd.append("videoId", videoId);
+      fd.append("videoTitle", videoTitle || "تفعيل درس تعليمي");
+      fd.append("notes", `${note} ${transactionRef ? `(مرجع العملية: ${transactionRef})` : ""}`.trim());
+      fd.append("receipt", receiptFile);
       const res = await fetch("/api/payments", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          studentId: student?.id || "temp-" + Date.now(),
-          studentName: studentName || "طالب جديد",
-          studentPhone: studentPhone,
-          studentGrade: studentGrade,
-          method,
-          amount: Number(amount),
-          videoId,
-          videoTitle: videoTitle || "تفعيل درس تعليمي",
-          note: `${note} ${transactionRef ? `(مرجع العملية: ${transactionRef})` : ""}`.trim(),
-        }),
+        body: fd,
       });
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "فشل إرسال الطلب");
 
-      setSuccessMsg("تم إرسال طلب التفعيل بنجاح! سيتم مراجعة التحويل وتفعيل الفيديو لك فوراً.");
+      setSuccessMsg("تم إرسال طلب التفعيل مع صورة الوصل بنجاح! وصل للمستر في قسم المدفوعات وهيتم التأكيد وتفعيل الفيديو فورًا.");
       setTransactionRef("");
       setNote("");
+      setReceiptFile(null);
+      setReceiptPreview("");
       if (student?.id) fetchMyPayments(student.id);
     } catch (err: any) {
       setErrorMsg(err.message);
@@ -308,10 +322,46 @@ function PaymentContent() {
                 placeholder="رقم العملية من رسالة المحفظة"
                 className="w-full px-4 py-2.5 rounded-xl border text-sm font-mono bg-slate-50"
               />
+              <p className="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
+                مرجع العملية = الرقم اللي بييجي في رسالة تأكيد التحويل من المحفظة أو البنك — اختياري بس بيسرّع التأكيد
+              </p>
             </div>
-            <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 shrink-0" />
-              مفيش حاجة لرفع صورة — اكتب مرجع العملية لو تحبه وسيتم تأكيد التحويل وتفعيل الفيديو
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                صورة وصل الدفع <span className="text-red-600">(إجباري)</span>
+              </label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const f = e.target.files?.[0] || null;
+                  if (!f) { setReceiptFile(null); setReceiptPreview(""); return; }
+                  if (f.type.indexOf("image/") !== 0) { setErrorMsg("لازم صورة — سكرين شوت رسالة تأكيد التحويل"); return; }
+                  if (f.size > 10 * 1024 * 1024) { setErrorMsg("الصورة كبيرة أوي — أقصى حد 10 ميجا"); return; }
+                  setErrorMsg("");
+                  setReceiptFile(f);
+                  try { setReceiptPreview(URL.createObjectURL(f)); } catch { setReceiptPreview(""); }
+                }}
+                className="w-full px-4 py-2.5 rounded-xl border text-sm font-semibold bg-slate-50 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-emerald-600 file:text-white file:font-bold file:text-xs"
+              />
+              {receiptPreview && (
+                <div className="relative mt-2 rounded-xl overflow-hidden border">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={receiptPreview} alt="وصل الدفع" className="w-full max-h-44 object-contain bg-slate-50" />
+                  <button
+                    type="button"
+                    onClick={() => { setReceiptFile(null); setReceiptPreview(""); }}
+                    className="absolute top-2 left-2 h-8 w-8 rounded-full bg-black/70 text-white flex items-center justify-center hover:bg-black/90"
+                    aria-label="إزالة الصورة"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+              <div className="mt-2 p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-bold flex items-center gap-2">
+                <ImageIcon className="w-3.5 h-3.5 shrink-0" />
+                الصورة بتوصل للمستر في قسم المدفوعات — من غيرها الطلب مش هيتقبل
+              </div>
             </div>
           </div>
 

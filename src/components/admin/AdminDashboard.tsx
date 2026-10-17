@@ -211,6 +211,26 @@ export function AdminDashboard() {
     return function () { alive = false; clearInterval(t) }
   }, [])
 
+  /* ===== (ز19) بادج «المدفوعات» — طلب المستر: «لما يكون في طالب دفع يجيلي
+     إشعار زي الشكاوي بالظبط» — عداد طلبات الدفع المستنية (pending) بيدور
+     كل دقيقة + فوريًا لما الأدمن يقبل/يرفض (حدث mg_payments_changed). */
+  const [pendingPayments, setPendingPayments] = useState(0)
+  useEffect(function () {
+    var alive = true
+    async function loadPendingCount() {
+      try {
+        var r = await fetch('/api/payments?status=pending&pageSize=1')
+        var d = await r.json()
+        if (alive) setPendingPayments(Number((d.counts && d.counts.pending) || 0))
+      } catch (e) { /* صامت */ }
+    }
+    loadPendingCount()
+    var t = setInterval(loadPendingCount, 60000)
+    function onPaymentsChanged() { loadPendingCount() }
+    window.addEventListener('mg_payments_changed', onPaymentsChanged)
+    return function () { alive = false; clearInterval(t); window.removeEventListener('mg_payments_changed', onPaymentsChanged) }
+  }, [])
+
   /* ===== (و46) بادج «المجتمعات» — طلب المستر: «في المجتمع لو حد بعت رسالة
      يجي له إشعار» — رسايل الطلاب الجديدة (بعد آخر فتح للمجتمع) بتظهر كعداد
      على التاب — وفتح التاب بيسجل إنها اتشافت. بيدور كل 60 ثانية. */
@@ -385,7 +405,7 @@ export function AdminDashboard() {
             <TabsTrigger value="gallery" className="text-xs sm:text-sm gap-1"><Camera className="h-4 w-4" /><span className="hidden sm:inline">{T('معرض الصور', 'Gallery')}</span></TabsTrigger>
             <TabsTrigger value="cms" className="text-xs sm:text-sm gap-1"><Settings className="h-4 w-4" /><span className="hidden sm:inline">{T('المحتوى', 'Content')}</span></TabsTrigger>
             <TabsTrigger value="social" className="text-xs sm:text-sm gap-1"><Link2 className="h-4 w-4" /><span className="hidden sm:inline">{T('الروابط', 'Links')}</span></TabsTrigger>
-            <TabsTrigger value="payments" className="text-xs sm:text-sm gap-1 text-amber-600 dark:text-amber-400"><Wallet className="h-4 w-4" /><span className="hidden sm:inline">{T('المدفوعات', 'Payments')}</span></TabsTrigger>
+            <TabsTrigger value="payments" className="text-xs sm:text-sm gap-1 text-amber-600 dark:text-amber-400"><Wallet className="h-4 w-4" /><span className="hidden sm:inline">{T('المدفوعات', 'Payments')}</span>{pendingPayments > 0 && <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold">{pendingPayments}</span>}</TabsTrigger>
             <TabsTrigger value="ai-extract" className="text-xs sm:text-sm gap-1 text-purple-600 dark:text-purple-400"><Sparkles className="h-4 w-4" /><span className="hidden sm:inline">{T('استخراج AI', 'AI Extract')}</span></TabsTrigger>
             <TabsTrigger value="complaints" className="text-xs sm:text-sm gap-1 text-red-600 dark:text-red-400"><Flag className="h-4 w-4" /><span className="hidden sm:inline">{T('الشكاوي', 'Complaints')}</span>{newComplaints > 0 && <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold">{newComplaints}</span>}</TabsTrigger>
             {/* (ز15) الصفوف الدراسية + مواعيد السنتر — زي Maths-Genius */}

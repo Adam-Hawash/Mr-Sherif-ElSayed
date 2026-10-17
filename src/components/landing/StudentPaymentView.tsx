@@ -7,8 +7,9 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import {
   ArrowRight, Loader2, Smartphone, CreditCard, Wallet, CheckCircle2, X,
+  Image as ImageIcon, Camera, Trash2,
 } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 
 export function StudentPaymentView() {
@@ -17,6 +18,10 @@ export function StudentPaymentView() {
   const [transactionRef, setTransactionRef] = useState('')
   const [uploading, setUploading] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  /* (ز19) صورة وصل الدفع — إجبارية بطلب المستر */
+  const [receiptFile, setReceiptFile] = useState<File | null>(null)
+  const [receiptPreview, setReceiptPreview] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const video = pendingPaymentVideo
 
@@ -39,6 +44,12 @@ export function StudentPaymentView() {
       return
     }
 
+    /* (ز19) صورة الوصل إجبارية — من غيرها الطلب مش بيتقبل */
+    if (!receiptFile) {
+      toast.error('صورة وصل الدفع إجبارية — ارفع سكرين شوت رسالة تأكيد التحويل الأول')
+      return
+    }
+
     setUploading(true)
     try {
       const formData = new FormData()
@@ -46,8 +57,9 @@ export function StudentPaymentView() {
       formData.append('videoTitle', video.title)
       formData.append('amount', String(video.price))
       formData.append('paymentMethod', paymentMethod)
-      /* و25 — مفيش رفع إيصال (توفير مساحة قاعدة البيانات) — مرجع العملية نص اختياري */
+      /* مرجع العملية نص اختياري + صورة الوصل إجبارية (ز19) */
       formData.append('notes', transactionRef ? 'مرجع العملية: ' + transactionRef : '')
+      formData.append('receipt', receiptFile)
       formData.append('studentId', currentStudent?.id || '')
       formData.append('studentName', currentStudent?.name || '')
 
@@ -58,15 +70,38 @@ export function StudentPaymentView() {
 
       if (res.ok) {
         setSubmitted(true)
-        toast.success('تم إرسال طلب التفعيل بنجاح! سيتم مراجعته قريباً')
+        toast.success('تم إرسال طلب التفعيل مع صورة الوصل بنجاح! سيتم مراجعته قريباً')
       } else {
-        toast.error('حدث خطأ أثناء إرسال الدفع')
+        var errData: any = null
+        try { errData = await res.json() } catch (e) {}
+        toast.error((errData && errData.error) || 'حدث خطأ أثناء إرسال الدفع')
       }
     } catch {
       toast.error('حدث خطأ في الاتصال')
     } finally {
       setUploading(false)
     }
+  }
+
+  const onPickReceipt = (e: React.ChangeEvent<HTMLInputElement>) => {
+    var f = e.target.files && e.target.files[0]
+    if (!f) return
+    if (f.type.indexOf('image/') !== 0) {
+      toast.error('لازم صورة — سكرين شوت رسالة تأكيد التحويل')
+      return
+    }
+    if (f.size > 10 * 1024 * 1024) {
+      toast.error('الصورة كبيرة أوي — أقصى حد 10 ميجا')
+      return
+    }
+    setReceiptFile(f)
+    try { setReceiptPreview(URL.createObjectURL(f)) } catch (err) { setReceiptPreview('') }
+  }
+
+  const clearReceipt = () => {
+    setReceiptFile(null)
+    setReceiptPreview('')
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   const handleBack = () => {
@@ -84,8 +119,7 @@ export function StudentPaymentView() {
             </div>
             <h2 className="text-xl font-bold">تم إرسال طلب التفعيل بنجاح!</h2>
             <p className="text-muted-foreground">
-              سيتم مراجعة الدفع وتشغيل الفيديو في أقرب وقت.
-              هتلاحظ إن الفيديو اشتغل لما يتم قبول الدفع.
+              وصل الدفع وصل للمستر في قسم المدفوعات — أول ما يأكد التحويل الفيديو هيشتغل على طول.
             </p>
             <Button onClick={handleBack} className="mt-4">
               <ArrowRight className="h-4 w-4 ml-2" />
@@ -227,7 +261,52 @@ export function StudentPaymentView() {
           </CardContent>
         </Card>
 
-        {/* مرجع العملية (و25 — بدل رفع الإيصال: نص اختياري بدون مساحة قاعدة بيانات) */}
+        {/* (ز19) صورة وصل الدفع — إجبارية بطلب المستر */}
+        <Card className="mb-6">
+          <CardContent className="p-4 space-y-3">
+            <h2 className="font-bold flex items-center gap-2">
+              <ImageIcon className="h-5 w-5 text-primary" />
+              صورة وصل الدفع
+              <span className="text-xs font-bold text-red-500 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded-full">إجباري</span>
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              بعد ما تحوّل، اعمل سكرين شوت لرسالة تأكيد التحويل وارفعها هنا — الصورة بتوصل للمستر في قسم المدفوعات على طول
+            </p>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={onPickReceipt}
+            />
+            {!receiptPreview ? (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full h-28 rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-1.5 text-muted-foreground hover:border-primary/60 hover:text-primary transition-colors"
+              >
+                <Camera className="h-6 w-6" />
+                <span className="text-sm font-bold">اضغط وارفع صورة وصل الدفع</span>
+                <span className="text-[11px]">من الكاميرا أو المعرض — أقصى حد 10 ميجا</span>
+              </button>
+            ) : (
+              <div className="relative rounded-xl overflow-hidden border bg-muted/40">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={receiptPreview} alt="وصل الدفع" className="w-full max-h-56 object-contain" />
+                <button
+                  type="button"
+                  onClick={clearReceipt}
+                  className="absolute top-2 left-2 h-8 w-8 rounded-full bg-black/70 text-white flex items-center justify-center hover:bg-black/90"
+                  aria-label="إزالة الصورة"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* مرجع العملية (اختياري — بيسرّع التأكيد) */}
         <Card className="mb-6">
           <CardContent className="p-4 space-y-3">
             <h2 className="font-bold">مرجع عملية التحويل (اختياري)</h2>
@@ -239,7 +318,8 @@ export function StudentPaymentView() {
               className="text-sm"
             />
             <p className="text-xs text-muted-foreground">
-              مفيش حاجة لرفع صورة — اكتب مرجع العملية لو تحبه وسيتم تأكيد التحويل وتفعيل الفيديو
+              مرجع العملية هو الرقم اللي بييجي في رسالة تأكيد التحويل من المحفظة أو البنك
+              (مثال: 2510123456) — اختياري، بس بيسرّع مراجعة المستر للدفع. المهم هو صورة الوصل.
             </p>
           </CardContent>
         </Card>
