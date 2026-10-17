@@ -274,7 +274,11 @@ export function PaymentsPanel({ onRefresh }: { onRefresh: () => void }) {
     setReceiptLoading(true)
     setReceiptBlobUrl(null)
     try {
-      var res = await fetch('/api/files/' + payment.receiptPath)
+      /* (ز19-هوتفاكس) receiptPath دلوقتي بييجي بصيغة '/api/files/<id>' — قبل ما
+         نلحق المسحوب بنستخرج معرف Media نفسه (بيقبل الصيغتين القديمة والجديدة) */
+      var receiptMediaId = String(payment.receiptPath || '')
+      if (receiptMediaId.indexOf('/api/files/') === 0) receiptMediaId = receiptMediaId.split('/').pop() || ''
+      var res = await fetch('/api/files/' + receiptMediaId)
       if (res.ok) { var blob = await res.blob(); setReceiptBlobUrl(URL.createObjectURL(blob)) }
       else { toast.error('فشل تحميل الإيصال'); setViewingReceipt(null) }
     } catch { toast.error('خطأ'); setViewingReceipt(null) }
