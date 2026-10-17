@@ -37,20 +37,30 @@ export async function PUT(
 
     if (status === 'approved' && payment.videoId) {
       try {
-        await db.videoAccess.upsert({
-          where: {
-            videoId_studentId: {
-              videoId: payment.videoId,
-              studentId: payment.studentId,
+        /* (ز18) الدفع للدرس كله: لو الفيديو جزء من درس متعدد الأجزاء (groupKey)
+           الموافقة بتفتح كل أجزاء الدرس — الطالب بيدفع مرة واحدة للدرس */
+        var paidVideo = await db.video.findUnique({ where: { id: payment.videoId } })
+        var accessTargets: { id: string }[] = [{ id: payment.videoId }]
+        if (paidVideo && paidVideo.groupKey) {
+          var groupParts = await db.video.findMany({ where: { groupKey: paidVideo.groupKey, grade: paidVideo.grade }, select: { id: true } })
+          if (groupParts && groupParts.length > 0) accessTargets = groupParts
+        }
+        for (var ti = 0; ti < accessTargets.length; ti++) {
+          await db.videoAccess.upsert({
+            where: {
+              videoId_studentId: {
+                videoId: accessTargets[ti].id,
+                studentId: payment.studentId,
+              },
             },
-          },
-          create: {
-            videoId: payment.videoId,
-            studentId: payment.studentId,
-            grantedBy: adminId,
-          },
-          update: {},
-        })
+            create: {
+              videoId: accessTargets[ti].id,
+              studentId: payment.studentId,
+              grantedBy: adminId,
+            },
+            update: {},
+          })
+        }
       } catch (err) {
         console.error('Error granting video access:', err)
       }

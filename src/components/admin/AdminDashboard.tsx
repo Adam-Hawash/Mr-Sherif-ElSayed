@@ -1082,6 +1082,38 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
   const [lessonHideStudents, setLessonHideStudents] = useState<any[]>([])
   const [lessonHideSelected, setLessonHideSelected] = useState<string[]>([])
   const [lessonHideSaving, setLessonHideSaving] = useState(false)
+  /* (ز18) Lesson price — set one price for the whole lesson (all its parts) */
+  const [lessonPriceOpen, setLessonPriceOpen] = useState(false)
+  const [lessonPriceGroup, setLessonPriceGroup] = useState<{ key: string; title: string; grade: string; price: number } | null>(null)
+  const [lessonPriceValue, setLessonPriceValue] = useState('')
+  const [lessonPriceSaving, setLessonPriceSaving] = useState(false)
+
+  const openLessonPrice = function (key: string, grade: string, title: string, price: number) {
+    setLessonPriceGroup({ key: key, grade: grade, title: title, price: price })
+    setLessonPriceValue(price > 0 ? String(price) : '')
+    setLessonPriceOpen(true)
+  }
+
+  const handleLessonPriceSave = async function () {
+    if (!lessonPriceGroup) return
+    setLessonPriceSaving(true)
+    try {
+      var res = await fetch('/api/videos/lesson-price', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groupKey: lessonPriceGroup.key, grade: lessonPriceGroup.grade, price: Number(lessonPriceValue) || 0 }),
+      })
+      var data = await res.json()
+      if (!res.ok || !data.ok) throw new Error(data.error || 'failed')
+      toast.success('✓ Lesson price saved: ' + (Number(lessonPriceValue) || 0) + ' EGP — applied to all parts of the lesson')
+      setLessonPriceOpen(false)
+      loadVideos(false)
+    } catch (e) {
+      toast.error('Could not save the lesson price — try again')
+    } finally {
+      setLessonPriceSaving(false)
+    }
+  }
 
   const openLessonHide = async function (gKey: string, grade: string, title: string, parts: number) {
     setLessonHideGroup({ key: gKey, title: title, grade: grade, parts: parts })
@@ -1419,6 +1451,10 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
                       <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setFormGroupKey(g.key); setFormGroupTitle(g.title); setFormGroupGrade(g.grade); setFormGrade(g.grade); setFormTitle(''); setFormUrl(''); setFormPrice(''); setFormFile(null); setFormThumbnailUrl(''); setShowForm(true) }}>
                         <Plus className="h-3.5 w-3.5 ml-1" />ضيف فيديو تاني للدرس ده
                       </Button>
+                      {/* (ز18) سعر الدرس كله — مرة واحدة على كل الأجزاء */}
+                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={function () { openLessonPrice(g.key, g.grade, g.title, g.price) }} title="Set one price for the whole lesson — paying once unlocks ALL its parts">
+                        💰 سعر الدرس كله
+                      </Button>
                       {g.key ? (
                         <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 text-xs h-7" onClick={() => openLessonHide(g.key, g.grade, g.title, g.parts.length)} title="Hide the whole lesson (all its videos) from selected students">
                           <EyeOff className="h-3.5 w-3.5 mr-1" />Hide full lesson
@@ -1648,6 +1684,31 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
                 {lessonHideSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
               </Button>
               <Button variant="outline" onClick={() => setLessonHideOpen(false)}>Cancel</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* (ز18) Lesson price dialog — one price for the whole lesson */}
+      {lessonPriceOpen && lessonPriceGroup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={function () { setLessonPriceOpen(false) }}>
+          <div className="bg-card border border-border rounded-xl p-5 shadow-2xl w-full max-w-sm" onClick={function (e) { e.stopPropagation() }}>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h3 className="font-bold text-sm">💰 Lesson price: {lessonPriceGroup.title}</h3>
+                <p className="text-[10px] text-muted-foreground">The price applies to the whole lesson ({lessonPriceGroup.grade}) — paying once unlocks ALL its parts. 0 = free.</p>
+              </div>
+              <button type="button" onClick={function () { setLessonPriceOpen(false) }} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="mb-3">
+              <Label className="text-xs font-semibold">Price (EGP)</Label>
+              <Input type="number" min="0" step="1" value={lessonPriceValue} onChange={function (e) { setLessonPriceValue(e.target.value) }} placeholder="e.g. 50" className="mt-1" />
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={handleLessonPriceSave} disabled={lessonPriceSaving} className="flex-1">
+                {lessonPriceSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+              </Button>
+              <Button variant="outline" onClick={function () { setLessonPriceOpen(false) }}>Cancel</Button>
             </div>
           </div>
         </div>

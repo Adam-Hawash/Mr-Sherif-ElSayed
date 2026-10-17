@@ -925,13 +925,17 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
     const firstThumb = (first && (first.thumbnail || (first as any).thumb)) || null
     const allWatched = g.parts.every(function (p) { return localWatched.has(p.id) })
     const anyNeedPay = g.parts.some(function (p) { return (p.price || 0) > 0 && !approvedVideoIds.has(p.id) })
+    /* (ز18) سعر الدرس كله — أول تسديد بيفتح كل الأجزاء، والسعر ظاهر لطلاب المجانية */
+    const groupPaidZ18 = g.parts.some(function (p) { return approvedVideoIds.has(p.id) })
+    const lessonLockedZ18 = anyNeedPay && !groupPaidZ18
+    const pricedPartZ18 = g.parts.find(function (p) { return (p.price || 0) > 0 })
     const avg = Math.round(g.parts.reduce(function (acc, p) { return acc + (mergedProgress[p.id] || 0) }, 0) / Math.max(1, g.parts.length))
     return (
       <Card key={'lesson-' + g.key} className={'overflow-hidden transition-all ' + (allWatched ? 'border-emerald-500/30' : '')}>
         <div className="relative aspect-video bg-black cursor-pointer group/vid" onClick={function () { setActiveLessonGroup({ title: g.title, parts: g.parts }) }} role="button" aria-label={'فتح صفحة الدرس: ' + g.title}>
           {firstThumb ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={firstThumb} alt={g.title} className={'w-full h-full object-cover transition-transform duration-500 group-hover/vid:scale-105 ' + (anyNeedPay ? 'opacity-40 blur-sm' : '')} draggable={false} />
+            <img src={firstThumb} alt={g.title} className={'w-full h-full object-cover transition-transform duration-500 group-hover/vid:scale-105 ' + (lessonLockedZ18 ? 'opacity-40 blur-sm' : '')} draggable={false} />
           ) : (
             <div className="w-full h-full bg-gradient-to-br from-black/80 to-black" />
           )}
@@ -945,6 +949,10 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
             <Badge className="bg-primary text-white text-[10px] gap-1">
               <MonitorPlay className="h-3 w-3" /> {g.parts.length} فيديوهات
             </Badge>
+            {/* (ز18) سعر الدرس كله يظهر لطلاب المجانية */}
+            {lessonLockedZ18 && pricedPartZ18 && (
+              <Badge className="bg-amber-500 text-white text-[10px] gap-1 font-bold">💰 الدرس كامل {pricedPartZ18.price} ج.م</Badge>
+            )}
             {/* (2026-د) إجمالي مدة الدرس ⏱ */}
             {g.parts.reduce(function (acc: number, p: any) { return acc + (Number(p.durationSec) || 0) }, 0) > 0 && !anyNeedPay && (
               <div className="flex items-center gap-1 rounded-md bg-black/80 border border-white/15 px-1.5 py-0.5 text-white text-[10px] font-bold" dir="ltr">
@@ -972,9 +980,16 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
             )}
           </div>
           <p className="text-xs text-muted-foreground mt-1">{g.parts.length} جزء — بيتشافوا بالترتيب من صفحة الدرس</p>
-          <Button size="sm" className="mt-2 w-full h-9 text-xs" onClick={function () { setActiveLessonGroup({ title: g.title, parts: g.parts }) }}>
-            فتح صفحة الدرس ({g.parts.length} أجزاء)
-          </Button>
+          {lessonLockedZ18 && pricedPartZ18 ? (
+            /* (ز18) الدفع للدرس كله — مرة واحدة بتفتح كل الأجزاء */
+            <Button size="sm" className="mt-2 w-full h-9 text-xs bg-amber-500 hover:bg-amber-600 text-white font-bold" onClick={function () { setPendingPaymentVideo({ id: pricedPartZ18.id, title: 'الدرس كامل: ' + g.title, price: Number(pricedPartZ18.price) || 0, grade: g.grade || grade }); setView('student-payment') }}>
+              💰 ادفع الآن وافتح الدرس كله ({pricedPartZ18.price} ج.م)
+            </Button>
+          ) : (
+            <Button size="sm" className="mt-2 w-full h-9 text-xs" onClick={function () { setActiveLessonGroup({ title: g.title, parts: g.parts }) }}>
+              فتح صفحة الدرس ({g.parts.length} أجزاء)
+            </Button>
+          )}
         </CardContent>
       </Card>
     )
@@ -1040,7 +1055,9 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
               {activeLessonGroup.parts.map(function (p, i) {
                 const pctP = mergedProgress[p.id] || 0
                 const seqLockedP = lockedMap[p.id] === true
-                const payLockedP = (p.price || 0) > 0 && !approvedVideoIds.has(p.id)
+                /* (ز18) الدرس اتسدد جزء منه؟ الكل بيفتح — الدفع بيتم للدرس كله */
+                const groupAnyApprovedZ18 = activeLessonGroup.parts.some(function (pp: any) { return approvedVideoIds.has(pp.id) })
+                const payLockedP = !groupAnyApprovedZ18 && (p.price || 0) > 0 && !approvedVideoIds.has(p.id)
                 const watchedP = localWatched.has(p.id)
                 const thumbP = p.thumbnail || (p as any).thumb || null
                 const prevIdP = prevVideoMap[p.id]
@@ -1071,7 +1088,7 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
                         </div>
                       </div>
                       {payLockedP ? (
-                        <Button size="sm" className="shrink-0 bg-amber-500 hover:bg-amber-600 text-white" onClick={function () { setPendingPaymentVideo({ id: p.id, title: p.title, price: p.price || 0, grade: p.grade || grade }); setView('student-payment') }}>ادفع الآن</Button>
+                        <Button size="sm" className="shrink-0 bg-amber-500 hover:bg-amber-600 text-white" onClick={function () { setPendingPaymentVideo({ id: p.id, title: 'الدرس كامل: ' + (activeLessonGroup.title || p.title), price: p.price || 0, grade: p.grade || grade }); setView('student-payment') }}>ادفع وافتح الدرس كله</Button>
                       ) : seqLockedP ? (
                         <Button size="sm" variant="secondary" className="shrink-0" disabled>مقفول</Button>
                       ) : (
