@@ -683,11 +683,12 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
         } else {
           map[v.id] = false
         }
-        if (trackable) prevTrackable = v.id
+        var paidNoAccess = (Number(v.price) || 0) > 0 && !approvedVideoIds.has(v.id)
+        if (trackable && !paidNoAccess) prevTrackable = v.id
       })
     })
     return map
-  }, [lessons, mergedProgress])
+  }, [lessons, mergedProgress, approvedVideoIds])
 
   // الفيديو اللي قبل كل فيديو (عشان نعرض نسبته على كارت المقفول)
   // (2026-و106) واعي بالدروس المتعددة — داخل الدرس: الجزء اللي قبله
@@ -700,11 +701,12 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
         var k = videoKindOf(v)
         var trackable = k === 'youtube' || k === 'file'
         if (trackable && prevTrackable) map[v.id] = prevTrackable
-        if (trackable) prevTrackable = v.id
+        var paidNoAccess = (Number(v.price) || 0) > 0 && !approvedVideoIds.has(v.id)
+        if (trackable && !paidNoAccess) prevTrackable = v.id
       })
     })
     return map
-  }, [lessons])
+  }, [lessons, approvedVideoIds])
 
   // فتح أي درس (يوتيوب أو ملف مرفوع): بنطلب تذكرة تشغيل واحدة الاستخدام
   // من /api/video-ticket — مفيش أي YouTube ID أو رابط ملف بيرجع للصفحة.

@@ -200,7 +200,7 @@ export async function checkSequentialUnlock(
     const gradeVideos = await db.video.findMany({
       where: { grade: video.grade },
       orderBy: { createdAt: 'asc' },
-      select: { id: true, url: true, filePath: true, fileType: true },
+      select: { id: true, url: true, filePath: true, fileType: true, price: true },
     })
     const idx = gradeVideos.findIndex((v) => v.id === videoId)
     // أول فيديو في الترتيب دايمًا مفتوح
@@ -211,6 +211,21 @@ export async function checkSequentialUnlock(
       const isYT = Boolean(getYouTubeId(v.url || ''))
       const isFile = Boolean(v.filePath || v.fileType)
       if (!isYT && !isFile) continue // لينك خارجي — مش قابل للتتبع، نتخطاه
+      /* (ز22) الفيديو اللي بفلوس والطالب مالوش وصول له — اختياري صامت
+         (طلب المستر: «الفيديو اللي بفلوس ده يكون اختياري عادي بس متكتبش
+         ان هو اختياري — لو الطالب مشافش الفيديو الفيديو اللي بعده يتفتح»):
+         مفيش VideoAccess ولا دفعة معتمدة → نتخطاه، الترتيب ما يقفش بياه */
+      if (v.price && Number(v.price) > 0) {
+        const acc = await db.videoAccess.findUnique({
+          where: { videoId_studentId: { videoId: v.id, studentId: String(studentId) } },
+        }).catch(() => null)
+        if (!acc) {
+          const pay = await db.payment.findFirst({
+            where: { studentId: String(studentId), videoId: v.id, status: 'approved' },
+          }).catch(() => null)
+          if (!pay) continue
+        }
+      }
       const prog = await db.videoProgress.findUnique({
         where: { studentId_videoId: { studentId, videoId: v.id } },
       }).catch(() => null)

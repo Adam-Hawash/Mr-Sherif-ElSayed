@@ -104,6 +104,121 @@ export function isCloudinaryVideoUrl(u: string): boolean {
   return /^https:\/\/res\.cloudinary\.com\/[^\/]+\/video\/upload\//.test(String(u || '').trim())
 }
 
+/* ============================================================
+   (2026-ص3 + ز19) جودات archive.org الحقيقية — طلب المستر:
+   «أنا رفعت لينك من archive.org فالمفروض يظهر بجودته الطبيعية
+   وأقدر أتحكم في الجودة براحتي»
+   archive.org بيحفظ لنفس الفيديو كذا نسخة: الأصلي HD + مشتقات مضغوطة
+   (512kb.mp4 اللي غالبًا المستر بياخد لينكها من صفحة العنصر = 360p).
+   بنقرأ metadata العنصر منهم بنبني قايمة جودات حقيقية، والافتراضي =
+   **أعلى جودة متاحة** (الجودة الطبيعية للفيديو) + المستر يبدّل براحته.
+   (ز19) الإصلاح الجذري لـ «المشغل متعدلش — لسه 360p»:
+   1) استدعاء السيرفر كان بيفشل على Vercel (تايم آوت 3.5 ثانية/حجب شبكة)
+      وساعتها مكانش فيه أي بديل → الفيديو بيفتح 360p من غير قايمة.
+      دلوقتي: تايم آوت أطمن + **المتصفح نفسه بيجيب الميتاداتا كبديل**
+      (archClientFallback جوه الصفحة — جهاز الطالب مش محجوب منه archive.org).
+   2) ترتيب النسخ كان بالارتفاع المكتوب بس — الأصل اللي ارتفاعه مش مكتوب
+      في الميتاداتا كان بيترتب تحت نسخة 360p! الأصل ( playable في المتصفحات)
+      بيتصدر دايمًا لأن archive.org ما بيصغّرش أبدًا.
+   3) العناصر اللي فيها أكتر من فيديو: الافتراضي بقى أعلى نسخة من
+      **نفس الدرس** (نفس الاسم الأساسي) مش أي فيديو في العنصر.
+   أي فشل (مفيش نت / لينك مش archive / عنصر من غير نسخ) = السلوك القديم
+   بالظبط — بيتشغل باللينك اللي اتقاله. */
+export function archiveOrgItemId(u: string): string {
+  const s = String(u || '')
+  // الصيغ المدعومة: archive.org/{download|details|embed|metadata}/{id}/{file}
+  // + لينكات النود المباشرة: {iaXXXX.}archive.org/{NN}/items/{id}/{file}
+  const m = s.match(/archive\.org\/(?:download|details|embed|metadata)\/([^\/\?#]+)/i)
+    || s.match(/archive\.org\/(?:\d+\/)?items\/([^\/\?#]+)/i)
+  return m ? decodeURIComponent(m[1]) : ''
+}
+
+/* (ز19) الاسم الأساسي لملف archive.org — بنشيل الامتداد ولاحقات المشتقات
+   (_512kb/_h.264 إلخ) عشان نعرف النسخ اللي كلها بتاعة نفس الدرس */
+export function archiveOrgFileBase(nameOrUrl: string): string {
+  let s = String(nameOrUrl || '').split('?')[0].split('#')[0]
+  const parts = s.split('/')
+  s = parts[parts.length - 1] || ''
+  s = s.replace(/\.(mp4|m4v|mkv|webm|mov|ogv)$/i, '')
+  return s.replace(/_(512kb|h\.264|hd|hq|ia|mp4|smart|thumb)$/i, '').toLowerCase()
+}
+
+/* (ز19) بناء القايمة من metadata العنصر — فنكشن نقية عشان تتاختبر حقيقي */
+export function archiveOrgBuild(id: string, j: any, curUrl: string): { levels: { h: number; url: string }[]; defaultUrl: string } | null {
+  try {
+    const files: any[] = (j && j.files) || []
+    const vids: { h: number; name: string; size: number; src: string }[] = []
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i] || {}
+      const nm = String(f.name || '')
+      if (!/\.(mp4|m4v|mkv|webm|mov|ogv)$/i.test(nm)) continue
+      // ملفات معاينات/تشيكسوم — مش تشغيل
+      if (/(_thumbs|\.ia\.|_source\.)/i.test(nm)) continue
+      // (ز19) الأصل اللي المتصفحات مش بتشغله (avi/mpg/mpeg) ما نفيدش كخيار
+      if (f.source === 'original' && /\.(avi|mpg|mpeg)$/i.test(nm)) continue
+      vids.push({
+        h: parseInt(String(f.height || ''), 10) || 0,
+        name: nm,
+        size: parseInt(String(f.size || ''), 10) || 0,
+        src: String(f.source || ''),
+      })
+    }
+    if (!vids.length) return null
+    // (ز19) الأصل أولًا — archive.org ما بيصغّرش: الأصل (اللي المتصفح يشغله)
+    // دايمًا ≥ أي مشتق، حتى لو ارتفاعه مش مكتوب في الميتاداتا
+    const origTop = (v: { h: number; name: string; src: string }) =>
+      v.src === 'original' && /\.(mp4|m4v|mkv|webm|mov|ogv)$/i.test(v.name) ? 1 : 0
+    vids.sort((a, b) => {
+      const ao = origTop(a), bo = origTop(b)
+      if (ao !== bo) return bo - ao
+      if (a.h !== b.h) return b.h - a.h
+      return b.size - a.size
+    })
+    const out: { h: number; url: string }[] = []
+    const seen: Record<string, boolean> = {}
+    for (let i = 0; i < vids.length; i++) {
+      // نفس الارتفاع = نفس الجودة — ناخد أكبر ملف؛ الأصول بتتحفظ كلها بالاسم
+      const key = vids[i].src === 'original' ? 'orig:' + vids[i].name : String(vids[i].h)
+      if (seen[key]) continue
+      seen[key] = true
+      const filePart = vids[i].name.split('/').map(encodeURIComponent).join('/')
+      out.push({ h: vids[i].h, url: 'https://archive.org/download/' + encodeURIComponent(id) + '/' + filePart })
+    }
+    if (out.length < 2) return null // نسخة واحدة = مفيش قايمة، السلوك القديم
+    // (ز19) الافتراضي = أعلى نسخة من **نفس الدرس** — العناصر اللي فيها أكتر
+    // من فيديو ما يفتحش المستر فيديو تاني بالغلط
+    const curBase = archiveOrgFileBase(curUrl)
+    let def = out[0]
+    if (curBase) {
+      for (let i = 0; i < out.length; i++) {
+        if (archiveOrgFileBase(out[i].url) === curBase) { def = out[i]; break } // out مترتبة
+      }
+    }
+    return { levels: out, defaultUrl: def.url }
+  } catch (e) {
+    return null
+  }
+}
+
+async function archiveOrgLevels(url: string): Promise<{ levels: { h: number; url: string }[]; defaultUrl: string } | null> {
+  try {
+    const id = archiveOrgItemId(url)
+    if (!id) return null
+    let j: any = null
+    try {
+      const r = await fetch('https://archive.org/metadata/' + encodeURIComponent(id), {
+        signal: AbortSignal.timeout(5000),
+        cache: 'no-store',
+      })
+      if (r.ok) j = await r.json().catch(() => null)
+    } catch (e) { j = null }
+    if (!j) return null
+    return archiveOrgBuild(id, j, url)
+  } catch (e) {
+    return null
+  }
+}
+
 export const dynamic = 'force-dynamic'
 
 function htmlEscape(s: string): string {
@@ -290,6 +405,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       cfg.fileUrl = directUrl
       // (و35) لينكات Cloudinary بياخدوا قايمة جودات حقيقية (1080/720/480/360)
       if (isCloudinaryVideoUrl(directUrl)) cfg.cloudinary = true
+      // (2026-ص3 + ز19) لينكات archive.org بياخدوا كل نسخ الجودة الموجودة في
+      // العنصر + الافتراضي أعلى جودة من نفس الدرس — طلب المستر
+      if (!/\.m3u8(\?|$)/i.test(String(cfg.fileUrl))) {
+        const archLv = await archiveOrgLevels(String(cfg.fileUrl))
+        if (archLv && archLv.levels.length > 1) {
+          cfg.archive = archLv.levels
+          cfg.fileUrl = archLv.defaultUrl // الافتراضي = أعلى نسخة من نفس الدرس
+        }
+        // لو فشل السيرفر هنا — archClientFallback جوه صفحة المشغل بيجيب
+        // الميتاداتا من جهاز الطالب مباشرة ويبني القايمة (ز19)
+      }
     }
     const cfgJson = JSON.stringify(cfg).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026')
 
@@ -312,8 +438,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 /* ============================================================
    صفحة المشغل — قالب واحد فيه كل الحماية والوترمارك
+   (exported عشان اختبار كود المشغل المتشحن نفسه — ز19)
    ============================================================ */
-const PLAYER_PAGE = `<!doctype html>
+export const PLAYER_PAGE = `<!doctype html>
 <html dir="rtl" lang="ar">
 <head>
 <meta charset="utf-8">
@@ -413,7 +540,7 @@ const PLAYER_PAGE = `<!doctype html>
      مساحة كبيرة من الفيديو */
   /* 2026-و60-b — «الخط اللي فوق ده كبّره نص سم» — الشريط العلوي بقى أنصه
      (58–68px بدل 40–50px) وكلمة Mr Sherif ElSayed أكبر شوية */
-  #topShield{position:absolute;top:0;left:0;right:0;z-index:22;pointer-events:auto;
+  #topShield{position:absolute;top:0;left:0;right:0;z-index:22;pointer-events:none;
     height:max(58px,min(10%,68px)); /* (MG-2) بيتطبق عليها ارتفاع محفوظ من الكونفج عبر JS */
     /* (MG-1) بدل الخلفية المعتمة — تدرج شفاف نازل من فوق (from-black/40
        to-transparent) + بلور خفيف: مفيش مربع أسود، والكلام الأبيض بظل واضح */
@@ -424,6 +551,13 @@ const PLAYER_PAGE = `<!doctype html>
     border-bottom:1px solid rgba(255,255,255,.10)}
   #topShield::after{content:'';position:absolute;top:100%;left:0;right:0;height:12px;
     background:linear-gradient(to bottom,rgba(0,0,0,.45),rgba(0,0,0,0))}
+  /* (ز21) يوتيوب: الدرع بيتقص على منطقة العنوان/القناة بس (فوق من 33%
+     لليسار الفعلي — الشمال الأيسر سيبه مفتوح بصريًا عشان زرار ⚙ الجودة
+     الأصلي (اللي فوق الشمال في واجهة يوتيوب RTL) يبان للطالب ويقدر يدوس عليه
+     — البلوك الشفاف ytTitleBlock هو اللي بيقفل الدوس على العنوان/القناة)
+     + تلاشي ناعم لحافة الدرع الشمال (بدل القص الحاد) */
+  #topShield.ytmode{left:33%;
+    -webkit-mask-image:linear-gradient(to right,transparent 0,#000 46px);mask-image:linear-gradient(to right,transparent 0,#000 46px)}
   #topShield .brand{color:rgba(255,255,255,.95);font-weight:900;
     font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
     font-size:clamp(15px,2.3vw,22px);letter-spacing:.5px;direction:ltr;white-space:nowrap;
@@ -454,9 +588,41 @@ const PLAYER_PAGE = `<!doctype html>
     font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
     font-size:clamp(12px,1.9vw,17px);letter-spacing:.5px;direction:ltr;white-space:nowrap;
     text-shadow:0 1px 3px rgba(0,0,0,.6);pointer-events:none}
-  #fsBtn{position:absolute;bottom:8px;left:8px;z-index:50;width:30px;height:30px;border-radius:8px;border:0;cursor:pointer;
-    background:rgba(0,0,0,.55);color:#fff;display:flex;align-items:center;justify-content:center;opacity:.75}
+  /* (ز21) زرار ملء الشاشة بتاعنا فوق الشريط الأصلي — ملء الشاشة الأصلي
+     مقفول (fs:0) عشان الووترمارك والدروع تفضل شغالة جوه ملء الشاشة */
+  #fsBtn{position:absolute;bottom:calc(var(--mgBarH) + 10px);left:10px;z-index:50;width:38px;height:38px;border-radius:10px;border:1px solid rgba(255,255,255,.18);cursor:pointer;
+    background:rgba(0,0,0,.55);color:#fff;display:flex;align-items:center;justify-content:center;opacity:.8;transition:opacity .3s ease}
   #fsBtn:hover{opacity:1;background:rgba(0,0,0,.75)}
+  #fsBtn.hide{opacity:0;pointer-events:none}
+  /* (ز21) بلوكات العلامات الميتة — شفافة تمامًا، شغلها الوحيد إن الدوس
+     ما توصلش ليوتيوب أبدًا (طلب المستر الحرفي: «علامة يوتيوب اللي بيدخل
+     للقناة وعلامة اسم القناة ما يكونوش شغالين»).
+     **مقاسات مقاسة فعليًا من واجهة يوتيوب RTL (hl=ar) على ديسكتوب وموبايل**:
+     واجهة يوتيوب بتنعكس مع العربي — فبتلاقي:
+     • ⚙ الإعدادات (قايمة الجودة) + الصوت + CC فوق الشمال (0–33%) → **لسة شغالة**
+     • العنوان + اسم القناة + الأفاتار فوق من 33% لليسار الكلي → ytTitleBlock (ميتة)
+     • لوجو «YouTube» + «المزيد من الفيديوهات» تحت الشمال (0–60%) → ytBrandBlock (ميتة)
+     • زرار الشير تحت اليمين (84–100%) → ytShareBlock (ميت)
+     والدرع العلوي المرئي بقال pointer-events:none — شكل بس من غير ما يمنع
+     دوسة الإعدادات ⚙ — والبلوكات الشفافة هي اللي بتقفل الدوس بالظبط */
+  #ytTitleBlock{position:absolute;z-index:21;top:0;left:33%;right:0;height:110px;pointer-events:auto;background:transparent}
+  #ytBrandBlock{position:absolute;z-index:46;bottom:0;left:0;width:60%;height:44px;pointer-events:auto;background:transparent}
+  #ytShareBlock{position:absolute;z-index:46;bottom:0;right:0;width:16%;height:44px;pointer-events:auto;background:transparent}
+  /* (ز22) حالات الوقف (pause): يوتيوب بيطلع **فوق خط الشريط** زرار شير دائري
+     عايم تحت اليمين (بيفتح لوحة «نسخ الرابط» — شكوى المستر الحرفية:
+     «الزرار اللي على اليمين ده بينسخ رابط الفيديو — لا مش عاوزه ينسخ رابط،
+     عاوزه تموتهولي») + كارت «المزيد من الفيديوهات» (بيفتح القناة) تحت الشمال
+     — الاتنين أعلى من الـ44px بتاعة ز21 فكان جزءهم الفوقاني مكشوف والدوس عليه
+     كان شغال. بلوكات علوية شفافة من فوق الشريط لفوق تقفلهم تمامًا:
+     • ytShareHi: يمين 20% × 90px فوق الشريط → الزرار الدائري كله ميت
+     • ytBrandHi: شمال من 54px (عشان زرار ملء الشاشة بتاعنا fsBtn اللي على
+       الشمال ما يتغطيش) × عرض 58% × 116px → كارت «المزيد» كله ميت
+     والاتنين فوق خط الشريط أصلاً فما بيمسوش الشريط ولا السحب ولا ⚙
+     (ز22-ب) الارتفاعات بـclamp نسبية — على موبايل الصندوق بيبقى قصير
+     (390×219) فالارتفاع الثابت كان هيغطي وسط الفيديو — دلوقتي بيتقاس
+     مع الصندوق: أقل حاجة مضمونة للزرار/الكارت وأقصى حاجة ما تلمسش الوسط */
+  #ytShareHi{position:absolute;z-index:46;bottom:44px;right:0;width:20%;height:clamp(64px,16%,90px);pointer-events:auto;background:transparent}
+  #ytBrandHi{position:absolute;z-index:46;bottom:44px;left:54px;width:58%;height:clamp(96px,22%,130px);pointer-events:auto;background:transparent}
   /* ===== كنترولز بتاعتنا (بدون أي شكل يوتيوب) ===== */
   #tapLayer{position:absolute;inset:0;z-index:20;background:transparent}
   /* (الكنترولز بقيت بتاعة يوتيوب الأصلية — مفيش شريط تحكم من عندنا:
@@ -780,6 +946,7 @@ function ensureTopShield(){
   if(document.getElementById('topShield')) return;
   var ts = document.createElement('div'); ts.id='topShield';
   ts.innerHTML = '<span class="brand">Mr Sherif ElSayed</span>';
+  try{ if(CFG.kind !== 'youtube') ts.classList.add('preplay'); else ts.classList.add('ytmode'); }catch(e){}
   wrap.appendChild(ts);
   applyPlayerChrome();
 }
@@ -787,6 +954,9 @@ function ensureTopShield(){
    بيغطي صف يوتيوب كله (اشتراك/لوجو/شير/كابشن) تغطية كاملة —
    وكروت QR فوقه ظاهرة، ومتلفسش أي حاجة برة مستطيل الفيديو */
 function ensureBotShield(){
+  /* (ز21) يوتيوب: مفيش درع سفلي خالص — الكنترولز الأصلية لازم تفضل حرة
+     (الدرع كان هيغطي زرار التشغيل و⚙ الجودة الأصلية ويمنع الدوس عليها) */
+  if(CFG.kind === 'youtube') return;
   if(document.getElementById('botShield')) return;
   var bs = document.createElement('div'); bs.id='botShield';
   bs.innerHTML = '<span class="brand">Mr Sherif ElSayed</span>';
@@ -796,11 +966,25 @@ function ensureBotShield(){
    يوتيوب (فيه يوتيوب بس) — وبتمنع الدوس على اللي تحتها كمان */
 function ensureYtCovers(){
   if(CFG.kind !== 'youtube') return;
-  if(!document.getElementById('ytCoverR')){
-    var r = document.createElement('div'); r.id = 'ytCoverR'; wrap.appendChild(r);
+  /* (ز21) بلوكات العلامات الميتة بدل المستطيلات القديمة — القديمة كانت
+     هتغطي زرار ⚙ الأصلي نفسه. شفافة تمامًا + pointer-events:auto */
+  if(!document.getElementById('ytTitleBlock')){
+    var nt = document.createElement('div'); nt.id = 'ytTitleBlock'; wrap.appendChild(nt);
   }
-  if(!document.getElementById('ytCoverL')){
-    var l = document.createElement('div'); l.id = 'ytCoverL'; wrap.appendChild(l);
+  if(!document.getElementById('ytBrandBlock')){
+    var bb = document.createElement('div'); bb.id = 'ytBrandBlock'; wrap.appendChild(bb);
+  }
+  if(!document.getElementById('ytShareBlock')){
+    var sb = document.createElement('div'); sb.id = 'ytShareBlock'; wrap.appendChild(sb);
+  }
+  /* (ز22) بلوكات الوقف العلوية — زرار الشير الدائري العايم + كارت «المزيد
+     من الفيديوهات» بيطلعوا فوق خط الشريط وقت الوقف، والبلوكات السفلية
+     (44px) ما كانتش بتوصلهم — دلوقتي ميتين من كل الاتجاهات */
+  if(!document.getElementById('ytShareHi')){
+    var sh = document.createElement('div'); sh.id = 'ytShareHi'; wrap.appendChild(sh);
+  }
+  if(!document.getElementById('ytBrandHi')){
+    var bh = document.createElement('div'); bh.id = 'ytBrandHi'; wrap.appendChild(bh);
   }
 }
 /* self-heal: الووترمارك بيرجع يترسم لو حد شاله من الـ DOM */
@@ -970,8 +1154,11 @@ document.addEventListener('keydown', function(e){
    فاضلة زي ما هي: منع اختصارات أدوات المطوّر + منع الكليك يمين + منع
    الحفظ + الووترمارك باسم الطالب ورقمه في كل إطار. */
 
-/* ===== مشغّل يوتيوب — بدون أي شكل يوتيوب: كنترولز خاصة بينا + شاشات تغطية
-   بتمنع ظهور العنوان/اللوجو نهائيًا. الـ ID بيتفك في الذاكرة بس زي ما هو ===== */
+/* ===== مشغّل يوتيوب (ز21 — «المشغل بتاع يوتيوب هو هو»): كنترولز يوتيوب
+   الأصلية controls=1 — قايمة الجودة ⚙ الحقيقية (360p→1080p) شغالة بجد،
+   وعلامة يوتيوب «Watch on YouTube» وعلامة اسم القناة/العنوان **ميتين**
+   (بلوكات شفافة فوقهم — مستحيل حد يدوس عليهم). ملء الشاشة زرارنا (fs:0)
+   عشان الووترمارك تفضل ظاهرة. الـ ID بيتفك في الذاكرة بس زي ما هو ===== */
 var playerApi = null;
 /* ===== رسائل الخطأ + إعادة بناء المشغل (2026-ح — علاج "المشغل بيتجهز ومش بيشتغل") =====
    يوتيوب ساعات بيرفض التشغيل خالص (خطأ auth/153 — حماية ضد البوتات على شبكات
@@ -1101,23 +1288,18 @@ function activateFallback(reason){
   if(pendingResume > 5) startS = Math.max(startS, Math.floor(pendingResume));
   var f = document.getElementById('ytPlain');
   if(!f){
-    /* (2026-د) نفس خدعة المشغل العملاق — الوضع البديل كمان بيرندر 1920×1080 */
-    var sc2 = document.createElement('div'); sc2.id = 'mgYtScaler';
+    /* (ز21) مقاس طبيعي 100% — الكنترولز الأصلية لازم تبان بمقاسها الحقيقي */
     f = document.createElement('iframe');
     f.id = 'ytPlain';
     f.setAttribute('allow','autoplay; fullscreen; encrypted-media; picture-in-picture');
     f.setAttribute('allowfullscreen','');
     f.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;background:#000';
-    sc2.appendChild(f);
-    wrap.appendChild(sc2);
+    wrap.appendChild(f);
   }
-  /* نفس مواصفات المشغل الأصلي بالظبط: **controls=0 — مفيش أي واجهة يوتيوب**
-     (لا لوجو ولا وقت ولا share ولا إعدادات — القرار 2026-ؤ) + كابشن مقفول
-     + ووترمارك ودروع وشريطنا فوقه — بيتشتغل لو الـ API نفسه ماقدرش يتحمل.
-     enablejsapi=1 → بنقدر نبعت أوامر إبادة الكابشن + تشغيل/إيقاف/كتم
-     لشريطنا جوه المشغل المباشر (postMessage كل 3 ثواني) — طلب المستر
-     الحرفي: «اعمل للكابشن بلوك» في أي مشغل */
-  f.src = 'https://www.youtube.com/embed/' + ytId + '?autoplay=1&controls=0&rel=0&modestbranding=1&playsinline=1&iv_load_policy=3&cc_load_policy=0&cc_lang_pref=ar&hl=ar&disablekb=1&enablejsapi=1&vq=hd1080&origin=' + encodeURIComponent(location.origin || 'https://localhost') + '&start=' + startS;
+  /* (ز21) نفس مواصفات المشغل الأصلي: **controls=1 — كنترولز يوتيوب الأصلية**
+     (قايمة الجودة الحقيقية زي ما المستر طلب) + كابشن مقفول + الدروع والبلوكات
+     الشفافة فوقه. enablejsapi=1 → أوامر إبادة الكابشن عبر postMessage كل 3 ثواني */
+  f.src = 'https://www.youtube.com/embed/' + ytId + '?autoplay=1&controls=1&rel=0&modestbranding=1&playsinline=1&iv_load_policy=3&cc_load_policy=0&cc_lang_pref=ar&hl=ar&enablejsapi=1&origin=' + encodeURIComponent(location.origin || 'https://localhost') + '&start=' + startS;
   layoutWrap();
   try{ if(plainCapTimer){ clearInterval(plainCapTimer); plainCapTimer = null; } }catch(e){}
   plainCapTimer = setInterval(killCaptionsPlain, 3000);
@@ -1220,7 +1402,7 @@ function startWithWatchdog(){
       /* الضربة القوية: loadVideoById بيحمّل التيار من الأول وبيشتغل فورًا —
          أقوى بكتير من playVideo في المتصفحات العنيدة */
       var cur = 0; try{ cur = playerApi.getCurrentTime() || 0; }catch(e){}
-      try{ playerApi.loadVideoById(ytIdCached, Math.max(0, Math.floor(cur)), 'large'); }catch(e){}
+      try{ playerApi.loadVideoById(ytIdCached, Math.max(0, Math.floor(cur))); }catch(e){}
     } else if(attempts === 5){
       try{ playerApi.mute(); muteFallback = true; showUnmuteBtn(); playerApi.playVideo(); }catch(e){}
     } else if(attempts >= 7){
@@ -1267,6 +1449,11 @@ function setBarHidden(h){
   var b = document.getElementById('mgBar');
   if(b){
     if(h){ b.classList.add('hide'); } else { b.classList.remove('hide'); }
+  }
+  /* (ز21) زرار ملء الشاشة بتاعنا بيتخفي/يظهر مع الكنترولز (يوتيوب الأصلي) */
+  var fb = document.getElementById('fsBtn');
+  if(fb){
+    if(h){ fb.classList.add('hide'); } else { fb.classList.remove('hide'); }
   }
   try{ document.body.style.cursor = h ? 'none' : ''; }catch(e){}
   if(h) closeQMenu();
@@ -1605,30 +1792,21 @@ function ytSetQuality(q){
 function mountYouTube(){
   var ytId = deobfuscate(CFG.blob, CFG.key);
   if(!ytId){ wrap.innerHTML = '<p style="color:#fca5a5;font-family:sans-serif;padding:24px;direction:rtl">حصل خطأ في تحميل الفيديو</p>'; return; }
-  /* **مفيش أي كنترولز يوتيوب خالص** (القرار النهائي 2026-ؤ — طلب المستر
-     الحرفي: «مش لاقي زرار الإعدادات.. خبي علامة اليوتيوب.. علامة الـ share
-     والـ time دي لغيها»): controls=0 → لوجو يوتيوب والوقت وshare والقايمة
-     كلهم **ماتشالوا من الأساس** (مش متغطيين — الغطاء كان بيفشل مع RTL).
-     مكانهم شريط تحكمنا (تشغيل/تقدم/ملء شاشة + الجودة) والفيديو
-     كامل 100% من غير أي قص.
-     (ملغاة 2026-و4: استثناء وضع كود HTML embed اتنست — المستر شال الميزة
-     نفسها لأنها كانت بتجيب واجهة يوتيوب) */
-  /* **خدعة الجودة الحاسمة (2026-د)**: يوتيوب بيحدد سقف التيار بمقاس المشغل —
-     مشغل 390px على الموبايل = سقف 480p حتى لو الفيديو 1080 (ده السبب الحقيقي
-     لـ "الجودة وحشة والفيديوهات ساعات 360 وساعات 720"). الحل: الـ iframe
-     بيرندر دايمًا **1920×1080** جوه حاوية بتتصغّر بالـ CSS (contain) —
-     يوتيوب يسمح بتيار 720p/1080p فعلًا + التصغير بيحافظ على الحدة 100%. */
-  var scaler = document.createElement('div');
-  scaler.id = 'mgYtScaler';
+  /* (ز21) المشغل الأصلي نفسه — طلب المستر الحرفي: «المشغل بتاع يوتيوب هو هو
+     عشان أقدر أتحكم في الجودات.. بس علامة يوتيوب اللي بيدخل للقناة وعلامة
+     اسم القناة ما يكونوش شغالين — شفتها في منصات كتير».
+     التنفيذ:
+     • controls=1 → كنترولز يوتيوب الأصلية جوه الـ iframe (قايمة ⚙ الحقيقية
+       بتغير الجودة بجد 360p→1080p + شريط السحب + السرعة) — **مفيش سكيلر
+       ومفيش شريط من عندنا** عشان الكنترولز تبان بمقاسها الطبيعي.
+     • العلامات الممنوعة **ميتة** مش متشالة: natTopBlock + ytLogoBlock
+       (شفافة pointer-events:auto) + الدرع العلوي المرئي.
+     • ملء الشاشة زرارنا (fs:0) عشان الووترمارك والدروع تفضل ظاهرة في الملء. */
   var host = document.createElement('div');
   host.id = 'ytHost';
   host.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;background:#000';
-  scaler.appendChild(host);
-  wrap.appendChild(scaler);
-  mgYtFit();
-  /* الكابشن: إبادة API + postMessage دورية — من غير أي تغطية مرئية زيادة
-     (غطاء capLid اتشال نهائيًا 2026-و2 بطلب المستر: «الفيديو من غير قص
-     تحت») — الشريط السفلي Opaque بتاعنا هو التغطية الوحيدة الباقية */
+  wrap.appendChild(host);
+  ensureYtCovers();
   // شاشة البداية — **صورة الفيديو الحقيقية من يوتيوب** (بتغطي أي عنوان/
   // برanding بتاع يوتيوب لحظة التحميل) + دوسة الطالب = إذن تشغيل بالصوت
   var startOv = document.createElement('div');
@@ -1643,15 +1821,15 @@ function mountYouTube(){
   startOv.addEventListener('click', function(){ if(!tapOk()) return; startWithWatchdog(); });
   startOv.addEventListener('touchend', function(e){ e.preventDefault(); if(!tapOk()) return; startWithWatchdog(); });
   wrap.appendChild(startOv);
-  // طبقة النقر — دوسة على الفيديو نفسه = تشغيل/إيقاف عن طريق الـ API
-  // (زي سلوك يوتيوب، بس بأمر من عندنا لأن كنترولزه مقفولة controls=0)
-  var tap = document.createElement('div');
-  tap.id = 'tapLayer';
-  tap.addEventListener('click', function(){ if(!tapOk()) return; ytTogglePlay(); });
-  wrap.appendChild(tap);
-  // شريط التحكم بتاعنا — ملء الشاشة الأصلي ليوتيوب مقفول (fs:0) وزراره
-  // في شريطنا عشان الووترمارك والدروع تفضل شغالة جوه ملء الشاشة
-  buildMgBar();
+  /* زرار ملء الشاشة بتاعنا — الملء الأصلي مقفول (fs:0) عشان الووترمارك
+     تفضل ظاهرة، وزرارنا بيكبّر الصفحة كلها (والأب هو اللي ينفذه جوه المنصة) */
+  var fsb = document.createElement('button');
+  fsb.id = 'fsBtn'; fsb.type = 'button';
+  fsb.setAttribute('aria-label','ملء الشاشة');
+  fsb.innerHTML = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
+  fsb.addEventListener('click', function(e){ e.preventDefault(); e.stopPropagation(); toggleFs(); });
+  fsb.addEventListener('touchend', function(e){ e.preventDefault(); e.stopPropagation(); toggleFs(); });
+  wrap.appendChild(fsb);
   // شاشة النهاية (بتغطي شاشة يوتيوب النهائية بالعنوان والاقتراحات)
   var endOv = document.createElement('div'); endOv.id='endOv';
   endOv.innerHTML = '<p>🎉 خلصت الفيديو — برافو عليك!</p><button type="button" id="replayBtn">شوفه تاني ↺</button>';
@@ -1687,10 +1865,12 @@ function buildPlayer(){
     videoId: ytId,
     width: '100%',
     height: '100%',
-    /* **controls:0 — مفيش أي واجهة يوتيوب خالص** (القرار النهائي 2026-ؤ):
-       مفيش لوجو/وقت/share/إعدادات — كله اتمسح من الأساس. كل التحكم بيبقت
-       عندنا (شريط mgBar + tapLayer عن طريق الـ JS API) */
-    playerVars: { autoplay:1, controls:0, rel:0, modestbranding:1, playsinline:1, iv_load_policy:3, cc_load_policy:0, cc_lang_pref:'ar', hl:'ar', fs:0, disablekb:1, enablejsapi:1, vq:'hd1080', origin: location.origin },
+    /* (ز21) **controls:1 — كنترولز يوتيوب الأصلية نفسها** (طلب المستر الحرفي:
+       «المشغل بتاع يوتيوب هو هو عشان أقدر أتحكم في الجودات») — قايمة ⚙
+       الأصلية بتغير الجودة بجد (360p→1080p) + شريط السحب + السرعة.
+       fs:0 → ملء الشاشة بزاريرنا عشان الووترمارك تفضل ظاهرة،
+       والعلامات الممنوعة (اللوجو/القناة) ميتة بالبلوكات الشفافة */
+    playerVars: { autoplay:1, controls:1, rel:0, modestbranding:1, playsinline:1, iv_load_policy:3, cc_load_policy:0, cc_lang_pref:'ar', hl:'ar', fs:0, enablejsapi:1, origin: location.origin },
     events: {
       onReady: function(ev){
         /* تكملة المشاهدة بنأجلها لأول لحظة تشغيل فعلية — أعلى أمان على الموبايل
@@ -1703,33 +1883,11 @@ function buildPlayer(){
         try{
           [400, 1200, 2500, 4000, 6000, 8000].forEach(function(ms){ setTimeout(killCaptions, ms); });
         }catch(e){}
-        /* (2026-و8) تلميح 480p من أول لحظة: لو التيار المقرر دلوقتي تحت 480
-           والفيديو لسه مش شغال → إعادة ترتيب بـ large قبل أي تشغيل —
-           ده كان سبب إن أول تشغيل بيبدأ 360p (التلميح كان في مسار إعادة
-           المحاولة بس) */
-        try{
-          setTimeout(function(){
-            try{
-              if(fallbackActive || ytQWanted || !playerApi || !ytIdCached) return;
-              var st0 = 0; try{ st0 = playerApi.getPlayerState ? playerApi.getPlayerState() : -1; }catch(e){}
-              if(st0 === 1 || st0 === 3) return;
-              var q0 = ''; try{ q0 = String(playerApi.getPlaybackQuality() || ''); }catch(e){}
-              if(q0 === 'tiny' || q0 === 'small' || q0 === 'medium' || q0 === 'large'){
-                playerApi.cueVideoById(ytIdCached, 0, 'hd720');
-                try{ if(playerApi.setPlaybackQualityRange) playerApi.setPlaybackQualityRange('hd720','highres'); }catch(e){}
-              }
-            }catch(e){}
-          }, 1200);
-        }catch(e){}
+        /* (ز21) الجودة كلها ليوتيوب الأصلي — مفيش تلميح ولا أرضية ولا قفل:
+           طلب المستر الحرفي «المشغل بتاع يوتيوب هو هو» */
         try{ setMuteIcon(!!(playerApi.isMuted && playerApi.isMuted())); }catch(e){}
         if(pendingStart){ pendingStart = false; startWithWatchdog(); }
         layoutWrap();
-      },
-      onPlaybackQualityChange: function(){
-        /* أرضية 480p: أي تغير جودة من يوتيوب → بنعيد طلب الأرضية فورًا
-           (لو الطالب مش مختار مستوى صريح) */
-        ytApplyFloor();
-        ytUpdateQLabel();
       },
       onStateChange: function(ev){
         try{
@@ -1746,10 +1904,7 @@ function buildPlayer(){
             }
             /* الكابشن ممنوع خالص — إبادة فورية مع كل تشغيل (قرار 2026-ن) */
             killCaptions();
-            /* قايمة الجودة: نجمع المستويات المتاحة من يوتيوب ونحدّث الزرار */
-            ytCollectLevels();
-            /* أرضية 480p مع كل تشغيل — طلب المستر 2026-و5: «مقبولة لـ 480» */
-            ytApplyFloor();
+            /* (ز21) الجودة كلها ليوتيوب الأصلي — مفيش أرضية ولا قفل */
             /* دورة الووترمارك الكبيرة بتشتغل مع التشغيل */
             wmRun(true); wmOn();
             setPlayIcon(true);
@@ -1808,7 +1963,6 @@ function buildPlayer(){
         var cur = playerApi.getCurrentTime() || 0, dur = playerApi.getDuration() || 0;
         reportProgress(cur, dur);
         mgUpdateProgress();
-        ytUpdateQLabel();
         /* (2026-د) مدة الفيديو: بتظهر على شاشة البداية + تتبعت للسيرفر مرة
            واحدة عشان بادج ⏱ يظهر على كروت الفيديوهات في المنصة */
         if(dur > 0){
@@ -1819,12 +1973,7 @@ function buildPlayer(){
             try{ fetch('/api/video-duration', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ videoId: CFG.videoId, durationSec: Math.round(dur) }) }).catch(function(){}); }catch(e){}
           }
         }
-        /* أرضية 480p دورية: طلب الأرضية كل 5 ثواني + حارس محدود (محاولتين
-           في أول 90 ثانية بس — من غير قطيعة) + متحقق اختيار الطالب */
-        var floorNow = Math.floor(Date.now() / 5000);
-        if(floorNow !== lastFloorCheck){ lastFloorCheck = floorNow; ytApplyFloor(); }
-        ytFloorGuard();
-        ytVerifyQuality();
+        /* (ز21) الجودة كلها ليوتيوب الأصلي — مفيش أرضية ولا حارس ولا متحقق */
         /* حارس النهاية: لو شاشة الاقتراحات هتظهر (ENDED ماتفوتش) → غطّي فورًا */
         if(ytState()===0){
           var eo3=document.getElementById('endOv');
@@ -1867,6 +2016,10 @@ var fileQualityLabel = '';
    بنبدّل transformations الرابط (c_scale,h_X,q_auto) وسيرفرهم بيقلل الجودة
    فعليًا — 1080 تبقى 720/480/360 من غير ما نلمس الملف الأصلي */
 var cloudBase = '', cloudLevels = [], cloudCur = -1;
+/* (2026-ص3) جودات archive.org الحقيقية — جايه من السيرفر من metadata العنصر.
+   الافتراضي = أعلى جودة (السيرفر بيحط fileUrl = أعلى نسخة) — والمستر يبدّل براحته */
+var archLevels = (CFG.archive && CFG.archive.length) ? CFG.archive : [];
+var archCur = 0;
 function fmtTime(s){
   s = Math.max(0, Math.floor(Number(s) || 0));
   var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60;
@@ -1919,6 +2072,116 @@ function switchCloudQuality(h){
     updateQLabel(); renderQMenu();
   }catch(e){}
 }
+/* (2026-ص3) تبديل جودة archive.org في نفس المكان — نفس الثانية ونفس حالة التشغيل */
+function switchArchiveQuality(i){
+  try{
+    var v = fileApi; if(!v || !archLevels[i] || !archLevels[i].url) return;
+    var cur = v.currentTime, wasPlaying = !v.paused;
+    archCur = i;
+    fileQualityLabel = '';
+    v.src = archLevels[i].url;
+    v.load();
+    var once = function(){
+      try{ v.removeEventListener('loadedmetadata', once); }catch(e2){}
+      try{ if(cur > 0 && v.duration && cur < v.duration - 1) v.currentTime = cur; }catch(e2){}
+      if(wasPlaying){ try{ var pp = v.play(); if(pp && pp.catch) pp.catch(function(){}); }catch(e2){} }
+    };
+    v.addEventListener('loadedmetadata', once);
+    updateQLabel(); renderQMenu();
+  }catch(e){}
+}
+/*Z19F-START*/
+/* ===== (ز19) شبكة أمان archive.org من جهاز الطالب نفسه =====
+   لو السيرفر ما قدرش يجيب ميتاداتا العنصر (شبكة/تايم آوت)، المتصفح بيجيبها
+   بنفسه من archive.org (مش محجوبة من الأجهزة) ويبني قايمة الجودات —
+   ولو لسه في أول الدرس بيبدّل فورًا لأعلى جودة من نفس الدرس بنفس الثانية.
+   الفنكشنز دي نقية (من غير DOM) عشان تتاختبر من الكود المتشحن نفسه */
+function archIdOf(u){
+  var s = String(u || '');
+  var m = s.match(/archive\\.org\\/(?:download|details|embed|metadata)\\/([^\\/\\?#]+)/i) || s.match(/archive\\.org\\/(?:\\d+\\/)?items\\/([^\\/\\?#]+)/i);
+  return m ? decodeURIComponent(m[1]) : '';
+}
+function archFileName(u){
+  try{ var s = String(u || '').split('?')[0].split('#')[0]; var p = s.split('/'); return decodeURIComponent(p[p.length - 1] || ''); }catch(e){ return ''; }
+}
+function archBaseName(u){
+  try{ var s = archFileName(u).replace(/\\.(mp4|m4v|mkv|webm|mov|ogv)$/i, ''); return s.replace(/_(512kb|h\\.264|hd|hq|ia|mp4|smart|thumb)$/i, '').toLowerCase(); }catch(e){ return ''; }
+}
+function archBuildLevels(id, j){
+  try{
+    var files = (j && j.files) || [], vids = [];
+    for(var i = 0; i < files.length; i++){
+      var f = files[i] || {}, nm = String(f.name || '');
+      if(!/\\.(mp4|m4v|mkv|webm|mov|ogv)$/i.test(nm)) continue;
+      if(/(_thumbs|\\.ia\\.|_source\\.)/i.test(nm)) continue;
+      if(f.source === 'original' && /\\.(avi|mpg|mpeg)$/i.test(nm)) continue;
+      vids.push({ h: parseInt(String(f.height || ''), 10) || 0, name: nm, size: parseInt(String(f.size || ''), 10) || 0, src: String(f.source || '') });
+    }
+    if(!vids.length) return null;
+    function origTop(v){ return (v.src === 'original' && /\\.(mp4|m4v|mkv|webm|mov|ogv)$/i.test(v.name)) ? 1 : 0; }
+    vids.sort(function(a, b){
+      var ao = origTop(a), bo = origTop(b);
+      if(ao !== bo) return bo - ao;
+      if(a.h !== b.h) return b.h - a.h;
+      return b.size - a.size;
+    });
+    var out = [], seen = {};
+    for(var i2 = 0; i2 < vids.length; i2++){
+      var key = vids[i2].src === 'original' ? ('orig:' + vids[i2].name) : String(vids[i2].h);
+      if(seen[key]) continue;
+      seen[key] = true;
+      var fp = vids[i2].name.split('/').map(encodeURIComponent).join('/');
+      out.push({ h: vids[i2].h, url: 'https://archive.org/download/' + encodeURIComponent(id) + '/' + fp });
+    }
+    if(out.length < 2) return null;
+    return out;
+  }catch(e){ return null; }
+}
+var archTried = false;
+function archClientFallback(){
+  try{
+    if(archTried || archLevels.length || CFG.kind !== 'file') return;
+    var id = archIdOf(String(CFG.fileUrl || ''));
+    if(!id) return;
+    archTried = true;
+    fetch('https://archive.org/metadata/' + encodeURIComponent(id), { cache: 'no-store' })
+      .then(function(r){ return r.ok ? r.json() : null })
+      .then(function(j){
+        try{
+          var lv = archBuildLevels(id, j);
+          if(!lv || !lv.length) return;
+          archLevels = lv;
+          var curName = archFileName(String(CFG.fileUrl || ''));
+          var matched = -1;
+          for(var z = 0; z < lv.length; z++){ if(archFileName(lv[z].url) === curName){ matched = z; break; } }
+          if(matched < 0){
+            var cb = archBaseName(String(CFG.fileUrl || ''));
+            if(cb){ for(var z2 = 0; z2 < lv.length; z2++){ if(archBaseName(lv[z2].url) === cb){ matched = z2; break; } } }
+          }
+          archCur = matched >= 0 ? matched : 0;
+          var v = fileApi;
+          /* لسه في أول الدرس (أو الملف الحالي بايظ) والنسخة الحالية مش أعلى
+             جودة من نفس الدرس → نبدّل فورًا بنفس الثانية (الإنقاذ في أي وقت
+             لو الملف باظ — والترقية السلسة في أول الدرس من غير قطيعة) */
+          if(v && (v.currentTime < 5 || v.error) && archCur !== 0 && archBaseName(lv[0].url) === archBaseName(lv[archCur].url)){
+            var cur = v.currentTime, wasPlaying = !v.paused;
+            archCur = 0;
+            v.src = lv[0].url; v.load();
+            var once = function(){
+              try{ v.removeEventListener('loadedmetadata', once); }catch(e2){}
+              try{ if(cur > 0 && v.duration && cur < v.duration - 1) v.currentTime = cur; }catch(e2){}
+              if(wasPlaying){ try{ var pp = v.play(); if(pp && pp.catch) pp.catch(function(){}); }catch(e2){} }
+            };
+            v.addEventListener('loadedmetadata', once);
+          }
+          fileQualityLabel = '';
+          renderQMenu(); updateQLabel();
+        }catch(e){}
+      })
+      .catch(function(){});
+  }catch(e){}
+}
+/*Z19F-END*/
 /* رسايل أخطاء المشغل العادي — شاشة واضحة + زرار إعادة */
 function fileError(msg){
   var ov = document.getElementById('fileErrOv');
@@ -1945,6 +2208,10 @@ function updateQLabel(){
     } else {
       el.textContent = hLabel((hlsLevels[hlsCurIdx] || {}).h);
     }
+  } else if(archLevels.length){
+    /* (2026-ص3) archive.org — الليبل من المستوى المختار */
+    var ah = (archLevels[archCur] || {}).h || 0;
+    el.textContent = hLabel(ah);
   } else if(CFG.cloudinary && cloudBase){
     el.textContent = (cloudCur === -1) ? (fileQualityLabel || 'أصلية') : hLabel(cloudCur);
   } else {
@@ -1965,6 +2232,13 @@ function renderQMenu(){
       var L = hd[i];
       html += '<div class="qi' + (!hlsAuto && hlsCurIdx === L.i ? ' on' : '') + '" data-lv="' + L.i + '"><span>' + hLabel(L.h) + '</span><span class="ck">' + ((!hlsAuto && hlsCurIdx === L.i) ? '✓' : '') + '</span></div>';
     }
+  } else if(archLevels.length){
+    /* (2026-ص3) جودات archive.org الحقيقية — الأعلى مختارة تلقائيًا والباقي براحتك */
+    for(var ai = 0; ai < archLevels.length; ai++){
+      var AL = archLevels[ai];
+      html += '<div class="qi' + (archCur === ai ? ' on' : '') + '" data-aq="' + ai + '"><span>' + esc(hLabel(AL.h || 0)) + '</span><span class="ck">' + (archCur === ai ? '✓' : '') + '</span></div>';
+    }
+    html += '<div class="qNote">دي نسخ archive.org الأصلية للفيديو ده — بيفتح تلقائيًا بأعلى جودة متاحة</div>';
   } else if(CFG.cloudinary && cloudBase){
     /* (و35) جودات Cloudinary الحقيقية — الأصلية + تصغير لحد ما */
     html += '<div class="qi' + (cloudCur === -1 ? ' on' : '') + '" data-cq="-1"><span>' + esc(fileQualityLabel || 'الجودة الأصلية') + '</span><span class="ck">' + (cloudCur === -1 ? '✓' : '') + '</span></div>';
@@ -1982,6 +2256,9 @@ function renderQMenu(){
     (function(item){
       item.addEventListener('click', function(ev){
         ev.preventDefault(); ev.stopPropagation();
+        /* (2026-ص3) جودات archive.org */
+        var aq = item.getAttribute('data-aq');
+        if(aq !== null){ switchArchiveQuality(parseInt(aq, 10)); closeQMenu(); return; }
         /* (و35) جودات Cloudinary */
         var cq = item.getAttribute('data-cq');
         if(cq !== null){ switchCloudQuality(parseInt(cq, 10)); closeQMenu(); return; }
@@ -2119,7 +2396,7 @@ function buildFileBar(){
 function onFileMeta(){
   try{
     var v = fileApi; if(!v) return;
-    if(!fileQualityLabel){ fileQualityLabel = hLabel(v.videoHeight); }
+    if(!fileQualityLabel && !archLevels.length){ fileQualityLabel = hLabel(v.videoHeight); }
     /* (و35) بناء جودات Cloudinary من مقاس الفيديو الأصلي — الأصغر بس (مفيش تكبير)
        (2026-د) من غير أي مستوى تحت 720 — طلب المستر: ال360 وحشة */
     if(CFG.cloudinary && cloudBase && !cloudLevels.length){
@@ -2206,6 +2483,14 @@ function mountFile(){
   buildFileBar();
   /* المصدر: بث HLS له قايمة جودات حقيقية — Cloudinary ليه جودات حقيقية من الرابط — الملف المباشر بجودته الأصلية */
   var src = String(CFG.fileUrl || '');
+  /* (2026-ص3 + ز19) archive.org: السيرفر اختار أعلى نسخة من نفس الدرس —
+     ومحدد مكان النسخة الحالية في القايمة عشان علامة ✓ والليبل يبقوا صحيحين */
+  if(archLevels.length && archLevels[0] && archLevels[0].url){
+    var curNmA = archFileName(src), matchedA = -1;
+    for(var ziA = 0; ziA < archLevels.length; ziA++){ if(archFileName(archLevels[ziA].url) === curNmA){ matchedA = ziA; break; } }
+    if(matchedA >= 0){ archCur = matchedA; }
+    else { archCur = 0; src = archLevels[0].url; }
+  }
   if(CFG.cloudinary) cloudVariants(src);
   if(/\\.m3u8(\\?|$)/i.test(src)) setupHls(src);
   else v.src = src;
@@ -2218,6 +2503,8 @@ ensureYtCovers();
 ensureBotShield();
 layoutWrap();
 if(CFG.kind === 'youtube') mountYouTube(); else if(CFG.kind === 'file') mountFile();
+/* (ز19) شبكة أمان archive.org: لو السيرفر ما جابش القايمة، المتصفح بيجيبها من جهاز الطالب */
+if(CFG.kind === 'file') archClientFallback();
 
 /* زرار ملء الشاشة للملفات (ليوتيوب الزرار جوه الكنترولز بتاعته) */
 if(CFG.kind === 'file'){
