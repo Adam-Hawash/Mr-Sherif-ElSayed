@@ -622,20 +622,19 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
     return Object.assign({}, videoProgress, progressOverrides)
   }, [videoProgress, progressOverrides])
 
-  /* (2026-ز14 — طلب المستر): رجّعنا الترتيب الزمني — «الدرس التاني يجي بعد
-     الدرس الأول». الترتيب اليدوي للمستر (▲▼) بيتقدم على التاريخ، والفيديو
-     الجديد بيتمسك في الآخر (maxSort+1 من السيرفر)، والترتيب السالب من حقبة
-     ز11 بيتعامل كأنه صفر عشان القوايم القديمة ترجع لترتيبها الزمني الطبيعي. */
+  /* (2026-ز19 — طلب المستر الحرفي): «اعكسها خليها بالعكس» — رجّعنا ز11:
+     «اللي ينزل الجديد يبقى في الاول واللي في الاخر يكون الاقدم» — الفيديو
+     الجديد فوق والقديم تحت. الترتيب اليدوي للمستر (▲▼) لسه بيتقدم على
+     التاريخ، والفيديو الجديد بياخد أصغر رقم ترتيب من السيرفر فبيطلع فوق
+     حتى في الصفوف المرتبة (من غير أي تصفير للسالب — زي ما كان بالظبط). */
   const orderedVideos = useMemo(function () {
     return videos.slice().sort(function (a, b) {
       var sa = Number((a as any).sortIndex) || 0
-      if (sa < 0) sa = 0
       var sb = Number((b as any).sortIndex) || 0
-      if (sb < 0) sb = 0
       if (sa !== sb) return sa - sb
       var ta = new Date((a as any).createdAt || 0).getTime()
       var tb = new Date((b as any).createdAt || 0).getTime()
-      return ta - tb
+      return tb - ta
     })
   }, [videos])
 
