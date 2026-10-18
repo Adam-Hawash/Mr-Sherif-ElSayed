@@ -11,6 +11,7 @@
   "dependencies": {
     "@prisma/adapter-libsql": "^6.19.3",
     "@prisma/client": "^6.19.3",
+    "@radix-ui/react-alert-dialog": "^1.1.23",
     "@radix-ui/react-dialog": "^1.1.14",
     "@radix-ui/react-direction": "^1.1.1",
     "@radix-ui/react-dropdown-menu": "^2.1.15",
