@@ -14,7 +14,8 @@
 //                related-videos end screen)
 //          - NO native controls, NO keyboard shortcuts, NO right-click
 //          - Settings (gear) button → video quality control
-//            (2026-د — طلب المستر الحرفي: "ثبتها لي حتى 720 — ال360 وحشة جدا"):
+//            (2026-ص4 — طلب المستر الحرفي: "الجودة تكون موجودة في الفيديو
+//            زي ما نازل على اليوتيوب" — زي مشغل يوتيوب الأصلي المعتمد):
 //            **الجودة مثبتة على 720p افتراضيًا** والقايمة فيها بس "عالية" +
 //            المستويات الحقيقية من 720 وطالع — **مفيش تلقائي ومفيش أي مستوى
 //            أقل من 720** (360/480 اتنشالوا خالص من القايمة) فالفيديو مش
@@ -332,13 +333,13 @@ export function ProtectedYouTubePlayer({
      720 — فالفيديو مش بينزل تحت 720 أبدًا (لو المصدر نفسه أقل، البادج
      الصادق في القايمة بيوضّح حدود الملف الأصلي). */
   const [qualityLevels, setQualityLevels] = useState<string[]>([])
-  const [selectedQuality, setSelectedQuality] = useState<string>('hd720')
+  const [selectedQuality, setSelectedQuality] = useState<string>('top')
   const [showQualityMenu, setShowQualityMenu] = useState(false)
   /* الجودة الفعلية الشغالة دلوقتي — عشان زرار الجودة يعرض **الحقيقة**
      من getPlaybackQuality (مش الاختيار الورقي — ده كان سبب
      "الجودة بتتغير كتابيا بس") */
   const [actualQuality, setActualQuality] = useState<string>('')
-  const selectedQualityRef = useRef('hd720')
+  const selectedQualityRef = useRef('top')
   const lastQualityApplyRef = useRef(0)
   const mismatchSinceRef = useRef(0)
   const lastHardReloadRef = useRef(0)
@@ -467,6 +468,25 @@ export function ProtectedYouTubePlayer({
     }
     return function () { if (hideTimerRef.current) clearTimeout(hideTimerRef.current) }
   }, [playing, showControls, showQualityMenu])
+
+  /* (2026-ص4) قراءة المستويات الحقيقية وتحديث القايمة — بتقبل أي سلم أغنى */
+  function refreshQualityLevels(p: any) {
+    try {
+      var lv = p && p.getAvailableQualityLevels ? p.getAvailableQualityLevels() : []
+      var cl: string[] = []
+      for (var i = 0; i < lv.length; i++) {
+        if (lv[i] && lv[i] !== 'auto' && lv[i] !== 'default' && STANDARD_QUALITIES.indexOf(lv[i]) >= 0) cl.push(lv[i])
+      }
+      if (!cl.length) return
+      setQualityLevels(function (prev) {
+        var prevTop = prev.length ? (Q_RANK[prev[0]] || 0) : -1
+        var nextTop = Q_RANK[cl[0]] || 0
+        if (nextTop > prevTop || prev.length === 0) return cl
+        if (cl.length > prev.length) return cl
+        return prev
+      })
+    } catch (err) {}
+  }
 
   function applyQuality(q: string) {
     var p = playerRef.current
@@ -663,14 +683,21 @@ export function ProtectedYouTubePlayer({
                 /* تحديث المستويات الحقيقية بعد بدء التشغيل — قبل التشغيل يوتيوب
                    بيرجّع ['auto'] بس، فالقائمة كانت بتعرض جودات مش موجودة
                    فعلًا في الفيديو (سبب "بختار 720 ومفيش حاجة بتتغير") */
-                try {
-                  var lv = e.target.getAvailableQualityLevels ? e.target.getAvailableQualityLevels() : []
-                  var cl: string[] = []
-                  for (var li = 0; li < lv.length; li++) {
-                    if (lv[li] && lv[li] !== 'auto' && lv[li] !== 'default' && STANDARD_QUALITIES.indexOf(lv[li]) >= 0) cl.push(lv[li])
-                  }
-                  setQualityLevels(function (prev) { return cl.length > 0 ? cl : prev })
-                } catch (err) {}
+                refreshQualityLevels(e.target)
+                /* (2026-ص4) إعادة قراءة المستويات في أول ثواني التشغيل — يوتيوب
+                   بيرجّع سلم قصير في الأول والسلم الحقيقي الكامل بيتكشف بعد
+                   ما المانيفست يتقري — عشان القايمة تعرض زي يوتيوب بالظبط */
+                var rpt = [1500, 4000, 8000, 14000]
+                for (var ri = 0; ri < rpt.length; ri++) {
+                  ;(function (delay: number) {
+                    setTimeout(function () {
+                      var pp = playerRef.current
+                      if (!pp || cancelled) return
+                      try { if (pp.getPlayerState && pp.getPlayerState() !== 1 && pp.getPlayerState() !== 3) return } catch (err) {}
+                      refreshQualityLevels(pp)
+                    }, delay)
+                  })(rpt[ri])
+                }
               }
               else if (e.data === 2) setPlaying(false)
               else if (e.data === 5) {
@@ -919,7 +946,10 @@ export function ProtectedYouTubePlayer({
      ومفيش أي مستوى تحت 720 (360/480 اتنشالوا — طلب المستر الحرفي).
      لو الفيديو نفسه أقصى جودته أقل من 720 → القايمة فيها "عالية" بس
      + الملاحظة الصادقة بتوضّح حدود الملف الأصلي. */
-  var menuLevels = qualityLevels.filter(function (q) { return (Q_RANK[q] || 0) >= (Q_RANK['hd720'] || 0) })
+  /* (2026-ص4) القايمة بتعرض **كل المستويات الحقيقية الموجودة في الفيديو**
+     مرتبة من الأعلى للأقل — زي قايمة يوتيوب نفسها بالظبط (نفس سياسة
+     المشغل الأصلي المعتمد controls=1) — مفيش فلتر ومفيش تلقائي. */
+  var menuLevels = qualityLevels.slice().sort(function (a, b) { return (Q_RANK[b] || 0) - (Q_RANK[a] || 0) })
 
   /* الستيج: الطبقة اللي جوه الكونتينر — في الوضع الطولي بندوّرها 90° عشان
      الفيديو + الكنترولز + الووترمارك كلهم يبانوا بالعرض على الشاشة كلها */
@@ -977,7 +1007,7 @@ export function ProtectedYouTubePlayer({
         {/* درع علوي دايمًا — عنوان يوتيوب/اسم القناة/زرار الشير عمرهم ما يظهروا */}
         <div
           className="absolute top-0 left-0 right-0 pointer-events-none"
-          style={{ height: '56px', background: 'linear-gradient(to bottom, rgba(0,0,0,.92), rgba(0,0,0,.55) 55%, rgba(0,0,0,0))' }}
+          style={{ height: '64px', background: 'linear-gradient(to bottom, rgba(0,0,0,.94), rgba(0,0,0,.6) 55%, rgba(0,0,0,0))' }}
         />
         {/* باتش الركن العلوي (فوق يمين) — طلب المستر 2026-ز: علامة الشير
             و"Watch on YouTube" اللي بيوتيوب بيعرضهم فوق يمين وقت فتح/وقف
@@ -986,14 +1016,14 @@ export function ProtectedYouTubePlayer({
             واجهة يوتيوب الداخلية LTR فالشير بيكون فوق يمين فعلًا. */}
         <div
           className="absolute pointer-events-none flex items-center justify-center"
-          style={{ top: '6px', right: '8px', width: '170px', height: '46px', borderRadius: '10px', background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}
+          style={{ top: '6px', right: '8px', width: '216px', height: '56px', borderRadius: '10px', background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}
         >
           <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: '10px', fontWeight: 800, letterSpacing: 0, direction: 'rtl', whiteSpace: 'nowrap' }}>🔒 محتوى محمي</span>
         </div>
         {/* باتش لوجو/لينك يوتيوب (تحت يمين) — بلور + تعتيم + ووترمارك مكانه */}
         <div
           className="absolute pointer-events-none flex items-center justify-center"
-          style={{ bottom: '8px', right: '8px', width: '150px', height: '46px', borderRadius: '10px', background: 'rgba(0,0,0,0.62)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}
+          style={{ bottom: '8px', right: '8px', width: '170px', height: '50px', borderRadius: '10px', background: 'rgba(0,0,0,0.62)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}
         >
           <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: '9.5px', fontWeight: 800, letterSpacing: 0, direction: 'rtl', whiteSpace: 'nowrap' }}>🔒 محتوى محمي</span>
         </div>
