@@ -454,13 +454,22 @@ export const PLAYER_PAGE = `<!doctype html>
   #wrap{position:relative;width:100%;max-width:100vw;background:#000;overflow:hidden}
   #wrap.fs{width:100vw;height:100vh;max-width:none}
   #yt,#fileVid{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000}
-  /* (2026-د) مشغل يوتيوب العملاق: بيرندر 1920×1080 وبيتصغّر بـ CSS scale —
-     يوتيوب بيحدد سقف التيار بمقاس المشغل (مشغل 390px على الموبايل = سقف 480p
-     — ده كان السبب الحقيقي إن الفيديو بيتفتح 360/480 حتى مع أرضية الجودة)
-     والمقاس الكبير بيسمح بتيار 720p/1080p فعلًا + التصغير بيحافظ على الحدة */
-  #mgYtScaler{position:absolute;top:50%;left:50%;width:1920px;height:1080px;
-    transform:translate(-50%,-50%) scale(var(--mgYtS,.2));transform-origin:center center;background:#000}
-  #mgYtScaler iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000}
+  /* (ز20) موائم الجودة HD — الأصل الجذري لـ«المنصة 360 واليوتيوب 1080»:
+     يوتيوب بيحدد المستويات اللي بتظهر في ⚙ **بمقاس المشغل الفعلي** —
+     وحاوياتنا (مودال البورتال 390×219 على الموبايل / 1024×576 على
+     الديسكتوب) أصغر من حد الـHD فقايمة ⚙ بتقفل على 360p والفيديو
+     بيتفتح 360. الحل: **المشغل بيرندر داخليًا بمقاس HD (أقل حاجة
+     1280×720)** وبيتكوّم بصريًا بـ CSS transform:scale على الـ iframe
+     نفسه — **المحتوى جوه الـ iframe مش بيشوف الـ transform خالص**
+     (الـ viewport الداخلي بيفضل 1280×720) فقايمة ⚙ بتطلع بالجودات
+     الحقيقية كلها زي يوتيوب بالظبط (حتى 1080p) والفيديو كامل 100%
+     بلا أي قص (transform-origin center + النسبة محفوظة).
+     الديسكتوب الكبير (ملء شاشة ≥1280×720): scale=1 = مقاس طبيعي بالظبط */
+  #ytQWrap,#ytPlain{position:absolute;top:50%;left:50%;border:0;background:#000;
+    transform:translate(-50%,-50%) scale(var(--mgYtS,1));transform-origin:center center}
+  #ytQWrap > #ytHost{position:absolute;inset:0;width:100%;height:100%}
+  #ytPlain{width:100%;height:100%;display:block}
+
   /* ===== الووترمارك (MG-2 — كل حاجة من لوحة الأدمن) =====
      كل عنصر بيتموضع بمركزه x%/y% من مستطيل الفيديو + حجم sm/md/lg
      + شفافية خاصة بيه — الكونفج جاي من CFG.pcfg (لو مفيش → سلوك MG-1).
@@ -621,8 +630,8 @@ export const PLAYER_PAGE = `<!doctype html>
      (ز22-ب) الارتفاعات بـclamp نسبية — على موبايل الصندوق بيبقى قصير
      (390×219) فالارتفاع الثابت كان هيغطي وسط الفيديو — دلوقتي بيتقاس
      مع الصندوق: أقل حاجة مضمونة للزرار/الكارت وأقصى حاجة ما تلمسش الوسط */
-  #ytShareHi{position:absolute;z-index:46;bottom:44px;right:0;width:20%;height:clamp(64px,16%,90px);pointer-events:auto;background:transparent}
-  #ytBrandHi{position:absolute;z-index:46;bottom:44px;left:54px;width:58%;height:clamp(96px,22%,130px);pointer-events:auto;background:transparent}
+  #ytShareHi{position:absolute;z-index:46;bottom:44px;right:0;width:16%;height:clamp(48px,14%,72px);pointer-events:auto;background:transparent}
+  #ytBrandHi{position:absolute;z-index:46;bottom:44px;left:54px;width:24%;height:clamp(56px,16%,84px);pointer-events:auto;background:transparent}
   /* ===== كنترولز بتاعتنا (بدون أي شكل يوتيوب) ===== */
   #tapLayer{position:absolute;inset:0;z-index:20;background:transparent}
   /* (الكنترولز بقيت بتاعة يوتيوب الأصلية — مفيش شريط تحكم من عندنا:
@@ -1018,18 +1027,25 @@ function clearRot(){
 /* ===== عرض الفيديو **كامل 100% من غير أي قص** (طلب المستر 2026-هـ:
    "الفيديو مش كامل إنت قاصص منه الأطراف — لازم يبان كله") — مفيش أي قص،
    وأي واجهة يوتيوب بتتغطى بالدروع (الدرع العلوي + باتش اللوجو + الووترمارك). */
-/* (2026-د) ملاءمة المشغل العملاق 1920×1080 جوه الصندوق (تصغير contain) —
-   بتتنادى مع كل layoutWrap (ريسايز/ملء شاشة/دوران) */
+/* (ز20) موائم الجودة HD — بيرندر المشغل داخليًا بمقاس HD (أقل حاجة
+   1280×720) ويكوّمه بـ CSS scale — الـ viewport الداخلي لليوتيوب بيفضل
+   HD فقايمة ⚙ بتعرض كل الجودات الحقيقية زي يوتيوب (سقف المقاس الصغير
+   360p اتشال من جذوره). بتتنادى مع كل layoutWrap (ريسايز/ملء شاشة/دوران) */
 function mgYtFit(){
   try{
-    var scs = document.querySelectorAll('#mgYtScaler');
-    for(var i=0;i<scs.length;i++){
-      var sc = scs[i];
-      var w = (wrap && wrap.clientWidth) || window.innerWidth || 0;
-      var h = (wrap && wrap.clientHeight) || window.innerHeight || 0;
-      if(w<=0 || h<=0) continue;
-      var s = Math.min(w/1920, h/1080);
-      sc.style.setProperty('--mgYtS', String(s));
+    if(CFG.kind !== 'youtube') return;
+    var w = (wrap && wrap.clientWidth) || window.innerWidth || 0;
+    var h = (wrap && wrap.clientHeight) || window.innerHeight || 0;
+    if(w<=0 || h<=0) return;
+    var iw = Math.max(w,1280), ih = Math.max(h,720);
+    var s = Math.min(w/iw, h/ih);
+    var ids = ['ytQWrap','ytPlain'];
+    for(var i=0;i<ids.length;i++){
+      var el = document.getElementById(ids[i]);
+      if(!el) continue;
+      el.style.width = iw + 'px';
+      el.style.height = ih + 'px';
+      el.style.setProperty('--mgYtS', String(s));
     }
   }catch(e){}
 }
@@ -1213,13 +1229,22 @@ function rebuildThenPlay(kind){
   try{ if(playerApi && playerApi.destroy) playerApi.destroy(); }catch(e){}
   playerApi = null;
   if(wdTimer){ clearInterval(wdTimer); wdTimer = null; }
+  /* (ز20) إعادة البناء بنفس غلاف سكالر الجودة — غير كده الريتراي بيرجع
+     بالمشغل الطبيعي الصغير وقايمة ⚙ بتقفل على 360 تاني */
+  var oldQ = document.getElementById('ytQWrap');
+  if(oldQ && oldQ.parentNode) oldQ.parentNode.removeChild(oldQ);
   var old = document.getElementById('ytHost');
   if(old && old.parentNode) old.parentNode.removeChild(old);
   var crop = document.getElementById('ytCrop');
+  var rq = document.createElement('div');
+  rq.id = 'ytQWrap';
+  rq.style.cssText = 'position:absolute;top:50%;left:50%;background:#000;transform:translate(-50%,-50%) scale(var(--mgYtS,1));transform-origin:center center';
   var host = document.createElement('div');
   host.id = 'ytHost';
   host.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;background:#000';
-  if(crop) crop.appendChild(host); else wrap.appendChild(host);
+  rq.appendChild(host);
+  if(crop) crop.appendChild(rq); else wrap.appendChild(rq);
+  layoutWrap();
   pendingStart = true;
   try{ buildPlayer(); }catch(e){ showPlayError(msgForYtError(lastErrCode || 'auth')); }
 }
@@ -1279,7 +1304,7 @@ function activateFallback(reason){
   /* شيل طبقات المشغل الأصلي بس — شريط التحكم بتاعنا (mgBar) وطبقة النقر
      (tapLayer) بيفضلوا شغالين: أزرار الشريط بتتحول postMessage تلقائيًا
      لما fallbackActive يبقى true (الأوامر نفسها: تشغيل/إيقاف/كتم) */
-  var killIds = ['ytHost','ytCrop','startOv','centerOv','endOv','ytCtrl','peBox','unmuteBtn','mgYtScaler'];
+  var killIds = ['ytHost','ytQWrap','ytCrop','startOv','centerOv','endOv','ytCtrl','peBox','unmuteBtn','mgYtScaler'];
   for(var i=0;i<killIds.length;i++){ try{ var el = document.getElementById(killIds[i]); if(el && el.parentNode) el.parentNode.removeChild(el); }catch(e){} }
   /* (2026-ك) نمسح مرجع المشغل القديم — من غير كده التايمر بيفضل ينادي على
      مشغل اتشال من الـ DOM ويعمّي الكونسول بتحذيرات على الفاضي */
@@ -1288,12 +1313,14 @@ function activateFallback(reason){
   if(pendingResume > 5) startS = Math.max(startS, Math.floor(pendingResume));
   var f = document.getElementById('ytPlain');
   if(!f){
-    /* (ز21) مقاس طبيعي 100% — الكنترولز الأصلية لازم تبان بمقاسها الحقيقي */
+    /* (ز21) مقاس طبيعي 100% — الكنترولز الأصلية لازم تبان بمقاسها الحقيقي
+       (ز20) المقاس الفعلي بيكتبه mgYtFit px (أقل حاجة 1280×720) والـ CSS
+       بيكوّمه بـ scale — فالوضع البديل كمان بياخد الجودات الحقيقية */
     f = document.createElement('iframe');
     f.id = 'ytPlain';
     f.setAttribute('allow','autoplay; fullscreen; encrypted-media; picture-in-picture');
     f.setAttribute('allowfullscreen','');
-    f.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;background:#000';
+    f.style.cssText = 'position:absolute;top:50%;left:50%;border:0;background:#000;transform:translate(-50%,-50%) scale(var(--mgYtS,1));transform-origin:center center';
     wrap.appendChild(f);
   }
   /* (ز21) نفس مواصفات المشغل الأصلي: **controls=1 — كنترولز يوتيوب الأصلية**
@@ -1802,10 +1829,19 @@ function mountYouTube(){
      • العلامات الممنوعة **ميتة** مش متشالة: natTopBlock + ytLogoBlock
        (شفافة pointer-events:auto) + الدرع العلوي المرئي.
      • ملء الشاشة زرارنا (fs:0) عشان الووترمارك والدروع تفضل ظاهرة في الملء. */
+  /* (ز20) غلاف سكالر الجودة: new YT.Player بيستبدل الديف اللي بيبني عليه
+     بالـ iframe بتاعه (بيمسك الـ id والستايل بيفضل) — فالحل غلاف خارجي
+     **بيفضل موجود** هو اللي بيتكوّم بالـ scale، والمشغل جواه 100%×100% */
+  var qWrap = document.createElement('div');
+  qWrap.id = 'ytQWrap';
+  qWrap.style.cssText = 'position:absolute;top:50%;left:50%;background:#000;transform:translate(-50%,-50%) scale(var(--mgYtS,1));transform-origin:center center';
   var host = document.createElement('div');
   host.id = 'ytHost';
   host.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;background:#000';
-  wrap.appendChild(host);
+  qWrap.appendChild(host);
+  wrap.appendChild(qWrap);
+  /* (ز20) المقاس فورًا قبل بناء المشغل عشان الـ viewport الداخلي يولد HD */
+  layoutWrap();
   ensureYtCovers();
   // شاشة البداية — **صورة الفيديو الحقيقية من يوتيوب** (بتغطي أي عنوان/
   // برanding بتاع يوتيوب لحظة التحميل) + دوسة الطالب = إذن تشغيل بالصوت
