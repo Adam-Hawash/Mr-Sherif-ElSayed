@@ -1188,6 +1188,29 @@ var ytHostKind = 'www';   /* 'www' | 'nocookie' */
 var rebuildTries = 0;     /* عداد إعادة بناء المشغل */
 var lastErrCode = '';
 var tickStarted = false;  /* مؤقت التقدم يتسجل مرة واحدة بس حتى مع إعادة البناء */
+/* ===== (2026-ص2 — علاج خطأ 153 على الآيفون) =====
+   المستر أبلغ: على الآيفون الفيديو بيقول "حدث خطأ 153" وبيرشح الذهاب
+   لليوتيوب والطالب يقدر يشوف من هناك. التشخيص:
+   1) يوتيوب ساعات بيقتل المشغل من جوه من غير onError خالص — بيرسم كارته
+      الداخلية (حدث خطأ 153 + زرار الذهاب لليوتيوب) على الـ iframe،
+      ومع كنترولز أصليه (ز21) الزرار ده **متاح للدوس مباشرة** — تسريب للقناة
+   2) خدعة سكالر الجودة (ytQWrap + scale) بتلخبط مشغل يوتيوب الداخلي على iOS
+      وكمان مقاس الكنترولز الأصلية بيبقى صغير مش طبيعي
+   العلاج: إخفاء سطح يوتيوب فورًا مع أي خطأ + حارس الموت المفاجئ (كشف 153
+   الصامت) + على iOS مشغل بمقاسه الحقيقي من غير scale */
+var IS_IOS = /iP(hone|od|ad)/.test(navigator.userAgent || '') || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+function hideYtSurface(){
+  /* إخفاء سطح يوتيوب بالكامل — كارت خطأ يوتيوب (زرار الذهاب لليوتيوب)
+     عمره ما يبان ولا حد يقدر يدوس عليه — طلب المستر الصريح */
+  try{ var qw = document.getElementById('ytQWrap'); if(qw) qw.style.display = 'none'; }catch(e){}
+  try{ var h = document.getElementById('ytHost'); if(h) h.style.display = 'none'; }catch(e){}
+  try{ var pl = document.getElementById('ytPlain'); if(pl) pl.style.display = 'none'; }catch(e){}
+}
+function showYtSurface(){
+  try{ var qw = document.getElementById('ytQWrap'); if(qw) qw.style.display = ''; }catch(e){}
+  try{ var h = document.getElementById('ytHost'); if(h) h.style.display = ''; }catch(e){}
+  try{ var pl = document.getElementById('ytPlain'); if(pl) pl.style.display = ''; }catch(e){}
+}
 function msgForYtError(code){
   var c = String(code || '');
   if(c === '101' || c === '150') return 'الفيديو مرفوض التشغيل هنا — يا إما صاحب الفيديو قفل التضمين، يا إما يوتيوب مرفض على الشبكة دي. غيّر الشبكة (بيانات الموبايل بدل الواي فاي) وحاول تاني — ولو تكررت بلغ الإدارة في قسم الشكاوى';
@@ -1199,6 +1222,9 @@ function msgForYtError(code){
 function showPlayError(msg){
   var so = document.getElementById('startOv');
   if(!so) return;
+  /* (2026-ص2) أي خطأ → سطح يوتيوب يختفي فورًا (كارت 153 وزرار الذهاب
+     لليوتيوب مخصهمش يبانوا ولا يدوس عليهم حد) */
+  hideYtSurface();
   so.style.display = 'flex';
   var old = document.getElementById('peBox');
   if(old && old.parentNode) old.parentNode.removeChild(old);
@@ -1225,6 +1251,7 @@ function rebuildThenPlay(kind){
     return;
   }
   rebuildTries++;
+  prevTickState = -1; /* (2026-ص2) مشغل جديد — حالة الحارس تتصرّف */
   ytHostKind = (kind === 'nocookie') ? 'nocookie' : 'www';
   try{ if(playerApi && playerApi.destroy) playerApi.destroy(); }catch(e){}
   playerApi = null;
@@ -1236,14 +1263,20 @@ function rebuildThenPlay(kind){
   var old = document.getElementById('ytHost');
   if(old && old.parentNode) old.parentNode.removeChild(old);
   var crop = document.getElementById('ytCrop');
-  var rq = document.createElement('div');
-  rq.id = 'ytQWrap';
-  rq.style.cssText = 'position:absolute;top:50%;left:50%;background:#000;transform:translate(-50%,-50%) scale(var(--mgYtS,1));transform-origin:center center';
   var host = document.createElement('div');
   host.id = 'ytHost';
   host.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;background:#000';
-  rq.appendChild(host);
-  if(crop) crop.appendChild(rq); else wrap.appendChild(rq);
+  /* (2026-ص2) على الآيفون: إعادة البناء من غير غلاف سكالر — مقاس حقيقي */
+  if(IS_IOS){
+    if(crop) crop.appendChild(host); else wrap.appendChild(host);
+  } else {
+    var rq = document.createElement('div');
+    rq.id = 'ytQWrap';
+    rq.style.cssText = 'position:absolute;top:50%;left:50%;background:#000;transform:translate(-50%,-50%) scale(var(--mgYtS,1));transform-origin:center center';
+    rq.appendChild(host);
+    if(crop) crop.appendChild(rq); else wrap.appendChild(rq);
+  }
+  showYtSurface();
   layoutWrap();
   pendingStart = true;
   try{ buildPlayer(); }catch(e){ showPlayError(msgForYtError(lastErrCode || 'auth')); }
@@ -1320,9 +1353,16 @@ function activateFallback(reason){
     f.id = 'ytPlain';
     f.setAttribute('allow','autoplay; fullscreen; encrypted-media; picture-in-picture');
     f.setAttribute('allowfullscreen','');
-    f.style.cssText = 'position:absolute;top:50%;left:50%;border:0;background:#000;transform:translate(-50%,-50%) scale(var(--mgYtS,1));transform-origin:center center';
+    /* (2026-ص2) على الآيفون: مقاس حقيقي من غير scale — التشغيل هو الأهم
+       والكنترولز الأصلية تبان بمقاسها الطبيعي */
+    if(IS_IOS){
+      f.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;background:#000';
+    } else {
+      f.style.cssText = 'position:absolute;top:50%;left:50%;border:0;background:#000;transform:translate(-50%,-50%) scale(var(--mgYtS,1));transform-origin:center center';
+    }
     wrap.appendChild(f);
   }
+  showYtSurface();
   /* (ز21) نفس مواصفات المشغل الأصلي: **controls=1 — كنترولز يوتيوب الأصلية**
      (قايمة الجودة الحقيقية زي ما المستر طلب) + كابشن مقفول + الدروع والبلوكات
      الشفافة فوقه. enablejsapi=1 → أوامر إبادة الكابشن عبر postMessage كل 3 ثواني */
@@ -1351,6 +1391,28 @@ function scheduleFallbackIfStuck(){
     if(playerApi && playerApi.playVideo) return;
     activateFallback('stuck');
   }, 6000);
+}
+/* ===== (2026-ص2) حارس الموت المفاجئ — كاشف خطأ 153 الصامت على الآيفون =====
+   يوتيوب أحيانًا بيقفل المشغل من جوه **من غير onError** — بيرسم كارته
+   الداخلية (حدث خطأ 153 + زرار الذهاب لليوتيوب) على الـ iframe. الإشارة
+   الموثوقة: التشغيل كان شغال/بيحمّل وفجأة الحالة رجعت unstarted/cued من
+   غير أي أمر مننا → خطأ قاتل: نخفي سطح يوتيوب فورًا + نعيد البناء على
+   nocookie، ولو فشل → الوضع البديل المضمون — والفيديو يشتغل مهما حصل */
+var prevTickState = -1;
+var ytFatalLast = 0;
+function ytFatalCheck(){
+  if(fallbackActive || CFG.kind !== 'youtube') return;
+  var st = ytState();
+  if(st === 1 || st === 3 || st === 2 || st === 0){ prevTickState = st; return; }
+  if((prevTickState === 1 || prevTickState === 3) && (st === -1 || st === 5) && Date.now() - ytFatalLast > 15000){
+    ytFatalLast = Date.now();
+    prevTickState = st;
+    hideYtSurface();
+    if(ytHostKind === 'www' && rebuildTries < 1){ rebuildThenPlay('nocookie'); return; }
+    activateFallback('fatal-153');
+    return;
+  }
+  prevTickState = st;
 }
 /* ===== الكابشن ممنوع خالص (القرار النهائي للمستر 2026-ن) =====
    طلب المستر الحرفي: «تشيل زرار الكابشن وتشيل الكابشن أصلاً — اعمل للكابشن
@@ -1832,14 +1894,21 @@ function mountYouTube(){
   /* (ز20) غلاف سكالر الجودة: new YT.Player بيستبدل الديف اللي بيبني عليه
      بالـ iframe بتاعه (بيمسك الـ id والستايل بيفضل) — فالحل غلاف خارجي
      **بيفضل موجود** هو اللي بيتكوّم بالـ scale، والمشغل جواه 100%×100% */
-  var qWrap = document.createElement('div');
-  qWrap.id = 'ytQWrap';
-  qWrap.style.cssText = 'position:absolute;top:50%;left:50%;background:#000;transform:translate(-50%,-50%) scale(var(--mgYtS,1));transform-origin:center center';
   var host = document.createElement('div');
   host.id = 'ytHost';
   host.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;background:#000';
-  qWrap.appendChild(host);
-  wrap.appendChild(qWrap);
+  /* (2026-ص2 — الآيفون): من غير غلاف السكالر على iOS — مشغل بمقاس الصندوق
+     الحقيقي 100% من غير أي transform (زي أي موقع عادي). ده بيشيل من مسببات
+     خطأ 153 على iOS وبيخلي الكنترولز الأصلية بمقاسها الطبيعي */
+  if(IS_IOS){
+    wrap.appendChild(host);
+  } else {
+    var qWrap = document.createElement('div');
+    qWrap.id = 'ytQWrap';
+    qWrap.style.cssText = 'position:absolute;top:50%;left:50%;background:#000;transform:translate(-50%,-50%) scale(var(--mgYtS,1));transform-origin:center center';
+    qWrap.appendChild(host);
+    wrap.appendChild(qWrap);
+  }
   /* (ز20) المقاس فورًا قبل بناء المشغل عشان الـ viewport الداخلي يولد HD */
   layoutWrap();
   ensureYtCovers();
@@ -1972,10 +2041,13 @@ function buildPlayer(){
       onError: function(ev){
         /* يوتيوب رفض الفيديو نفسه — ممنوع الصمت: سبب واضح فورًا.
            100 = الفيديو اتمسح/خاص. 2 = تعريف غلط → رسالة فورية (إعادة مش هتنفع).
-           101/150/5/auth = منع تضمين أو رفض شبكة (حماية ضد البوتات بترجع 150
+           101/150/5/auth/153 = منع تضمين أو رفض شبكة (حماية ضد البوتات بترجع 150
            برضه) → محاولة أوتوماتيك واحدة على youtube-nocookie، وبعدها
            **الوضع البديل المضمون (مشغل مباشر embed)** — الفيديو يشتغل على أي حال
-           بدل شاشة الخطأ الميّتة (2026-ط) */
+           بدل شاشة الخطأ الميّتة (2026-ط)
+           (2026-ص2) أول حاجة: سطح يوتيوب يختفي — كارت 153 وزرار الذهاب
+           لليوتيوب مخصهمش يبانوا ولا يدوس عليهم حد */
+        hideYtSurface();
         var code = '';
         try{ code = String((ev && ev.data) || ''); }catch(e){}
         lastErrCode = code;
@@ -2010,6 +2082,8 @@ function buildPlayer(){
           }
         }
         /* (ز21) الجودة كلها ليوتيوب الأصلي — مفيش أرضية ولا حارس ولا متحقق */
+        /* (2026-ص2) حارس الموت المفاجئ — كاشف خطأ 153 الصامت على الآيفون */
+        ytFatalCheck();
         /* حارس النهاية: لو شاشة الاقتراحات هتظهر (ENDED ماتفوتش) → غطّي فورًا */
         if(ytState()===0){
           var eo3=document.getElementById('endOv');
