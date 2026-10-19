@@ -656,13 +656,18 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
     } catch { toast.error('خطأ في تحديث حالة الطالب') }
   }
 
-  /* (2026-ز12 — طلب المستر): زرار الباسكت الوحيد = رفض + حذف من المنصة:
-     الحساب بيتقفل نهائيًا (status=rejected) — لو الطالب حاول يدخل أو يسجل
-     تاني هيتقالده «حسابك مرفوض من المنصة»، وبينختفي من كل قايمات الأدمن.
-     من غير حذف نهائي لصفوفه عشان الرقم يفضل محفوظ والرفض يفضل شغال. */
+  /* (ز19 — طلب المستر): زرار الباسكت = حذف نهائي حقيقي من قاعدة البيانات —
+     الطالب بيتمسح هو وكل صفوفه (نتايج/تقدم/إشعارات/ولي الأمر/الدفعات...)
+     وما يبقاش موجود أصلًا في أي قايمة — مش مجرد «مقفول» أو مرفوض.
+     DELETE /api/students/[id] بيعمل cascade كامل لكل الجداول المرتبطة. */
   const handleRejectDelete = async (id: string) => {
-    try { await fetch(`/api/students/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'rejected' }) }); toast.success('Student rejected and removed — if he tries to log in again he will get "Your account has been rejected"'); loadStudents(false); onStatsRefresh() }
-    catch { toast.error('Error rejecting student') }
+    if (!window.confirm('حذف الطالب نهائيًا؟ هيتتمسح من المنصة بكل بياناته وما هيبقاش موجود أصلًا.')) return
+    try {
+      const res = await fetch(`/api/students/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error()
+      toast.success('تم حذف الطالب نهائيًا من المنصة — مش موجود أصلًا دلوقتي')
+      loadStudents(false); onStatsRefresh()
+    } catch { toast.error('خطأ في حذف الطالب') }
   }
 
   // ===== فك ربط الجهاز — الزرار الوحيد للمستر (منظومة الجهاز الواحد) =====
@@ -878,8 +883,8 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
                   {s.status === 'rejected' && (
                     <Button size="icon" variant="ghost" className="h-8 w-8 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20" onClick={() => handleAction(s.id, 'approved')} title="Un-reject and approve student"><Check className="h-4 w-4" /></Button>
                   )}
-                  {/* (2026-ز12 — طلب المستر): زرار الباسكت الوحيد = رفض + حذف من المنصة */}
-                  <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => handleRejectDelete(s.id)} title="Reject & remove student from the platform"><Trash2 className="h-4 w-4" /></Button>
+                  {/* (ز19 — طلب المستر): زرار الباسكت = حذف نهائي حقيقي — الطالب مش موجود أصلًا */}
+                  <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => handleRejectDelete(s.id)} title="حذف نهائي من النظام"><Trash2 className="h-4 w-4" /></Button>
                 </div>
               </div>
             ))}
