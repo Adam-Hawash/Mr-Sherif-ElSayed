@@ -85,6 +85,9 @@ var SCHEMA_COLUMNS = [
   ['Video', 'price', 'REAL', 'DEFAULT 0'],
   ['Video', 'fileType', 'TEXT', "DEFAULT ''"],
   ['Video', 'thumbnail', 'TEXT', "DEFAULT ''"],
+  /* (2026-ص2) ملاحظة المستر على الدرس — بتظهر للطالب أول ما يفتح الدرس */
+  ['Video', 'note', 'TEXT', "DEFAULT ''"],
+  ['Video', 'noteUpdatedAt', 'DATETIME', ''],
   // nativeEmbed (كود HTML embed) اتلغت 2026-و4 بطلب المستر — العمود مش بيتضاف في قواعد جديدة
   ['Homework', 'questions', 'TEXT', "DEFAULT ''"],
   ['Homework', 'answerKeyPath', 'TEXT', "DEFAULT ''"],

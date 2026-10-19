@@ -592,6 +592,22 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null)
   const [studentProgress, setStudentProgress] = useState<any>(null)
   const [loadingProgress, setLoadingProgress] = useState(false)
+  /* (2026-ص2) خانة بحث الطلاب في إدارة الطلاب — بالاسم أو رقم الطالب أو
+     ولي الأمر (طلب المستر الحرفي: «ابحث عن الطلاب انت مش ضايفهالي»)
+     فلترة فورية من غير أي طلب شبكة */
+  const [search, setSearch] = useState('')
+  const filteredStudents = search.trim()
+    ? students.filter(function (s) {
+        var q = search.trim().toLowerCase()
+        return (
+          (s.name || '').toLowerCase().indexOf(q) !== -1 ||
+          (s.phone || '').indexOf(q) !== -1 ||
+          (s.parentName || '').toLowerCase().indexOf(q) !== -1 ||
+          (s.parentPhone || '').indexOf(q) !== -1 ||
+          (s.grade || '').toLowerCase().indexOf(q) !== -1
+        )
+      })
+    : students
   /* (و81) رسالة واتساب لولي الأمر — المودال المشترك بيسحب نتايج الطالب
      من /api/admin/reports?type=student وبيملأ القالب بالبلايسهولدرز */
   const [waFor, setWaFor] = useState<Student | null>(null)
@@ -599,7 +615,8 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
   const loadStudents = async (showLoader = true) => {
     if (showLoader) setLoading(true)
     try {
-      const params = new URLSearchParams({ pageSize: '100' })
+      /* (2026-ص2) pageSize 1000 — كان 100 بس، والطلاب بعد المية ما كانوش بيظهروا خالص */
+      const params = new URLSearchParams({ pageSize: '1000' })
       if (filter !== 'all') params.set('status', filter)
       if (filterGrade) params.set('grade', filterGrade)
       const res = await fetch(`/api/students?${params}`)
@@ -752,6 +769,18 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <CardTitle className="text-lg">إدارة الطلاب</CardTitle>
           <div className="flex gap-1 flex-wrap items-center">
+            {/* (2026-ص2) بحث الطلاب — بالاسم أو رقم الطالب أو ولي الأمر */}
+            <div className="relative">
+              <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="🔍 ابحث باسم الطالب أو رقمه..."
+                className="h-8 rounded-md border border-input bg-transparent pl-3 pr-8 text-xs min-w-[190px]"
+                aria-label="ابحث عن طالب بالاسم أو رقم الهاتف أو ولي الأمر"
+              />
+            </div>
             <select value={filterGrade} onChange={(e) => setFilterGrade(e.target.value)} className="h-8 rounded-md border border-input bg-transparent px-2 text-xs">
               <option value="">كل الصفوف</option>
               {gradesList.map((g) => <option key={g.ar} value={g.ar}>{(g.emoji ? g.emoji + ' ' : '') + g.ar}</option>)}
@@ -769,9 +798,11 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
       <CardContent>
         {loading ? <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div> : students.length === 0 ? (
           <p className="text-center text-muted-foreground py-10 text-sm">لا يوجد طلاب</p>
+        ) : filteredStudents.length === 0 ? (
+          <p className="text-center text-muted-foreground py-10 text-sm">مفيش طالب مطابق للبحث — جرب اسم أو رقم تاني</p>
         ) : (
           <div className="space-y-3 max-h-[500px] overflow-y-auto custom-scrollbar">
-            {students.map((s) => (
+            {filteredStudents.map((s) => (
               <div key={s.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 rounded-lg border bg-card">
                 <div className="space-y-1 min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -905,6 +936,12 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
   const [formGroupGrade, setFormGroupGrade] = useState('')
   const [expandedGroup, setExpandedGroup] = useState('')
   const [movingOrder, setMovingOrder] = useState(false)
+  /* (2026-ص2) ملاحظة المستر على الدرس — بتظهر للطالب أول ما يفتح الدرس
+     بمودال «ملاحظة خد بالك» وزرار تمام أزرق. للدرس المتعدد: نفس الملاحظة
+     بتتكتب على كل الأجزاء مرة واحدة */
+  const [noteTarget, setNoteTarget] = useState<{ ids: string[]; title: string } | null>(null)
+  const [noteText, setNoteText] = useState('')
+  const [noteSaving, setNoteSaving] = useState(false)
 
   const loadVideos = async (showLoader = true) => {
     if (showLoader) setLoading(true)
@@ -924,6 +961,28 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
   }
 
   useEffect(() => { loadVideos() }, [filterGrade])
+
+  /* (2026-ص2) حفظ ملاحظة الدرس — نفس الملاحظة على كل الأجزاء (الدرس كله)
+     + مسح الملاحظة بنص فاضي. الـ API بيحدد noteUpdatedAt لوحده */
+  const saveLessonNote = async () => {
+    if (!noteTarget) return
+    setNoteSaving(true)
+    try {
+      const results = await Promise.all(noteTarget.ids.map(function (id) {
+        return fetch('/api/videos/' + id, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ adminId: currentAdminId, note: noteText }),
+        })
+      }))
+      const failed = results.filter(function (r) { return !r.ok }).length
+      if (failed > 0) { toast.error('اتحفظت بعض الأجزاء بس — جرب تاني', { duration: 6000 }) }
+      else { toast.success(noteText.trim() ? 'تم حفظ الملاحظة — هتظهر للطلاب أول ما يفتحوا الدرس' : 'تم مسح الملاحظة') }
+      setNoteTarget(null)
+      loadVideos(false)
+    } catch { toast.error('خطأ في حفظ الملاحظة — جرب تاني') }
+    setNoteSaving(false)
+  }
 
   // Upload using shared chunked upload utility
   const uploadFileWithProgress = async (file: File, category: string, onProgress: (pct: number) => void, statusMsg: (msg: string) => void): Promise<string> => {
@@ -1468,6 +1527,10 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
                       <Badge className="text-[10px] shrink-0">{g.parts.length} فيديوهات</Badge>
                       <Badge variant={g.price > 0 ? 'default' : 'secondary'} className="text-[10px] shrink-0">{g.price > 0 ? g.price + ' ج.م' : 'مجاني'}</Badge>
                       <Badge variant="secondary" className="text-[10px] shrink-0">درس {gradePos} من {gradeTotal}</Badge>
+                      {/* (2026-ص2) بادج الملاحظة — الدرس ده عليه ملاحظة للطلاب */}
+                      {(g.parts as any[]).some(function (p) { return String((p as any).note || '').trim() }) && (
+                        <Badge className="text-[10px] shrink-0 bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400">📝 عليه ملاحظة</Badge>
+                      )}
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       {/* (2026-ص) ترتيب الدروس ▲▼ */}
@@ -1479,6 +1542,10 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
                       {/* (ز18) سعر الدرس كله — مرة واحدة على كل الأجزاء */}
                       <Button size="sm" variant="outline" className="h-7 text-xs" onClick={function () { openLessonPrice(g.key, g.grade, g.title, g.price) }} title="Set one price for the whole lesson — paying once unlocks ALL its parts">
                         💰 سعر الدرس كله
+                      </Button>
+                      {/* (2026-ص2) ملاحظة الدرس — بتظهر للطالب أول ما يفتح الدرس بزرار تمام */}
+                      <Button size="sm" variant="outline" className="h-7 text-xs text-sky-700 dark:text-sky-400" onClick={function () { setNoteTarget({ ids: (g.parts as any[]).map(function (p) { return p.id }), title: g.title }); setNoteText(String(((g.parts as any[])[0] as any)?.note || '')) }} title="اكتب ملاحظة بتظهر للطالب أول ما يفتح الدرس">
+                        📝 ملاحظة
                       </Button>
                       {g.key ? (
                         <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 text-xs h-7" onClick={() => openLessonHide(g.key, g.grade, g.title, g.parts.length)} title="Hide the whole lesson (all its videos) from selected students">
@@ -1533,6 +1600,10 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
                   </div>
                   <div className="p-3 space-y-1.5">
                     <p className="font-semibold text-sm truncate">{v.title}</p>
+                    {/* (2026-ص2) بادج الملاحظة — الفيديو ده عليه ملاحظة للطلاب */}
+                    {String((v as any).note || '').trim() && (
+                      <Badge className="text-[10px] w-fit bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400">📝 عليه ملاحظة</Badge>
+                    )}
                     <div className="flex items-center justify-between">
                       <Badge variant="outline" className="text-[10px]">{v.grade}</Badge>
                       <div className="flex items-center gap-1">
@@ -1555,6 +1626,10 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
                       {/* (2026-و29) جدولة المجموعات — كل مجموعة بميعادها والفيديو مخفي قبل الميعاد بدون عداد */}
                       <Button size="sm" variant="ghost" className="flex-1 text-teal-600 hover:text-teal-700 hover:bg-teal-50 dark:hover:bg-teal-900/20 text-xs h-7" onClick={() => { setSelectedVideoForGroups(v); setGroupScheduleOpen(true) }}>
                         <UsersRound className="h-3.5 w-3.5 mr-1" />المجموعات
+                      </Button>
+                      {/* (2026-ص2) ملاحظة الفيديو — بتظهر للطالب أول ما يفتحه */}
+                      <Button size="sm" variant="ghost" className="flex-1 text-sky-600 hover:text-sky-700 hover:bg-sky-50 dark:hover:bg-sky-900/20 text-xs h-7" onClick={function () { setNoteTarget({ ids: [v.id], title: v.title }); setNoteText(String((v as any).note || '')) }}>
+                        📝 ملاحظة
                       </Button>
                       <Button size="sm" variant="ghost" className="flex-1 text-destructive hover:text-destructive hover:bg-destructive/10 text-xs h-7" onClick={() => handleDelete(v.id)}>
                         <Trash2 className="h-3.5 w-3.5 mr-1" />حذف
@@ -1751,6 +1826,36 @@ function VideoManager({ onStatsRefresh }: { onStatsRefresh: () => void }) {
           videoId={selectedVideoForGroups.id}
           videoTitle={selectedVideoForGroups.title}
         />
+      )}
+
+      {/* (2026-ص2) نافذة ملاحظة الدرس — بتظهر للطالب أول ما يفتح الدرس */}
+      {noteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={function () { if (!noteSaving) setNoteTarget(null) }}>
+          <div className="bg-card border border-border rounded-xl p-5 shadow-2xl w-full max-w-lg" onClick={function (e) { e.stopPropagation() }}>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-bold text-sm flex items-center gap-2 flex-wrap">📝 ملاحظة على: <span className="text-primary">{noteTarget.title}</span></h3>
+              <button type="button" onClick={function () { setNoteTarget(null) }} className="text-muted-foreground hover:text-foreground" aria-label="إغلاق">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="text-[11px] text-muted-foreground mb-3">اكتب الملاحظة اللي عايزها — هتظهر للطالب أول ما يفتح الدرس ده في مودال «ملاحظة خد بالك» وزرار تمام. لو سبتها فاضية هتتمسح خالص</p>
+            <Textarea
+              value={noteText}
+              onChange={function (e) { setNoteText(e.target.value) }}
+              placeholder="مثال: ملاحظة خد بالك — الواجب بتاع الدرس ده لازم يتسلم قبل يوم الخميس..."
+              rows={5}
+              className="text-sm mb-3"
+              aria-label="نص الملاحظة"
+            />
+            <div className="flex gap-2">
+              <Button onClick={saveLessonNote} disabled={noteSaving} className="flex-1">
+                {noteSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'حفظ الملاحظة'}
+              </Button>
+              <Button variant="outline" disabled={noteSaving} onClick={function () { setNoteText('') }}>مسح النص</Button>
+              <Button variant="ghost" disabled={noteSaving} onClick={function () { setNoteTarget(null) }}>إلغاء</Button>
+            </div>
+          </div>
+        </div>
       )}
     </Card>
   )

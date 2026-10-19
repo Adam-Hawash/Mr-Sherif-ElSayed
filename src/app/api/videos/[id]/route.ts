@@ -75,6 +75,12 @@ export async function PATCH(
         ...body,
         adminId: undefined,
         price: body.price !== undefined ? Number(body.price) : undefined,
+        /* (2026-ص2) ملاحظة المستر — أي تغيير في الملاحظة بيجدد بصمة
+           noteUpdatedAt عشان الطلاب اللي شافوها يشوفوها تاني لو اتعدلت */
+        noteUpdatedAt:
+          body.note !== undefined
+            ? (body.note && String(body.note).trim() ? new Date() : null)
+            : undefined,
       },
     });
     return NextResponse.json(video);
