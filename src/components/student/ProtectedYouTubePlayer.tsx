@@ -194,6 +194,16 @@ export function ProtectedYouTubePlayer({
   const mutedFallbackRef = useRef(false)
   const [needsUnmute, setNeedsUnmute] = useState(false)
 
+  /* ===== التحكم الكامل في الشريط الزمني (طلب المستر 2026-ص5): الطلاب
+     يقدروا يسحبوا الشريط ويجروا ويرجّعوا ويشوفوا الوقت — سحب بالإصبع
+     أو الماوس (Pointer Events) + زرارين ±10 ثواني + فقاعة معاينة للوقت
+     أثناء السحب. التقدم المحفوظ cumulative (max) فرجوع الفيديو للور
+     مش هيأثر على نسبة المشاهدة المحفوظة للطالب أبدًا. ===== */
+  const scrubbingRef = useRef(false)
+  const lastMoveSeekRef = useRef(0)
+  const [scrubbing, setScrubbing] = useState(false)
+  const [scrubTime, setScrubTime] = useState<number | null>(null)
+
   /* ===== الترجمة (CC) — متقفلة افتراضيًا تمامًا + زرار CC + زر C
      (طلب المستر الحرفي 2026-م: "Add a dedicated caption toggle button next
      to the settings/quality icon + bind the 'C' key to toggle captions.
@@ -737,7 +747,9 @@ export function ProtectedYouTubePlayer({
       try {
         var t = p.getCurrentTime() || 0
         var d = p.getDuration() || 0
-        setCurrentTime(t)
+        /* أثناء سحب الطالب للشريط: الوقت المعروض من إصبعه مش من المشغل
+           (عشان المؤشر ميرجفش بين موقع السحب وموقع التشغيل الحقيقي) */
+        if (!scrubbingRef.current) setCurrentTime(t)
         if (d) setDuration(d)
         /* تقرير المدة مرة واحدة (أول ما المدة تظهر) — بيتخزن في عمود
            durationSec عشان بادج ⏱ يظهر على كارت الفيديو في القايمة
@@ -886,15 +898,75 @@ export function ProtectedYouTubePlayer({
     togglePlay()
   }
 
-  function handleSeek(e: React.MouseEvent | React.TouchEvent) {
+  /* ===== السحب في الشريط (طلب المستر 2026-ص5): الضغطة الواحدة بتقفز،
+     والسحب بيحدّث الوقت لحظة بلحظة مع فقاعة معاينة — أثناء السحب
+     seekTo(t,false) (معاينة سريعة من غير قفزات عنيفة) وعند رفع الإصبع
+     seekTo(t,true) (قفزة نهائية مؤكدة) ===== */
+  function seekRatioFromClientX(clientX: number): number {
     var bar = progressRef.current
-    var p = playerRef.current
-    if (!bar || !p || !p.seekTo || !duration) return
+    if (!bar) return 0
     var rect = bar.getBoundingClientRect()
-    var clientX = 'touches' in e ? e.changedTouches[0].clientX : (e as React.MouseEvent).clientX
-    var ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
-    try { p.seekTo(ratio * duration, true) } catch (err) {}
-    setCurrentTime(ratio * duration)
+    if (rect.width <= 0) return 0
+    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
+  }
+
+  function handleSeekPointerDown(e: React.PointerEvent) {
+    var p = playerRef.current
+    if (!p || !p.seekTo || !duration) return
+    e.preventDefault()
+    e.stopPropagation()
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId) } catch (err) {}
+    scrubbingRef.current = true
+    setScrubbing(true)
+    var t = seekRatioFromClientX(e.clientX) * duration
+    setScrubTime(t)
+    setCurrentTime(t)
+    lastMoveSeekRef.current = Date.now()
+    try { p.seekTo(t, false) } catch (err) {}
+  }
+
+  function handleSeekPointerMove(e: React.PointerEvent) {
+    if (!scrubbingRef.current) return
+    e.preventDefault()
+    e.stopPropagation()
+    var p = playerRef.current
+    var t = seekRatioFromClientX(e.clientX) * (duration || 0)
+    setScrubTime(t)
+    setCurrentTime(t)
+    /* throttle — معاينة كل ربع ثانية كفاية (seekTo(false) رخيص بس مش لكل بكسل) */
+    var nowMs = Date.now()
+    if (nowMs - lastMoveSeekRef.current > 250) {
+      lastMoveSeekRef.current = nowMs
+      try { if (p && p.seekTo && duration) p.seekTo(t, false) } catch (err) {}
+    }
+  }
+
+  function handleSeekPointerUp(e: React.PointerEvent) {
+    if (!scrubbingRef.current) return
+    e.preventDefault()
+    e.stopPropagation()
+    scrubbingRef.current = false
+    setScrubbing(false)
+    setScrubTime(null)
+    var p = playerRef.current
+    var t = seekRatioFromClientX(e.clientX) * (duration || 0)
+    try { if (p && p.seekTo && duration) p.seekTo(t, true) } catch (err) {}
+    setCurrentTime(t)
+  }
+
+  /* ±10 ثواني — تقديم/ترجيع بضغطة واحدة (طلب المستر 2026-ص5) */
+  function skipSeconds(sec: number) {
+    var p = playerRef.current
+    if (!p || !p.seekTo) return
+    var base = (p.getCurrentTime ? p.getCurrentTime() : 0) || currentTime
+    var total = duration || 0
+    var t = Math.max(0, Math.min(total > 0 ? total - 0.5 : base + sec, base + sec))
+    try { p.seekTo(t, true) } catch (err) {}
+    setCurrentTime(t)
+    /* الكنترولز تفضل ظاهرة بعد القفزة عشان الطالب يشوف الوقت الجديد */
+    setShowControls(true)
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
+    hideTimerRef.current = setTimeout(function () { setShowControls(false) }, 3000)
   }
 
   function handleFullscreen(e: React.MouseEvent | React.TouchEvent) {
@@ -1015,9 +1087,25 @@ export function ProtectedYouTubePlayer({
             عليه ووترمارك (من غير أي قص للفيديو — طبقة فوق بس). ملاحظة:
             واجهة يوتيوب الداخلية LTR فالشير بيكون فوق يمين فعلًا. */}
         <div
-          className="absolute pointer-events-none flex items-center justify-center"
+          className="absolute pointer-events-none flex flex-col items-center justify-center gap-1"
           style={{ top: '6px', right: '8px', width: '216px', height: '56px', borderRadius: '10px', background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}
         >
+          {/* علامة يوتيوب الشكلية (copy link + unlisted) — طلب المستر 2026-ص5:
+              نفس الشكل اللي في منصة شعبان — **شكل بس من غير أي وظيفة**:
+              الطبقة كلها pointer-events-none فمستحيل حد يدوس عليها أو تنسخ لينك */}
+          <span className="flex items-center gap-2" style={{ color: 'rgba(255,255,255,0.55)' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M9 17H7A5 5 0 0 1 7 7h2" />
+              <path d="M15 7h2a5 5 0 1 1 0 10h-2" />
+              <path d="M8 12h8" />
+            </svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+            </svg>
+          </span>
           <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: '10px', fontWeight: 800, letterSpacing: 0, direction: 'rtl', whiteSpace: 'nowrap' }}>🔒 محتوى محمي</span>
         </div>
         {/* باتش لوجو/لينك يوتيوب (تحت يمين) — بلور + تعتيم + ووترمارك مكانه */}
@@ -1190,14 +1278,36 @@ export function ProtectedYouTubePlayer({
           </div>
         )}
 
+        {/* ===== شريط التحكم الكامل (طلب المستر 2026-ص5) — الطالب يقدر يسحب
+            الشريط بإصبعه أو بالماوس ويشوف الوقت في فقاعة معاينة وهو بيسحب
+            ويرجّع أو يجري زي يوتيوب بالظبط. مساحة اللمس مكبّرة (8px فوق وتحت)
+            + المقبض بيكبر أثناء السحب. النسبة المحفوظة cumulative (أعلى ثانية
+            وصلها) — الرجوع للور مش بينزل نسبة الطالب أبدًا. ===== */}
         <div
           ref={progressRef}
-          className="w-full h-1 bg-white/30 cursor-pointer relative"
-          onClick={handleSeek}
-          onTouchEnd={function (e) { e.preventDefault(); e.stopPropagation(); handleSeek(e) }}
+          className="relative w-full cursor-pointer py-2 -my-2"
+          style={{ touchAction: 'none' }}
+          onPointerDown={handleSeekPointerDown}
+          onPointerMove={handleSeekPointerMove}
+          onPointerUp={handleSeekPointerUp}
+          onPointerCancel={handleSeekPointerUp}
         >
-          <div className="absolute top-0 left-0 h-full bg-white/40 pointer-events-none" style={{ width: buffered + '%' }} />
-          <div className="absolute top-0 left-0 h-full bg-primary pointer-events-none" style={{ width: progressPercent + '%' }} />
+          <div className="relative h-[5px] w-full rounded-full bg-white/30">
+            <div className="absolute top-0 left-0 h-full rounded-full bg-white/40 pointer-events-none" style={{ width: buffered + '%' }} />
+            <div className="absolute top-0 left-0 h-full rounded-full bg-primary pointer-events-none" style={{ width: progressPercent + '%' }} />
+            <div
+              className={'absolute top-1/2 -translate-y-1/2 -translate-x-1/2 rounded-full bg-primary shadow-lg pointer-events-none ' + (scrubbing ? 'w-4 h-4' : 'w-3 h-3')}
+              style={{ left: progressPercent + '%' }}
+            />
+          </div>
+          {scrubbing && scrubTime !== null && (
+            <div
+              className="absolute bottom-full mb-2 -translate-x-1/2 rounded-md bg-black/90 border border-white/15 px-2 py-0.5 text-[11px] font-bold text-white pointer-events-none"
+              style={{ left: progressPercent + '%', direction: 'ltr' }}
+            >
+              {formatTime(scrubTime)}
+            </div>
+          )}
         </div>
         {/* 2026-و23 — تصغير الشريط لطلب المستر الحرفي: «عاوزك تصغره لي شوية،
             يكون واصل لأول الـ watermark اللي هي تحت، ما يعديهاش» —
@@ -1217,7 +1327,35 @@ export function ProtectedYouTubePlayer({
               <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
             )}
           </button>
-          <span className="text-white text-sm tabular-nums" dir="ltr">{formatTime(currentTime)} / {formatTime(duration)}</span>
+          {/* ±10 ثواني — تقديم وترجيع بضغطة واحدة (طلب المستر 2026-ص5):
+              الطالب يقدر يجري الفيديو أو يرجّعه بسهولة من الكنترولز */}
+          <button
+            type="button"
+            aria-label="رجوع 10 ثواني"
+            className="w-10 h-10 flex items-center justify-center text-white hover:text-primary transition-colors shrink-0"
+            onClick={function (e) { e.preventDefault(); e.stopPropagation(); skipSeconds(-10) }}
+            onTouchEnd={function (e) { e.preventDefault(); e.stopPropagation(); skipSeconds(-10) }}
+          >
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+              <path d="M3 3v5h5" />
+              <text x="12.5" y="15.5" fontSize="7.5" textAnchor="middle" fill="currentColor" stroke="none" fontWeight="bold">10</text>
+            </svg>
+          </button>
+          <button
+            type="button"
+            aria-label="تقديم 10 ثواني"
+            className="w-10 h-10 flex items-center justify-center text-white hover:text-primary transition-colors shrink-0"
+            onClick={function (e) { e.preventDefault(); e.stopPropagation(); skipSeconds(10) }}
+            onTouchEnd={function (e) { e.preventDefault(); e.stopPropagation(); skipSeconds(10) }}
+          >
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+              <path d="M21 3v5h-5" />
+              <text x="11.5" y="15.5" fontSize="7.5" textAnchor="middle" fill="currentColor" stroke="none" fontWeight="bold">10</text>
+            </svg>
+          </button>
+          <span className="text-white text-sm tabular-nums" dir="ltr">{formatTime(scrubbing && scrubTime !== null ? scrubTime : currentTime)} / {formatTime(duration)}</span>
           <div className="ml-auto flex items-center gap-1">
             {/* Settings — video quality */}
             <div className="relative">

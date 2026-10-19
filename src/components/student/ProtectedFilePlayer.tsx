@@ -81,6 +81,12 @@ export function ProtectedFilePlayer({
   // تقرير المدة (مرة واحدة) — عشان بادج ⏱ على الكروت (طلب المستر 2026-د)
   const durationReportedRef = useRef(false)
 
+  /* ===== التحكم الكامل في الشريط الزمني (طلب المستر 2026-ص5) — زي
+     المشغل الرئيسي: سحب بالإصبع/الماوس + ±10 ثواني + فقاعة معاينة ===== */
+  const scrubbingRef = useRef(false)
+  const [scrubbing, setScrubbing] = useState(false)
+  const [scrubTime, setScrubTime] = useState<number | null>(null)
+
   useEffect(function () { onWatchRef.current = onWatch }, [onWatch])
 
   /* fullscreen listener (native + webkit) — يقفل اللاندسكيب أثناء ملء الشاشة */
@@ -171,6 +177,8 @@ export function ProtectedFilePlayer({
   }
 
   var handleTimeUpdate = function () {
+    /* أثناء سحب الطالب للشريط: العرض من إصبعه مش من الفيديو (مفيش رجفة) */
+    if (scrubbingRef.current) return
     var v = videoRef.current
     if (!v) return
     setCurrentTime(v.currentTime)
@@ -190,15 +198,66 @@ export function ProtectedFilePlayer({
     if (onWatchRef.current) onWatchRef.current()
   }
 
-  var handleSeek = function (e: React.MouseEvent | React.TouchEvent) {
+  /* ===== السحب في الشريط (طلب المستر 2026-ص5): الضغطة بتقفز فورًا،
+     والسحب بيحدّث المعاينة لحظة بلحظة وعند رفع الإصبع بيتم القفز النهائي ===== */
+  var seekRatioFromClientX = function (clientX: number): number {
     var bar = progressRef.current
-    var v = videoRef.current
-    if (!bar || !v || !v.duration) return
+    if (!bar) return 0
     var rect = bar.getBoundingClientRect()
-    var clientX = 'touches' in e ? e.changedTouches[0].clientX : (e as React.MouseEvent).clientX
-    var ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
-    v.currentTime = ratio * v.duration
-    setCurrentTime(ratio * v.duration)
+    if (rect.width <= 0) return 0
+    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
+  }
+
+  var handleSeekPointerDown = function (e: React.PointerEvent) {
+    var v = videoRef.current
+    if (!v || !v.duration) return
+    e.preventDefault()
+    e.stopPropagation()
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId) } catch (err) {}
+    scrubbingRef.current = true
+    setScrubbing(true)
+    var t = seekRatioFromClientX(e.clientX) * v.duration
+    setScrubTime(t)
+    setCurrentTime(t)
+    try { v.currentTime = t } catch (err) {}
+  }
+
+  var handleSeekPointerMove = function (e: React.PointerEvent) {
+    if (!scrubbingRef.current) return
+    e.preventDefault()
+    e.stopPropagation()
+    var v = videoRef.current
+    if (!v || !v.duration) return
+    var t = seekRatioFromClientX(e.clientX) * v.duration
+    setScrubTime(t)
+    setCurrentTime(t)
+  }
+
+  var handleSeekPointerUp = function (e: React.PointerEvent) {
+    if (!scrubbingRef.current) return
+    e.preventDefault()
+    e.stopPropagation()
+    scrubbingRef.current = false
+    setScrubbing(false)
+    setScrubTime(null)
+    var v = videoRef.current
+    if (!v || !v.duration) return
+    var t = seekRatioFromClientX(e.clientX) * v.duration
+    try { v.currentTime = t } catch (err) {}
+    setCurrentTime(t)
+  }
+
+  /* ±10 ثواني — تقديم/ترجيع بضغطة واحدة (طلب المستر 2026-ص5) */
+  var skipSeconds = function (sec: number) {
+    var v = videoRef.current
+    if (!v) return
+    var t = Math.max(0, Math.min((v.duration || 0) > 0 ? v.duration - 0.5 : v.currentTime + sec, v.currentTime + sec))
+    try { v.currentTime = t } catch (err) {}
+    setCurrentTime(t)
+    /* الكنترولز تفضل ظاهرة بعد القفزة عشان الطالب يشوف الوقت الجديد */
+    setShowControls(true)
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
+    hideTimerRef.current = setTimeout(function () { setShowControls(false) }, 3000)
   }
 
   /* ملء الشاشة: element-fullscreen على الكونتينر (الووترمارك والتحكم جواه)
@@ -321,14 +380,36 @@ export function ProtectedFilePlayer({
         }
         onClick={function (e) { e.stopPropagation() }}
       >
+        {/* ===== شريط التحكم الكامل (طلب المستر 2026-ص5) — الطالب يقدر يسحب
+            الشريط بإصبعه أو بالماوس ويشوف الوقت في فقاعة معاينة وهو بيسحب
+            ويرجّع أو يجري زي يوتيوب بالظبط. مساحة اللمس مكبّرة (8px فوق وتحت)
+            + المقبض بيكبر أثناء السحب. النسبة المحفوظة cumulative (أعلى ثانية
+            وصلها) — الرجوع للور مش بينزل نسبة الطالب أبدًا. ===== */}
         <div
           ref={progressRef}
-          className="w-full h-1 bg-white/30 cursor-pointer relative"
-          onClick={handleSeek}
-          onTouchEnd={function (e) { e.preventDefault(); e.stopPropagation(); handleSeek(e) }}
+          className="relative w-full cursor-pointer py-2 -my-2"
+          style={{ touchAction: 'none' }}
+          onPointerDown={handleSeekPointerDown}
+          onPointerMove={handleSeekPointerMove}
+          onPointerUp={handleSeekPointerUp}
+          onPointerCancel={handleSeekPointerUp}
         >
-          <div className="absolute top-0 left-0 h-full bg-white/40 pointer-events-none" style={{ width: buffered + '%' }} />
-          <div className="absolute top-0 left-0 h-full bg-primary pointer-events-none" style={{ width: progressPercent + '%' }} />
+          <div className="relative h-[5px] w-full rounded-full bg-white/30">
+            <div className="absolute top-0 left-0 h-full rounded-full bg-white/40 pointer-events-none" style={{ width: buffered + '%' }} />
+            <div className="absolute top-0 left-0 h-full rounded-full bg-primary pointer-events-none" style={{ width: progressPercent + '%' }} />
+            <div
+              className={'absolute top-1/2 -translate-y-1/2 -translate-x-1/2 rounded-full bg-primary shadow-lg pointer-events-none ' + (scrubbing ? 'w-4 h-4' : 'w-3 h-3')}
+              style={{ left: progressPercent + '%' }}
+            />
+          </div>
+          {scrubbing && scrubTime !== null && (
+            <div
+              className="absolute bottom-full mb-2 -translate-x-1/2 rounded-md bg-black/90 border border-white/15 px-2 py-0.5 text-[11px] font-bold text-white pointer-events-none"
+              style={{ left: progressPercent + '%', direction: 'ltr' }}
+            >
+              {formatTime(scrubTime)}
+            </div>
+          )}
         </div>
 
         {/* 2026-و23 — الشريط بقى 60px بالظبط زي مشغل يوتيوب — الووترمارك السفلية على حدّه */}
@@ -347,8 +428,36 @@ export function ProtectedFilePlayer({
             )}
           </button>
 
+          {/* ±10 ثواني — تقديم وترجيع بضغطة واحدة (طلب المستر 2026-ص5):
+              الطالب يقدر يجري الفيديو أو يرجّعه بسهولة من الكنترولز */}
+          <button
+            type="button"
+            aria-label="رجوع 10 ثواني"
+            className="w-10 h-10 flex items-center justify-center text-white hover:text-primary transition-colors shrink-0"
+            onClick={function (e) { e.preventDefault(); e.stopPropagation(); skipSeconds(-10) }}
+            onTouchEnd={function (e) { e.preventDefault(); e.stopPropagation(); skipSeconds(-10) }}
+          >
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+              <path d="M3 3v5h5" />
+              <text x="12.5" y="15.5" fontSize="7.5" textAnchor="middle" fill="currentColor" stroke="none" fontWeight="bold">10</text>
+            </svg>
+          </button>
+          <button
+            type="button"
+            aria-label="تقديم 10 ثواني"
+            className="w-10 h-10 flex items-center justify-center text-white hover:text-primary transition-colors shrink-0"
+            onClick={function (e) { e.preventDefault(); e.stopPropagation(); skipSeconds(10) }}
+            onTouchEnd={function (e) { e.preventDefault(); e.stopPropagation(); skipSeconds(10) }}
+          >
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+              <path d="M21 3v5h-5" />
+              <text x="11.5" y="15.5" fontSize="7.5" textAnchor="middle" fill="currentColor" stroke="none" fontWeight="bold">10</text>
+            </svg>
+          </button>
           <span className="text-white text-sm tabular-nums" dir="ltr">
-            {formatTime(currentTime)} / {formatTime(duration)}
+            {formatTime(scrubbing && scrubTime !== null ? scrubTime : currentTime)} / {formatTime(duration)}
           </span>
 
           <div className="ml-auto flex items-center gap-1 relative">
