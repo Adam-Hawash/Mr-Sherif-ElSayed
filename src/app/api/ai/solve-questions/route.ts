@@ -13,13 +13,18 @@
 //      أي رفع إضافي ولا حمل على الواجهة.
 //   3) Gemini (vision) بيحل كل سؤال: اختيارات → رقم الإجابة الصحيحة
 //      (ولو الاختيارات رسومات → بيبص على كل رسمة ويختار الصحيحة)،
-//      مقالي → حل بسيط خطوة بخطوة يفهمه الطالب.
+//      مقالي → حل بسيط خطوة بخطوة.
 //   4) الواجهة بتملأ correct/modelAnswer — والأستاذ يعدل قبل الحفظ.
+//
+// (ز31) طلب المستر الحرفي: «كل حاجة بالإنجليزي» — الحل (modelAnswer)
+//   بيتكتب بالإنجليزي دايمًا، والبرومبت كله إنجليزي، وفي النهاية حارس
+//   ensureEnglishText لو أي عربي زلّق من الموديل بيتترجم قبل الرجوع.
 
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { callGemini, hasGeminiKey } from '@/lib/gemini'
 import { repairModelJson } from '@/lib/math-text'
+import { ensureEnglishText, containsArabic } from '@/lib/english-only'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -52,12 +57,12 @@ async function mediaToInlinePart(url: string): Promise<any | null> {
   }
 }
 
-/* نص السؤال اللي بيتبعث للنموذج — واضح ومحدد بالترتيب */
+/* نص السؤال اللي بيتبعث للنموذج — إنجليزي واضح ومحدد بالترتيب (ز31) */
 function questionBrief(q: any): string {
   var isWriting = q.type === 'writing' || q.type === 'essay'
   var lines: string[] = []
-  lines.push('■ السؤال رقم i=' + q.i + (isWriting ? ' — نوع: مقالي (مفيش اختيارات)' : ' — نوع: اختيارات'))
-  lines.push('النص: ' + (String(q.question || '').trim() || '(من غير نص — الصورة هي السؤال)'))
+  lines.push('■ Question i=' + q.i + (isWriting ? ' — type: WRITING (no choices)' : ' — type: MCQ (has choices)'))
+  lines.push('Text: ' + (String(q.question || '').trim() || '(no text — the image IS the question)'))
   if (!isWriting) {
     var opts = Array.isArray(q.options) ? q.options : []
     var figs = Array.isArray(q.optionFigureUrls) ? q.optionFigureUrls : []
@@ -66,11 +71,11 @@ function questionBrief(q: any): string {
       for (var oi = 0; oi < opts.length; oi++) {
         var t = String(opts[oi] == null ? '' : opts[oi]).trim()
         var hasImg = String(figs[oi] || '').trim() !== ''
-        parts.push(String.fromCharCode(65 + oi) + ') ' + (t || (hasImg ? '(اختيار صورة — بص على الصورة رقم ' + (oi + 1) + ')' : '(من غير نص)')))
+        parts.push(String.fromCharCode(65 + oi) + ') ' + (t || (hasImg ? '(picture option — look at image #' + (oi + 1) + ')' : '(no text)')))
       }
-      lines.push('الاختيارات: ' + parts.join('  |  '))
+      lines.push('Choices: ' + parts.join('  |  '))
     } else if (figs.length > 0) {
-      lines.push('الاختيارات صور/رسومات بالترتيب A,B,C,D — بص على كل صورة واختار الرسمة اللي بتحل السؤال صح')
+      lines.push('The choices are PICTURES/FIGURES in order A,B,C,D — look at each image and pick the figure that correctly answers the question')
     }
   }
   return lines.join('\n')
@@ -90,22 +95,24 @@ export async function POST(request) {
       questions = questions.slice(0, MAX_QUESTIONS_PER_BATCH)
     }
 
-    /* ===== بناء الـ parts: التعليمات + لكل سؤال نصه وصوره بالترتيب ===== */
+    /* ===== بناء الـ parts: التعليمات + لكل سؤال نصه وصوره بالترتيب =====
+       (ز31) برومبت إنجليزي 100% — الحل بيتكتب بالإنجليزي (طلب المستر الحرفي) */
     var instr: string[] = []
-    instr.push('أنت معلم رياضيات مصري خبير بتحل امتحانات وواجبات الطلاب. عندك دفعة أسئلة (ممكن يكون فيها صور: رسمة السؤال و/أو صور الاختيارات).')
-    instr.push('المطلوب — لكل سؤال:')
-    instr.push('1) حله حلًا صحيحًا 100% (الدقة أهم حاجة).')
-    instr.push('2) اكتب في modelAnswer حلًا بسيطًا وواضحًا خطوة بخطوة بالعربي يفهمه الطالب — سطور قليلة: خطوات الحل والنتيجة النهائية (مثال: "نطرح الطرفين: 3x = 12 → x = 4").')
-    instr.push('3) سؤال الاختيارات: حدد correct = رقم الإجابة الصحيحة (0=A، 1=B، 2=C، 3=D).')
-    instr.push('   • لو الاختيارات صور/رسومات: بص على كل صورة اختيار بعينك وحدد الرسمة اللي بتحل السؤال صح — دي اللي تبقى الإجابة الصحيحة (correct). متختارش بالحظ.')
-    instr.push('4) السؤال المقالي (مفيش اختيارات): correct = -1 واكتب الحل الكامل البسيط في modelAnswer.')
-    instr.push('قواعد الكتابة في modelAnswer:')
-    instr.push('• عربي بسيط + كسور بصيغة a/b + أُس بصيغة x^2 + جذر بصيغة sqrt(x) — ممنوع LaTeX (ممنوع \\frac).')
-    instr.push('• ممنوع تخمين — لو السؤال ناقص أو مش باين من الصورة، اكتب في modelAnswer «السؤال محتاج مراجعة».')
-    instr.push('أرجع JSON array فقط من غير أي كلام قبله أو بعده، بالشكل ده بالظبط:')
+    instr.push('You are an expert math teacher solving exam and homework questions for students. Below is a batch of questions (some include images: the question figure and/or pictures of the answer choices).')
+    instr.push('YOUR TASK — for EVERY question:')
+    instr.push('1) Solve it with 100% correct math (accuracy is the top priority).')
+    instr.push('2) Write in "modelAnswer" a SIMPLE, CLEAR, step-by-step solution IN ENGLISH — a few short lines: the solving steps then the final result. Example style: "Subtract 5 from both sides: 3x = 12 → x = 4. Final answer: x = 4".')
+    instr.push('3) MCQ questions: set correct = the index of the right choice (0=A, 1=B, 2=C, 3=D).')
+    instr.push('   • If the choices are PICTURES/figures: look at every option image with your own eyes and pick the figure that actually solves the question — that one becomes correct. NEVER guess randomly.')
+    instr.push('4) WRITING questions (no choices): correct = -1 and write the complete simple solution in modelAnswer.')
+    instr.push('modelAnswer WRITING RULES:')
+    instr.push('• ENGLISH ONLY — never write ANY Arabic character anywhere in modelAnswer (or anywhere in the output).')
+    instr.push('• MATH FORMAT (the platform renders it as real math): powers as x^2, EVERY fraction as \\frac{numerator}{denominator} (NEVER a/b), square root √, cube root ∛, multiplication ×, division ÷, π, ≤ ≥ ≠ ≈ ∠ °. No $ signs, no other LaTeX, no markdown.')
+    instr.push('• NEVER guess — if the question is incomplete or unreadable from the image, write in modelAnswer: "This question needs review".')
+    instr.push('Return a JSON array ONLY — no text before or after it, exactly this shape:')
     instr.push('[{"i":0,"correct":2,"modelAnswer":"..."}]')
-    instr.push('حيث i = رقم السؤال زي ما هو مكتوب في القايمة تحت (i=0 مثلا). لازم ترجع سطر لكل سؤال في القايمة.')
-    instr.push('===== القايمة =====')
+    instr.push('where i = the question number exactly as listed below (i=0 for the first). You MUST return one line for EVERY question in the list.')
+    instr.push('===== QUESTIONS =====')
 
     var briefs = questions.map(function (q: any, bi: number) {
       return questionBrief(Object.assign({}, q, { i: typeof q.i === 'number' ? q.i : bi }))
@@ -128,7 +135,7 @@ export async function POST(request) {
         }
       }
       if (imgs.length > 0) {
-        parts.push({ text: '(صور السؤال i=' + (typeof q.i === 'number' ? q.i : qi) + ': رسمة السؤال إن وجدت، بعدين صور الاختيارات بالترتيب A,B,C,D إن وجدت)' })
+        parts.push({ text: '(Images for question i=' + (typeof q.i === 'number' ? q.i : qi) + ': the question figure first (if any), then the option pictures in order A,B,C,D (if any))' })
         for (var ii = 0; ii < imgs.length; ii++) parts.push(imgs[ii])
       }
     }
@@ -164,7 +171,8 @@ export async function POST(request) {
       }
     }
 
-    /* تنقية النتايج: i صحيح + correct في نطاق سليم + modelAnswer نص */
+    /* تنقية النتايج: i صحيح + correct في نطاق سليم + modelAnswer نص
+       + (ز31) حارس «كل حاجة بالإنجليزي»: أي عربي زلّق من الموديل بيتترجم قبل الرجوع */
     var clean = solved.map(function (s: any) {
       var out: any = { i: -1, correct: -1, modelAnswer: '' }
       if (s && typeof s === 'object') {
@@ -177,6 +185,17 @@ export async function POST(request) {
       }
       return out
     }).filter(function (s: any) { return s.i >= 0 })
+
+    /* (ز31) ضمانة الإنجليزي — نداء ترجمة لكل حل فيه عربي (بالتوازي، صامت لو فشل) */
+    try {
+      var arIdx = clean.map(function (s: any, ix: number) { return containsArabic(s.modelAnswer) ? ix : -1 }).filter(function (ix: number) { return ix >= 0 })
+      if (arIdx.length > 0) {
+        var translated = await Promise.all(clean.map(function (s: any) {
+          return containsArabic(s.modelAnswer) ? ensureEnglishText(s.modelAnswer) : Promise.resolve(s.modelAnswer)
+        }))
+        translated.forEach(function (t: string, ix: number) { if (t) clean[ix].modelAnswer = t })
+      }
+    } catch (eEn) { /* صامت — الحل الأصلي بيفضل */ }
 
     return NextResponse.json({ success: true, solved: clean })
   } catch (error) {

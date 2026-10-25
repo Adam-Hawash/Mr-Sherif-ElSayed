@@ -4426,6 +4426,11 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
   /* (ز29) الملف الأصلي متخزن على السيرفر (Media) — خط الإنقاذ: أي رسمة ناقصة
      بتتقص من السيرفر مباشرة من غير أي اعتماد على متصفح المستر */
   const sourceMediaRef = useRef<string>('')
+  /* (ز31) مصدر القص لكل سؤال على حدة — إصلاح «الملفات بتدخل على بعض»:
+     لما المستر يضيف أكتر من ملف، كل دفعة بتحتفظ بمصدرها (ملف/مستند/Media id)
+     وretryCropQuestion بيقص رسمة كل سؤال من ملفه هو — مش من آخر ملف
+     (ده كان بيخلي رسمة ملف 1 تتقص من ملف 2 = رسومات متلخبطة بين الملفات) */
+  const qCropSourcesRef = useRef<Record<string, { file?: File | null; doc?: any | null; mediaId?: string }>>({})
   /* (ز29) إصلاح شامل للبيانات القديمة: أسئلة اتحفظت قبل منظومة القص فيها bbox
      من غير url — الزرار بيلف على كل الواجبات/الامتحانات (وكل نموذج) بيقص من
      الملف الأصلي المتخزن في Media ويكتب الأسئلة المصلحة في الداتابيز */
@@ -4604,6 +4609,8 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
     setFile(null); setFileUrl(''); setAnswerFile(null); setAnswerUrl('')
     sourceMediaRef.current = ''
     lastCropSourceRef.current = {}
+    /* (ز31) تصفير مصادر القص لكل سؤال — جلسة استخراج جديدة */
+    qCropSourcesRef.current = {}
     setExtractedQuestions([]); setStatusMsg('')
     setYoutubeUrl(''); setNumQuestions(10); setInputMode('file')
     setLessonId('')
@@ -4626,9 +4633,35 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
         مع توست «جهز الرسومات X من Y…» — قبل شاشة المراجعة عشان url
         يتخزن مع الحفظ من غير خطوة إضافية
      2) لو بنضيف ملف تاني → دمج تحت الحالية (ممنوع الاستبدال) + srcName ترتيبي
-     3) لو أول ملف → استبدال عادي من غير srcName (سؤال بمصدر واحد بيتعرض «صفحة N» بس) */
-  var finishExtraction = async function (newQs: any[], cropSource: { file?: File | null; doc?: any | null }) {
+     3) لو أول ملف → استبدال عادي من غير srcName (سؤال بمصدر واحد بيتعرض «صفحة N» بس)
+     (ز31) إصلاحات الملفات المتعددة:
+       a) كل سؤال بياخد _uid ومصدره بيتسجل في qCropSourcesRef — القص اليدوي
+          بعدين بيقص من ملف السؤال هو (ممنوع رسمة ملف تتقص من ملف تاني)
+       b) ترتيب ثابت (stable sort) بـ sourcePage جوه الدفعة — لو الموديل رجّع
+          صفحات متلخبطة الأسئلة بترجع بترتيب الورقة الأصلي من غير عكس أو تداخل */
+  var finishExtraction = async function (newQs: any[], cropSource: { file?: File | null; doc?: any | null; mediaId?: string }) {
+    cropSource = cropSource || {}
     try {
+      /* (ز31) هوية ثابتة لكل سؤال + تسجيل مصدر القص بتاعه */
+      var uidBase = Date.now().toString(36)
+      newQs = (newQs || []).map(function (q: any, qi: number) {
+        var withUid = Object.assign({}, q, { _uid: 'q' + uidBase + 'x' + qi + Math.random().toString(36).slice(2, 6) })
+        qCropSourcesRef.current[withUid._uid] = { file: cropSource.file || null, doc: cropSource.doc || null, mediaId: cropSource.mediaId || '' }
+        return withUid
+      })
+      /* (ز31) ترتيب ثابت بـ sourcePage — لو الموديل رجّع الصفحات متلخبطة
+         (سؤال صفحة 3 قبل صفحة 2) الأسئلة بترجع بترتيب الورقة من غير تداخل */
+      var hasSourcePage = newQs.some(function (q: any) { return Number(q && q.sourcePage) > 0 })
+      if (hasSourcePage) {
+        newQs = newQs
+          .map(function (q: any, i: number) { return { q: q, i: i } })
+          .sort(function (a: any, b: any) {
+            var pa = Number(a.q.sourcePage) || 0
+            var pb = Number(b.q.sourcePage) || 0
+            return (pa - pb) || (a.i - b.i)
+          })
+          .map(function (x: any) { return x.q })
+      }
       /* (و44) قص رسومات السؤال أوتوماتيك — (و45) رسومات الاختيارات اتشالت من العدّاد
          والإلزام بالكامل بطلب المستر: مش مطلوب رفع صورة للسؤال ولا للختيار —
          القص أوتوماتيك بس لما ينفع، ومن غير أي تنبيه أو منع */
@@ -4652,8 +4685,9 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
           setStatusMsg('جهز الرسومات ' + done + ' من ' + total + '…')
         })
         /* (ز29) لو لسه ناقص بعد محاولة المتصفح → السيرفر يقص من الملف الأصلي
-           المتخزن (sourceMediaId) — صامت وسريع — ده اللي يضمن إن الصور تظهر
-           حتى لو pdf.js أو الرفع فشل في المتصفح */
+           المتخزن (mediaId بتاع الدفعة دي بالذات) — صامت وسريع — ده اللي يضمن
+           إن الصور تظهر حتى لو pdf.js أو الرفع فشل في المتصفح
+           (ز31) mediaId الدفعة الحالية بس — ممنوع مصدر قديم من ملف تاني */
         var stillMissing = 0
         try {
           newQs.forEach(function (q: any) {
@@ -4662,11 +4696,12 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
             if (Array.isArray(q.optionFigures)) q.optionFigures.forEach(function (of: any) { if (of && of.bbox && !of.url) stillMissing++ })
           })
         } catch (eC) { stillMissing = 0 }
-        if (stillMissing > 0 && sourceMediaRef.current) {
+        var batchMediaId = String(cropSource.mediaId || '')
+        if (stillMissing > 0 && batchMediaId) {
           try {
             var rResc = await fetch('/api/crop-figures', {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ sourceMediaId: sourceMediaRef.current, questions: newQs }),
+              body: JSON.stringify({ sourceMediaId: batchMediaId, questions: newQs }),
             })
             var dResc = await rResc.json()
             if (rResc.ok && dResc.success && Array.isArray(dResc.questions)) {
@@ -4867,10 +4902,12 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
         clearTimeout(tmr2)
         var data2 = await res2.json()
         if (res2.ok && data2.extracted && data2.extracted.questions && data2.extracted.questions.length > 0) {
-          /* (ز29) الملف الأصلي اتخزن على السيرفر — خط إنقاذ القص */
-          sourceMediaRef.current = String((data2.extracted && data2.extracted.sourceMediaId) || '')
+          /* (ز29) الملف الأصلي اتخزن على السيرفر — خط إنقاذ القص
+             (ز31) mediaId الدفعة دي بيتسجل مع أسئلتها — القص اللاحق من ملفها هو */
+          var batchSrcMediaId = String((data2.extracted && data2.extracted.sourceMediaId) || '')
+          sourceMediaRef.current = batchSrcMediaId
           /* (2026-و40-w) قص الرسومات من ملف المصدر + دمج أكتر من ملف عبر النقطة المشتركة */
-          await finishExtraction(data2.extracted.questions, { file: file || null })
+          await finishExtraction(data2.extracted.questions, { file: file || null, mediaId: batchSrcMediaId })
           setStatusMsg('')
           var stats = data2.extracted.stats || {}
           var msg = 'تم استخراج ' + data2.extracted.questions.length + ' سؤال بنجاح!'
@@ -4913,7 +4950,7 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
   }
 
   var deleteQuestion = function(qi: number) { setExtractedQuestions(extractedQuestions.filter(function(_, i) { return i !== qi })) }
-  var addQuestion = function() { setExtractedQuestions([...extractedQuestions, { type: 'mcq', question: '', options: ['لا يوجد','لا يوجد','لا يوجد','لا يوجد'], correct: 0, points: 1 }]) }
+  var addQuestion = function() { setExtractedQuestions([...extractedQuestions, { type: 'mcq', question: '', options: ['N/A','N/A','N/A','N/A'], correct: 0, points: 1 }]) }
   var addWritingQuestion = function() { setExtractedQuestions([...extractedQuestions, { type: 'writing', question: '', options: [], correct: -1, points: 5, modelAnswer: '', acceptedAnswers: [] }]) }
 
   /* ============================================================
@@ -5025,37 +5062,50 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
   }
 
   /* (ز29) إعادة محاولة قص الرسمات لسؤال واحد — لو القص فشل لحظة الاستخراج
-     المستر يدوس زرار واحد والرسمة تتقص من المصدر الأصلي وترفع وتظهر */
+     المستر يدوس زرار واحد والرسمة تتقص من المصدر الأصلي وترفع وتظهر
+     (ز31) القص من ملف السؤال هو بالذات (مصدر كل سؤال مسجل في qCropSourcesRef
+     بـ _uid) — لما المستر شغال بأكتر من ملف، رسمة سؤال ملف 1 ممنوع تتقص من ملف 2 */
   var retryCropQuestion = async function (qi: number) {
     var target = extractedQuestions[qi]
     if (!target) return
     if (retryingCrop) return
-    var src = lastCropSourceRef.current || {}
+    var ownSrc = (target && target._uid && qCropSourcesRef.current[target._uid]) || null
+    var src = ownSrc || lastCropSourceRef.current || {}
     var needs = !!(target.figure && target.figure.bbox && !target.figure.url) ||
       (Array.isArray(target.optionFigures) && target.optionFigures.some(function (of: any) { return of && of.bbox && !of.url }))
     if (!needs) { toast.info('السؤال ده رسماته ظاهرة بالفعل'); return }
     setRetryingCrop(true)
     setStatusMsg('بيجهز رسمات السؤال ' + (qi + 1) + '…')
-    /* الأولوية للسيرفر: الملف الأصلي متخزن عنده — القص يحصل عنده حتى لو متصفح المستر كله بايظ */
-    var serverFixed = false
-    if (sourceMediaRef.current) {
+    /* الأولوية للسيرفر: ملف السؤال الأصلي متخزن عنده — القص يحصل عنده حتى لو متصفح المستر كله بايظ
+       (ز31) بنبعت السؤال ده بس — ممنوع نداء بمصدر ملف يلمس أسئلة ملفات تانية */
+    var targetMediaId = String((ownSrc && ownSrc.mediaId) || sourceMediaRef.current || '')
+    var serverFixedQuestion: any = null
+    if (targetMediaId) {
       try {
+        var targetClone: any
+        try { targetClone = JSON.parse(JSON.stringify(target)) } catch (eC2) { targetClone = Object.assign({}, target) }
         var rRes2 = await fetch('/api/crop-figures', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sourceMediaId: sourceMediaRef.current, questions: extractedQuestions }),
+          body: JSON.stringify({ sourceMediaId: targetMediaId, questions: [targetClone] }),
         })
         var dRes2 = await rRes2.json()
-        if (rRes2.ok && dRes2.success && Array.isArray(dRes2.questions)) {
-          setExtractedQuestions(dRes2.questions)
-          var croppedN = dRes2.figuresCrop && dRes2.figuresCrop.cropped ? dRes2.figuresCrop.cropped : 0
-          if (croppedN > 0) {
-            serverFixed = true
-            toast.success('السيرفر قصّ ' + croppedN + ' رسمة من الملف الأصلي ✓ — هتظهر في المراجعة وللطالب')
+        if (rRes2.ok && dRes2.success && Array.isArray(dRes2.questions) && dRes2.questions.length > 0) {
+          serverFixedQuestion = dRes2.questions[0]
+          var croppedN2 = dRes2.figuresCrop && dRes2.figuresCrop.cropped ? dRes2.figuresCrop.cropped : 0
+          if (croppedN2 > 0) {
+            toast.success('السيرفر قصّ رسمة السؤال من الملف الأصلي ✓ — هتظهر في المراجعة وللطالب')
           }
         }
       } catch (eSrv) { /* نكمل لمسار المتصفح */ }
     }
-    if (serverFixed) { setStatusMsg(''); setRetryingCrop(false); return }
+    if (serverFixedQuestion) {
+      setExtractedQuestions(function (prev) {
+        return prev.map(function (q: any, i: number) { return i === qi ? Object.assign({}, serverFixedQuestion, { _uid: target._uid }) : q })
+      })
+      setStatusMsg('')
+      setRetryingCrop(false)
+      return
+    }
     if (!src.file && !src.doc) { toast.error('مفيش مصدر للقص — الرسمة دي من استخراج قديم. ارفعها يدوي بزرار 📷 أو استخرج تاني'); setStatusMsg(''); setRetryingCrop(false); return }
     var clone: any
     try { clone = JSON.parse(JSON.stringify(target)) } catch (e) { clone = Object.assign({}, target) }

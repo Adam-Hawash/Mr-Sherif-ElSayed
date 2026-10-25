@@ -14,6 +14,8 @@ import { repairModelJson, repairCorruptMath } from '@/lib/math-text'
 import { db } from '@/lib/db'
 /* (و45) تصنيف موحّد اختياري/مقالي — سؤال له اختيارات (حتى لو صور) = اختياري */
 import { isWritingQuestion } from '@/lib/question-figures'
+/* (ز31) حارس «كل حاجة بالإنجليزي» — طلب المستر الحرفي */
+import { ensureEnglishQuestions, ensureEnglishText } from '@/lib/english-only'
 
 export const runtime = 'nodejs'
 export const maxDuration = 180
@@ -126,9 +128,18 @@ function mergeQuestionsAndAnswers(questions: any[], answers: any[]): any[] {
   if (!Array.isArray(questions)) questions = []
   if (!Array.isArray(answers)) answers = []
 
+  /* (ز31) فهرس الإجابات بـ index الصريح أولاً — الموديل ملزم يرجع index
+     مطابق، فالترتيب لو اتلخبط في الرد بيتصلح من الحقل ده بدل التكدى */
+  var byIndex: any = {}
+  answers.forEach(function (a: any, ai: number) {
+    if (!a || typeof a !== 'object') return
+    var ix = typeof a.index === 'number' ? a.index : parseInt(String(a.index), 10)
+    if (isFinite(ix) && ix >= 0 && ix < questions.length && !byIndex[ix]) byIndex[ix] = a
+  })
+
   return questions.map(function(q, i) {
-    // Try to find matching answer by index first
-    var ans = answers[i]
+    // Try to find matching answer by index first (explicit index > positional)
+    var ans = byIndex[i] || answers[i]
     // If no answer at that index, try fuzzy match by question text
     if (!ans && q.question) {
       var qNorm = q.question.trim().toLowerCase().replace(/\s+/g, ' ').substring(0, 80)
@@ -311,11 +322,19 @@ export async function POST(request) {
         var answersParts = [{ text: answersPrompt }, qPart]
         var answersRes = await callGemini(apiKey, answersParts)
         if (answersRes.ok) {
-          var answersData = parseAIJson(answersRes.text)
+              var answersData = parseAIJson(answersRes.text)
           if (answersData && Array.isArray(answersData.answers)) {
+            /* (ز31) دمج بـ index الصريح — لو الموديل رجّع الحلول بترتيب مختلف
+               الـ index بيرجّع كل حل لسؤاله الصح (من غير دمج عشوائي) */
+            var ansByIx: any = {}
+            answersData.answers.forEach(function (a: any) {
+              if (!a || typeof a !== 'object') return
+              var ix = typeof a.index === 'number' ? a.index : parseInt(String(a.index), 10)
+              if (isFinite(ix) && ix >= 0 && ix < extracted.questions.length) ansByIx[ix] = a
+            })
             // Merge answers into extracted questions
             extracted.questions = extracted.questions.map(function(q: any, i: number) {
-              var ans = answersData.answers[i]
+              var ans = ansByIx[i] || answersData.answers[i]
               if (ans) {
                 return Object.assign({}, q, {
                   modelAnswer: q.modelAnswer || ans.modelAnswer || ans.answer || '',
@@ -328,7 +347,7 @@ export async function POST(request) {
           }
         }
       }
-      return finalizeExtracted(Object.assign({}, extracted, { sourceMediaId: srcMediaId }), type, grade, false)
+      return await finalizeExtracted(Object.assign({}, extracted, { sourceMediaId: srcMediaId }), type, grade, false)
     }
 
     // ============= Mode 2: TWO FILES (separate questions + answers) =============
@@ -370,7 +389,7 @@ export async function POST(request) {
       questions: mergedQuestions,
       answerKey: typeof answersData === 'object' ? (answersData.answerKey || '') : '',
     }
-    return finalizeExtracted(Object.assign({}, extracted2, { sourceMediaId: srcMediaId }), type, grade, true)
+    return await finalizeExtracted(Object.assign({}, extracted2, { sourceMediaId: srcMediaId }), type, grade, true)
   } catch (error) {
     console.error('AI extract error:', error)
     return NextResponse.json({ error: 'Error: ' + (error.message || 'Unknown') }, { status: 500 })
@@ -410,6 +429,7 @@ function buildSingleFilePrompt(grade: string, type: string): string {
   lines.push('')
   lines.push('Rules:')
   lines.push('- ALL output text in English')
+  lines.push('- ENGLISH ONLY GUARANTEE (ز31 — the teacher REQUIRES it): EVERY word you output — question text, options, modelAnswer, acceptedAnswers, title, content — MUST be ENGLISH. NEVER output a single Arabic character anywhere. If the document text is Arabic, TRANSLATE it to natural English (same meaning, same numbers) and output only the English.')
   lines.push('- MATH FORMAT (very important — the platform renders this format as real math):')
   lines.push('  * Powers: use the ^ symbol — x^2, y^5, 2^12. The platform renders them as REAL superscripts (x\u00b2).')
   lines.push('  * Fractions: EVERY fraction must use the marker \\frac{numerator}{denominator} — the platform renders it as a REAL stacked fraction (numerator above a bar, denominator below).')
@@ -434,6 +454,7 @@ function buildSingleFilePrompt(grade: string, type: string): string {
   lines.push('- TABLES: if the question shows a table, return "table" reproducing it EXACTLY: {"headers":["x","f(x)","(x, f(x))"],"rows":[[{"t":"-2"},{"t":"","blank":true},{"t":"","blank":true}]]}.')
   lines.push('  * Printed cells → {"t":"<exact printed text>"}. Cells the STUDENT must fill → {"t":"","blank":true}.')
   lines.push('  * Do NOT blank printed cells, and do NOT fill the blank cells — the student writes inside them.')
+  lines.push('  * TABLE FIDELITY (ز31 — the teacher requires EXACT tables): copy the table EXACTLY as printed — SAME number of columns, SAME column order (left → right exactly as printed), SAME row order (top → bottom), SAME cell values in their original cells. NEVER reverse, rotate, transpose, merge, split or re-order columns or rows.')
   /* (و43) قاعدة صارمة للرسومات: أي رسمة/منحنى/شكل هندسي لازم تترجع figure /
      optionFigures — ممنوع تحويل الرسمة لنص وصف أو جدول إحداثيات، والـ
      modelAnswer بيبقى النتائج النهائية المختصرة بس */
@@ -489,6 +510,7 @@ function buildQuestionsOnlyPrompt(grade: string, type: string): string {
   lines.push('')
   lines.push('Rules:')
   lines.push('- ALL output text in English')
+  lines.push('- ENGLISH ONLY GUARANTEE (ز31 — the teacher REQUIRES it): EVERY word you output — question text, options — MUST be ENGLISH. NEVER output a single Arabic character anywhere. If the document text is Arabic, TRANSLATE it to natural English (same meaning, same numbers) and output only the English.')
   lines.push('- MATH FORMAT (very important — the platform renders this format as real math):')
   lines.push('  * Powers: use the ^ symbol — x^2, y^5, 2^12. The platform renders them as REAL superscripts.')
   lines.push('  * Fractions: EVERY fraction must use the marker \\frac{numerator}{denominator} — rendered as a REAL stacked fraction (numerator above a bar, denominator below). Example: \\frac{3}{4}.')
@@ -506,6 +528,7 @@ function buildQuestionsOnlyPrompt(grade: string, type: string): string {
   lines.push('- TABLES: if the question shows a table, return "table" reproducing it EXACTLY: {"headers":["x","f(x)","(x, f(x))"],"rows":[[{"t":"-2"},{"t":"","blank":true},{"t":"","blank":true}]]}.')
   lines.push('  * Printed cells → {"t":"<exact printed text>"}. Cells the STUDENT must fill → {"t":"","blank":true}.')
   lines.push('  * Do NOT blank printed cells, and do NOT fill the blank cells — the student writes inside them.')
+  lines.push('  * TABLE FIDELITY (ز31 — the teacher requires EXACT tables): copy the table EXACTLY as printed — SAME number of columns, SAME column order (left → right exactly as printed), SAME row order (top → bottom), SAME cell values in their original cells. NEVER reverse, rotate, transpose, merge, split or re-order columns or rows.')
   /* (و43) قاعدة صارمة للرسومات: أي رسمة/منحنى/شكل هندسي لازم تترجع figure /
      optionFigures — ممنوع تحويل الرسمة لنص وصف أو جدول إحداثيات، والـ
      modelAnswer بيبقى النتائج النهائية المختصرة بس */
@@ -580,6 +603,7 @@ function buildAnswersOnlyPrompt(grade: string, type: string, questions: any[]): 
   lines.push('')
   lines.push('Rules:')
   lines.push('- ALL output text in English')
+  lines.push('- ENGLISH ONLY GUARANTEE (ز31 — the teacher REQUIRES it): EVERY word you output — modelAnswer, acceptedAnswers, keyQuote — MUST be ENGLISH. NEVER output a single Arabic character anywhere. If the key or the question is Arabic, output the natural English translation (same meaning, same numbers).')
   lines.push('- MATH FORMAT (very important — the platform renders this format as real math):')
   lines.push('  * Powers: use the ^ symbol — x^2, y^5, 2^12 (rendered as REAL superscripts).')
   lines.push('  * In modelAnswer / acceptedAnswers write every fraction as \\frac{numerator}{denominator} — rendered as a REAL stacked fraction. Example: "\\frac{3}{4}". NEVER write a/b or \u00be.')
@@ -593,7 +617,7 @@ function buildAnswersOnlyPrompt(grade: string, type: string, questions: any[]): 
   return lines.join('\n')
 }
 
-function finalizeExtracted(extracted: any, type: string, grade: string, twoFilesMode: boolean): any {
+async function finalizeExtracted(extracted: any, type: string, grade: string, twoFilesMode: boolean): Promise<any> {
   if (!extracted.title) { extracted.title = type + ' - ' + grade }
   if (!extracted.content) { extracted.content = '' }
   if (!Array.isArray(extracted.questions)) { extracted.questions = [] }
@@ -646,5 +670,18 @@ function finalizeExtracted(extracted: any, type: string, grade: string, twoFiles
   var mcqCount = extracted.questions.filter(function(q) { return q.type === 'mcq' }).length
   var writingCount = extracted.questions.filter(function(q) { return q.type === 'writing' }).length
   extracted.stats = { mcq: mcqCount, writing: writingCount, total: extracted.questions.length, twoFilesMode: twoFilesMode }
+  /* (ز31) ضمانة «كل حاجة بالإنجليزي» — أي عربي زلّق من الموديل بيتترجم قبل الرجوع */
+  try {
+    extracted.questions = await ensureEnglishQuestions(extracted.questions)
+    if (containsArabicStr(extracted.title)) {
+      var tEn = await ensureEnglishText(String(extracted.title))
+      if (tEn) extracted.title = tEn
+    }
+  } catch (eEn) { /* صامت — النتيجة الأصلية بتفضل */ }
   return NextResponse.json({ success: true, extracted: extracted })
+}
+
+/* فحص عربي محلي صغير للعنوان */
+function containsArabicStr(s: any): boolean {
+  return typeof s === 'string' && /[\u0600-\u06FF]/.test(s)
 }

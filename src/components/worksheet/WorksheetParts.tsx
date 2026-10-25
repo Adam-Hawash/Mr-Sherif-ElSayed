@@ -267,13 +267,17 @@ interface TableEditableProps {
   disabled?: boolean
 }
 
-/** جدول قابل للكتابة — الخانات blank = input يكتب فيه الطالب */
+/** جدول قابل للكتابة — الخانات blank = input يكتب فيه الطالب
+ * (ز31) اتجاه الجدول LTR — طلب المستر: «الجداول تاخذها زي ما هي من غير عكس».
+ * الجداول الإنجليزية (x | f(x) | (x, f(x))) كانت بتتعرض معكوسة مع dir="rtl"
+ * لأن الترتيب البصري للأعمدة بيتبدل — دلوقتي الجدول بيتعرض LTR زي الورقة
+ * المطبوعة بالظبط، وكل خلية بتحتفظ بـ dir="auto" عشان أي نص عربي جواها يفضل سليم */
 export function WorksheetTableEditable({ table, values, onChange, disabled }: TableEditableProps) {
   if (!table) return null
   var headers = Array.isArray(table.headers) ? table.headers : []
   var rows = Array.isArray(table.rows) ? table.rows : []
   return (
-    <div className="mt-2 overflow-x-auto" dir="rtl">
+    <div className="mt-2 overflow-x-auto" dir="ltr">
       <table className="w-full text-sm border-collapse rounded-lg overflow-hidden">
         {headers.length > 0 && (
           <thead>
@@ -326,13 +330,14 @@ export function WorksheetTableEditable({ table, values, onChange, disabled }: Ta
   )
 }
 
-/** جدول مقروء فقط — الخانات معباية بقيم الطالب (أو —) */
+/** جدول مقروء فقط — الخانات معباية بقيم الطالب (أو —)
+ * (ز31) LTR زي الجدول القابل للكتابة — ممنوع عكس الأعمدة */
 export function WorksheetTableReadonly({ table, values, className }: { table: any; values?: string[][] | null; className?: string }) {
   if (!table) return null
   var headers = Array.isArray(table.headers) ? table.headers : []
   var rows = Array.isArray(table.rows) ? table.rows : []
   return (
-    <div className={'mt-2 overflow-x-auto ' + (className || '')} dir="rtl">
+    <div className={'mt-2 overflow-x-auto ' + (className || '')} dir="ltr">
       <table className="w-full text-sm border-collapse rounded-lg overflow-hidden">
         {headers.length > 0 && (
           <thead>

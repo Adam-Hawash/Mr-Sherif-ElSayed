@@ -28,6 +28,8 @@ import { callGemini as callGeminiCentral, hasGeminiKey } from '@/lib/gemini'
 import { repairModelJson, repairCorruptMath } from '@/lib/math-text'
 /* (و45) تصنيف موحّد اختياري/مقالي — سؤال له اختيارات صور = اختياري مش مقالي */
 import { isWritingQuestion } from '@/lib/question-figures'
+/* (ز31) حارس «كل حاجة بالإنجليزي» — طلب المستر الحرفي */
+import { ensureEnglishQuestions } from '@/lib/english-only'
 
 export const runtime = 'nodejs'
 export const maxDuration = 180
@@ -108,19 +110,18 @@ function stripDataUrl(img: string): string {
   return String(img || '').replace(/^data:[^;]+;base64,/, '')
 }
 
-/* برومبت ثنائي اللغة — نفس شكل أسئلة المنصة بالظبط (زي /api/ai-extract) */
+/* برومبت إنجليزي 100% (ز31) — نفس شكل أسئلة المنصة بالظبط (زي /api/ai-extract)
+   ملاحظة: سطور العربي اتشالت من البرومبت — البرومبت المختلط اللغة كان بيسرّب
+   عربي في المخرجات وطلب المستر «كل حاجة بالإنجليزي» */
 function buildPagesPrompt(pageNumbers: number[], mode: 'all' | 'top', count: number): string {
   var lines = []
   var pagesLabel = pageNumbers.join(', ')
   lines.push('You are an expert math teacher reading PHOTOGRAPHED PAGES of a printed textbook/workbook.')
-  lines.push('سوف أعطيك صوراً لصفحات من كتاب مدرسي مطبوع. استخرج الأسئلة المطبوعة كما هي تماماً.')
-  lines.push('The images below are pages: ' + pagesLabel + ' — each image is labeled «صفحة N / Page N».')
+  lines.push('The images below are pages: ' + pagesLabel + ' — each image is labeled "Page N".')
   if (mode === 'top') {
     lines.push('TASK: From THESE pages extract only the MOST IMPORTANT, exam-typical questions (about ' + count + ' across the whole book — so from these pages pick the best ones), in the original book order.')
-    lines.push('المطلوب: أهم أسئلة الامتحانات في الصفحات دي بالترتيب.')
   } else {
     lines.push('TASK: Extract EVERY question printed on these pages, EXACTLY as printed, in the ORIGINAL BOOK ORDER (page by page, top to bottom).')
-    lines.push('المطلوب: كل الأسئلة اللي في الصفحات دي بالظبط وبترتيب الكتاب.')
   }
   lines.push('')
   lines.push('HARD RULES (follow exactly):')
@@ -147,6 +148,8 @@ function buildPagesPrompt(pageNumbers: number[], mode: 'all' | 'top', count: num
   lines.push('  * If unsure whether something is a figure, treat it AS a figure. Options that are pure images get empty string text plus their optionFigures entry.')
   lines.push('IMAGE-CHOICE RULE (2026-W45 — mandatory): a question whose choices are PICTURES / FIGURES (not text) is STILL "mcq" — NEVER "writing". Return "options" as empty strings with the SAME length as the picture-choices and put each picture in "optionFigures" aligned by index.')
   lines.push('- modelAnswer must include the expected table values when applicable (e.g. "f(-1)=5, f(0)=3 → points (-1,5), (0,3)").')
+  lines.push('TABLE FIDELITY (ز31 — the teacher requires EXACT tables): copy every table EXACTLY as printed — SAME number of columns, SAME column order (left → right exactly as printed), SAME row order (top → bottom), SAME cell values in their original cells. NEVER reverse, rotate, transpose, merge, split or re-order columns or rows.')
+  lines.push('ENGLISH ONLY GUARANTEE (ز31 — the teacher REQUIRES it): EVERY word you output — question text, options, modelAnswer, acceptedAnswers — MUST be ENGLISH. NEVER output a single Arabic character anywhere. If the page text is Arabic, TRANSLATE it to natural English (same meaning, same numbers) and output only the English.')
   lines.push('- MATH FORMAT (the platform renders it as real math): powers as x^2; EVERY fraction as \\frac{numerator}{denominator} (NEVER a/b, and do NOT wrap the whole numerator/denominator in parentheses); square root √, cube root ∛, × ÷ π ≤ ≥ ≠ ≈ ∠ °. No $ signs, no other LaTeX, no markdown.')
   lines.push('- ALL output text in English (same as the rest of the platform).')
   lines.push('')
@@ -160,7 +163,6 @@ function buildSelectTopPrompt(count: number): string {
   var lines = []
   lines.push('You are an exam editor. Below is a JSON array of math questions extracted from a textbook IN ORIGINAL BOOK ORDER (each may carry "sourcePage").')
   lines.push('TASK: select the ' + count + ' MOST IMPORTANT, exam-typical questions from the array and return ONLY those, as a JSON array, PRESERVING the original book order and the ORIGINAL objects EXACTLY (pure selection/filter — do NOT rewrite, rename fields, translate, or add anything).')
-  lines.push('اختر أهم أسئلة الامتحانات فقط — بنفس ترتيب الكتاب — من غير أي تعديل على النصوص.')
   lines.push('If the array has fewer than ' + count + ' questions, return the whole array unchanged.')
   lines.push('Return ONE single valid JSON array — no text before or after, no markdown fences.')
   return lines.join('\n')
@@ -366,7 +368,7 @@ async function extractBatch(pages: any[], mode: 'all' | 'top', count: number): P
   var pageNumbers = pages.map(function (p) { return p.n })
   var parts: any[] = [{ text: buildPagesPrompt(pageNumbers, mode, count) }]
   for (var i = 0; i < pages.length; i++) {
-    parts.push({ text: 'صفحة ' + pages[i].n + ' / Page ' + pages[i].n + ':' })
+    parts.push({ text: 'Page ' + pages[i].n + ':' })
     parts.push({ inlineData: { mimeType: 'image/jpeg', data: stripDataUrl(pages[i].image) } })
   }
   for (var attempt = 0; attempt < 2; attempt++) {
@@ -458,6 +460,8 @@ export async function POST(request: NextRequest) {
       }
       var matched = await matchAnswersBatch(ansQs.slice(0, 80), ansPart, ansGrade, ansType)
       var finalQs = matched || ansQs
+      /* (ز31) حارس «كل حاجة بالإنجليزي» على نتيجة التطابق */
+      try { finalQs = await ensureEnglishQuestions(finalQs) } catch (eEn) { }
       var mMcq = finalQs.filter(function (q: any) { return q.type === 'mcq' }).length
       var mWriting = finalQs.filter(function (q: any) { return q.type === 'writing' }).length
       return NextResponse.json({
@@ -522,6 +526,9 @@ export async function POST(request: NextRequest) {
     var writingCount = allQuestions.filter(function (q) { return q.type === 'writing' }).length
     var firstPage = pages[0].n
     var lastPage = pages[pages.length - 1].n
+
+    /* (ز31) حارس «كل حاجة بالإنجليزي» — أي عربي زلّق من الموديل بيتترجم قبل الرجوع */
+    try { allQuestions = await ensureEnglishQuestions(allQuestions) } catch (eEn) { }
 
     return NextResponse.json({
       success: true,
