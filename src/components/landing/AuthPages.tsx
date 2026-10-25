@@ -241,7 +241,8 @@ export function LoginView() {
       } else if (student.status === 'pending') {
         setCurrentStudent(student); setView('student-pending')
         toast.info('حسابك لسه في المراجعة — جرب تعمل تسجيل دخول تاني بعدين وشوف اتقبلت ولا لسه')
-      } else if (student.status === 'approved' || student.status === 'paid') {
+      } else if (student.status === 'approved' || student.status === 'paid' || student.status === 'active') {
+        /* (ز30) + active — شبكة أمان: أي طالب لسه متسجل قديمًا بـ active يدخل عادي */
         setCurrentStudent(student); setView('student-portal')
         toast.success('مرحباً ' + student.name + '!')
         fetch('/api/students/track-login', {
@@ -360,7 +361,19 @@ export function RegisterView() {
         /* (ز29) القبول التلقائي: لو الحساب اتقبل على طول الرسالة بتفرّق — لو لسه في المراجعة بنفس الرسالة القديمة */
         var regStatus = String((data.student || {}).status || '')
         if (regStatus === 'pending') { setCurrentStudent(data.student); setView('student-pending'); toast.success('تم تسجيل طلبك بنجاح! خش اعمل تسجيل دخول وشوف اتقبلت ولا لسه') }
-        else { toast.success('تم إنشاء حسابك واتقبلت تلقائي 🎉 اعمل تسجيل دخول على طول وهتدخل على المنصة'); setView('auth-login') }
+        else {
+          /* (ز30 — طلب المستر) التسجيل = دخول فوري: «عمل الحساب وتقبل تلقائي
+             خلاص يدخل على حسابه من غير ما يعمل تسجيل دخول» — وأول ما يقفل
+             المنصة ويفتحها تاني يعمل تسجيل دخول عادي زي أي حساب */
+          setCurrentStudent(data.student); setView('student-portal')
+          var firstName = String(fullName || '').trim().split(/\s+/)[0] || 'يا صديقي'
+          toast.success('أهلاً بيك يا ' + firstName + ' 🎉 — ده حسابك، وانت داخل عليه خلاص!')
+          fetch('/api/students/track-login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ studentId: (data.student || {}).id })
+          }).catch(function () {})
+        }
       }
       else { toast.error(data.error || 'حدث خطأ في التسجيل') }
     } catch (e) { toast.error('حدث خطأ في الاتصال') }

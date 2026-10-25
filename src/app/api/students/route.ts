@@ -59,6 +59,27 @@ function ensureStudentSchema(): Promise<void> {
           }
         }
       } catch (eReset) {}
+      // ============================================================
+      // (ز30 — طلب المستر) توحيد حالة الطلاب المتقبلين تلقائيًا
+      // ============================================================
+      // الطلاب اللي اتسجلوا في فترة القبول التلقائي الأولانية كانوا بيتكتبوا
+      // بـ status='active' — وده مش مفهوم عند بقية المنصة (تسجيل الدخول
+      // والفلترة والإحصائيات والإشعارات كلها بتفهم 'approved') فكان الطالب
+      // بياخد «تم حذف حسابك» لو عمل دخول! بنوحدهم كلهم على 'approved' لمرة واحدة.
+      try {
+        var migFlag = null as any
+        try { migFlag = await db.siteConfig.findUnique({ where: { key: 'status_active_migration_v1' } }) } catch (eM0) {}
+        if (!migFlag || migFlag.value !== '1') {
+          var migrated = 0
+          try { migrated = await db.$executeRawUnsafe("UPDATE Student SET status = 'approved' WHERE status = 'active'") } catch (eM1) {}
+          try {
+            await db.siteConfig.create({ data: { key: 'status_active_migration_v1', value: '1' } })
+          } catch (eM2) {
+            try { await db.siteConfig.update({ where: { key: 'status_active_migration_v1' }, data: { value: '1' } }) } catch (eM3) {}
+          }
+          if (migrated > 0) console.log('[status-migration-v1] تم تحويل ' + migrated + ' طالب من active إلى approved — كلهم مقبولين زي ما المستر عايز')
+        }
+      } catch (eMig) {}
     })()
   }
   return schemaReady
@@ -456,7 +477,10 @@ export async function POST(request: NextRequest) {
       var autoCfg = await db.siteConfig.findUnique({ where: { key: 'auto_approve_students' } })
       if (autoCfg && String(autoCfg.value).trim() === '0') autoApprove = false
     } catch (e) {}
-    var status = body.status || (autoApprove ? 'active' : 'pending')
+    /* (ز30 — طلب المستر) القبول التلقائي بيكتب «approved» مش «active» —
+       عشان الطالب يبان «مقبول» في لوحة الأدمن من أول لحظة، ويعدّ في
+       «الطلاب المفعّلين»، وتوصله الإشعارات الجماعية، ويدخل عادي من تسجيل الدخول */
+    var status = body.status || (autoApprove ? 'approved' : 'pending')
     var parentName = body.parentName || body.fatherName || ''
     var parentPhone = body.parentPhone || body.motherPhone || ''
     var password = body.password || ''
