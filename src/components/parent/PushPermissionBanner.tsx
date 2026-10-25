@@ -28,6 +28,34 @@ import {
   type PushPermState,
 } from '@/lib/parent-push-client'
 
+/* ============================================================
+ * (2026-و91) تنبيه نصي بطلب المستر الحرفي — كود الـ QR اتشال خالص
+ * («مش مظبوط — شيله») وح محله كلام واضح يخلي ولي الأمر يفهم بنفسه:
+ * التفعيل لازم يكون من موبايله هو (الجهاز الأساسي اللي هيجي له منه
+ * الإشارات) — لأن Web Push لكل جهاز لوحده.
+ * + نصيحة ضغط على الإشعار لما يوصل — عشان كروم مايعتبرهاش إشعارات
+ *   مزعجة وما يحولهاش صامتة (الإشعارات اللي بيتجاهلها المستخدم
+ *   بيتعامل معاها المتصفح كسبام بعد فترة).
+ * ============================================================ */
+function DeviceHintNote({ tone }: { tone: 'primary' | 'amber' | 'emerald' }) {
+  var box = tone === 'emerald'
+    ? 'border-emerald-500/20 bg-emerald-500/[0.05]'
+    : tone === 'amber'
+    ? 'border-amber-500/25 bg-amber-500/[0.06]'
+    : 'border-primary/20 bg-primary/[0.05]'
+  var iconColor = tone === 'emerald' ? 'text-emerald-600' : tone === 'amber' ? 'text-amber-600' : 'text-primary'
+  return (
+    <div className={'flex items-start gap-2 rounded-xl border px-3.5 py-2.5 ' + box}>
+      <Smartphone className={'h-4 w-4 shrink-0 mt-0.5 ' + iconColor} />
+      <p className="text-[11.5px] leading-relaxed text-foreground/85 font-medium">
+        <span className="font-black">مهم: الإشعارات بتوصل على الجهاز اللي بتفعّل منها لوحده</span> — يعني تفعيلها من جهاز تاني/كمبيوتر مش هيوصلك حاجة على موبايلك.
+        عشان توصلك على موبايلك: افتح المنصة من كروم على <span className="font-black">موبايلك الشخصي</span>، سجّل دخولك بحسابك، واضغط «سماح بالتنبيهات» هناك مرة واحدة — وده الجهاز الأساسي اللي كل الإشعارات هتوصلك منه.
+        <span className="block mt-1 text-foreground/70">ولما الإشعار يوصلك اضغط عليه — كده الموبايل بيأكد إنها رسايل مهمة وبتفضل تظهر عادي ومش مزعجة.</span>
+      </p>
+    </div>
+  )
+}
+
 export default function PushPermissionBanner({ parentId }: { parentId: string }) {
   var permState = useState<PushPermState>('default')
   var perm = permState[0]
@@ -58,23 +86,8 @@ export default function PushPermissionBanner({ parentId }: { parentId: string })
     if (!parentId) return
     var p = getPushPermissionState()
     setPerm(p)
-    var localEnabled = isParentPushEnabled(parentId)
-    setEnabled(localEnabled)
+    setEnabled(isParentPushEnabled(parentId))
     setReady(true)
-    /* (2026-ص6) تفعيل صامت لجهاز جديد — طلب المستر: «عاوز أفرق ما بين
-       الأجهزة». الإذن متمنح على الجهاز ده بس مفيش اشتراك محلي
-       (المستر فعّلها على اللاب، ولما فتح المنصة من موبايله مكانش
-       بيوصله حاجة) — بنسجّل الجهاز ده لوحده من غير أي بوب-أب،
-       لأن الاشتراك لكل جهاز لوحده والمفتاح ده محلي على الجهاز. */
-    if (p === 'granted' && !localEnabled) {
-      enableParentPush(parentId).then(function (r) {
-        if (r && r.ok) {
-          setEnabled(true)
-          try { sessionStorage.setItem('parent_push_dismissed', '1') } catch (e) {}
-        }
-      }).catch(function () {})
-      return
-    }
     try {
       var dismissed = String(sessionStorage.getItem('parent_push_dismissed') || '') === '1'
       if (p === 'default' && !isParentPushEnabled(parentId) && !dismissed) {
@@ -94,14 +107,24 @@ export default function PushPermissionBanner({ parentId }: { parentId: string })
       setPerm(getPushPermissionState())
       setEnabled(true)
       setOpen(false)
-      toast.success('تمام كده! 🎉 الإشعارات مفعّلة — أول ما ابنك يسلّم امتحان أو واجب هتوصلك درجته على موبايلك أول بأول', { duration: 6000 })
+      toast.success('تمام كده! 🎉 الإشعارات مفعّلة على الجهاز ده — أول ما ابنك يسلّم امتحان أو واجب هتوصلك درجته هنا أول بأول', { duration: 6000 })
     } else if (r.reason === 'denied') {
       setPerm('denied')
       setOpen(false)
       toast.error('الإشعارات متقفلة من المتصفح — افتح إعدادات الموقع (القفل جنب اللينك) وسمح ليها', { duration: 8000 })
+    } else if (r.reason === 'dismissed') {
+      toast.error('مقفلتش نافذة الإذن — اضغط «تفعيل الإشعارات الآن» تاني ووافق على رسالة المتصفح', { duration: 8000 })
     } else if (r.reason === 'unsupported') {
       setOpen(false)
       toast.error('المتصفح ده مش بيدعم الإشعارات — جرب كروم على الموبايل', { duration: 8000 })
+    } else if (r.reason === 'sw-failed') {
+      toast.error('المنصة بتجهز نفسها دلوقتي (أول زيارة بتاخد ثواني) — جرب تاني بعد لحظة', { duration: 8000 })
+    } else if (r.reason === 'no-key') {
+      toast.error('السيرفر مش جاهز لسه — استنى ثواني وجرب تاني', { duration: 8000 })
+    } else if (r.reason === 'subscribe-failed') {
+      toast.error('المتصفح رفض الاشتراك اللحظة دي — جرب تاني وهينجح', { duration: 8000 })
+    } else if (r.reason === 'save-failed') {
+      toast.error('الاتصال ضعيف — مش قادرين نحفظ التفعيل، اتأكد من النت وجرب تاني', { duration: 8000 })
     } else {
       toast.error('حصلت مشكلة في تفعيل الإشعارات — جرب تاني بعد لحظات', { duration: 6000 })
     }
@@ -119,8 +142,15 @@ export default function PushPermissionBanner({ parentId }: { parentId: string })
     setTestBusy(true)
     var r = await sendTestParentPush(parentId)
     setTestBusy(false)
-    if (r.ok && r.message) toast.success(r.message, { duration: 6000 })
-    else toast.error('مفيش إشعار وصل — اتأكد إن التفعيل مكتوب «مفعّلة» وجرب تاني')
+    /* (2026-ز32) التفريق بين «الإشعار اتقدم فعلاً» و«مفيش أجهزة متسجلة» —
+       لو مفيش أجهزة يبقى التفعيل من الجهاز ده مكتملش، والتوجيه الصح: إعادة تفعيل من هنا */
+    if (r.ok && typeof r.sent === 'number' && r.sent > 0) {
+      toast.success(r.message || 'اتبعت الإشعار — بص على شاشة موبايلك 📱', { duration: 6000 })
+    } else if (r.ok) {
+      toast.warning('مفيش جهاز متسجل على الحساب ده لسه — الإشعارات بتيجي على الجهاز اللي اتفعّل منها بس. اضغط «إيقاف» ثم «سماح بالتنبيهات» من الجهاز ده ووافق على إذن المتصفح، وبعدها جرب الإشعار التجريبي هيوصلك فورًا', { duration: 12000 })
+    } else {
+      toast.error('مفيش إشعار وصل — اتأكد إن التفعيل مكتوب «مفعّلة» وجرب تاني')
+    }
   }, [parentId, testBusy])
 
   var dismiss = useCallback(function () {
@@ -141,8 +171,8 @@ export default function PushPermissionBanner({ parentId }: { parentId: string })
                 <CheckCircle2 className="h-4.5 w-4.5 text-emerald-600" />
               </div>
               <div className="min-w-0">
-                <p className="text-sm font-bold text-foreground">إشعارات الموبايل مفعّلة على الجهاز ده ✓</p>
-                <p className="text-[11px] text-muted-foreground">التفعيل لكل جهاز لوحده — عايز الإشعار يوصلك على موبايل تاني أو اللاب؟ افتح المنصة منه وفعّلها هناك كمان</p>
+                <p className="text-sm font-bold text-foreground">إشعارات الموبايل مفعّلة ✓</p>
+                <p className="text-[11px] text-muted-foreground">هتوصلك درجات أبنائك بره على شاشة موبايلك أول بأول</p>
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
@@ -155,6 +185,10 @@ export default function PushPermissionBanner({ parentId }: { parentId: string })
                 إيقاف
               </Button>
             </div>
+          </div>
+          {/* (و91) تنبيه نصي — التفعيل من موبايل ولي الأمر هو الجهاز الأساسي */}
+          <div className="mt-3 pt-3 border-t border-emerald-500/15">
+            <DeviceHintNote tone="emerald" />
           </div>
         </CardContent>
       </Card>
@@ -173,6 +207,10 @@ export default function PushPermissionBanner({ parentId }: { parentId: string })
               <p className="text-sm font-bold text-foreground">الإشعارات متقفلة من المتصفح</p>
               <p className="text-[11px] text-muted-foreground leading-relaxed">افتح إعدادات الموقع (أيقونة القفل 🔒 جنب اللينك) وسمح بالإشعارات عشان درجات ابنك توصلك على الموبايل</p>
             </div>
+          </div>
+          {/* (و91) تنبيه نصي — يفعّلها من موبايله الشخصي */}
+          <div className="mt-3 pt-3 border-t border-amber-500/15">
+            <DeviceHintNote tone="amber" />
           </div>
         </CardContent>
       </Card>
@@ -206,13 +244,17 @@ export default function PushPermissionBanner({ parentId }: { parentId: string })
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-bold text-foreground">فعّل إشعارات الموبايل 🔔</p>
-                <p className="text-[11px] text-muted-foreground">درجات ابنك توصلك أول بأول على شاشة موبايلك بره المنصة — التفعيل لكل جهاز لوحده</p>
+                <p className="text-[11px] text-muted-foreground">درجات ابنك توصلك أول بأول على شاشة موبايلك بره المنصة</p>
               </div>
             </div>
             <Button size="sm" className="h-9 shrink-0 gap-1.5 text-xs font-bold" onClick={function () { setOpen(true) }}>
               <BellRing className="h-3.5 w-3.5" />
               سماح بالتنبيهات
             </Button>
+          </div>
+          {/* (و91) تنبيه نصي — التفعيل من موبايل ولي الأمر هو الجهاز الأساسي */}
+          <div className="mt-3 pt-3 border-t border-primary/15">
+            <DeviceHintNote tone="primary" />
           </div>
         </CardContent>
       </Card>
@@ -239,6 +281,13 @@ export default function PushPermissionBanner({ parentId }: { parentId: string })
               <Smartphone className="h-4 w-4 text-primary shrink-0 mt-0.5" />
               <p className="text-[11.5px] leading-relaxed text-foreground/80 font-medium">
                 أول ما يوصلك الإشعار على شاشة موبايلك، اضغط عليه — هيفتح لك المنصة على شاشة تسجيل دخولك، وبعد الدخول تلاقي كل الإشعارات جوه المنصة.
+              </p>
+            </div>
+            {/* (و91) وضّح لولي الأمر إن التفعيل لازم يكون من موبايله هو — من غير أي QR */}
+            <div className="flex items-start gap-2 rounded-xl border border-amber-500/25 bg-amber-500/[0.06] px-3.5 py-2.5">
+              <Smartphone className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-[11.5px] leading-relaxed text-foreground/85 font-medium">
+                مهم: الإشعارات بتوصل على الجهاز اللي بتفعّل منها لوحده — عشان توصلك على موبايلك، افتح المنصة من كروم على <span className="font-black">موبايلك الشخصي</span>، سجّل دخولك، واضغط «تفعيل الإشعارات الآن» هناك — وده الجهاز الأساسي اللي كل الإشعارات هتوصلك منه.
               </p>
             </div>
             <Button className="w-full min-h-[48px] font-black text-base gap-2" onClick={enable} disabled={busy}>
