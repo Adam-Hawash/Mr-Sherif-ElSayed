@@ -146,3 +146,7 @@ Stage Summary:
 - Commit: cf87743 (main — origin/Adam-Hawash)
 - المفتاح الحالي: مفعّل (قبول تلقائي) زي ما المستر طلب بالظبط
 - قيد المراجعة عند الأستر زي الأول: زرار ✅ في إدارة الطلاب شغال بنفس الطريقة
+
+### Z-29 — إصلاح البناء + تحقق نهائي
+- أول push (cf87743) وقّع البناء على Vercel: Turbopack مش بيلف @napi-rs/canvas (non-ecmascript placeable asset) — الإصلاح: serverExternalPackages + outputFileTracingIncludes زي Zicola بالظبط (36717fc)
+- البناء على Vercel: ✅ success — والدومين الرسمي لسه 404 (alias — Vercel-side من Z-27)
