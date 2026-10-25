@@ -128,3 +128,21 @@ Work Log:
 
 Stage Summary:
 - المجتمع في اللوحة بقى كامل: إرسال/تعديل/مسح — والطلاب بيشوفوا كل حاجة في تاب المجتمع
+
+---
+Task ID: Z-29
+Agent: Z.ai Code (main)
+Task: (ز29 — طلب المستر) مفتاح القبول التلقائي للطلاب في كل المنصات + منصة شريف: قص الرسمات زي بقية المنصات + ملف إجابات اختياري + تصحيح ذكي
+
+Work Log:
+- POST /api/students: قراءة المفتاح auto_approve_students من SiteConfig — «1» (افتراضي مفعّل) الحساب بيتقبل على طول (active) | «0» يبقى pending (قيد المراجعة والأستر يوافقه من إدارة الطلاب)
+- /api/config: المفتاح auto_approve_students: '1' في DEFAULTS
+- AdminDashboard إدارة الطلاب: مفتاح Switch «قبول تلقائي» — تحفظ فوري PUT /api/config + توست + رجوع لو فشل
+- AuthPages: رسالة نجاح التسجيل بتتفرّق — لو اتقبل تلقائي «اتقبلت 🎉 اعمل دخول على طول» | لو pending نفس الرسالة القديمة
+- منصة شريف — القبول التلقائي + محرر قص الرسمات (✂️ عدّل القص + إنقاذ سيرفري /api/crop-figures + إصلاح شامل /api/backfill-figures + FigureCropEditor + server-figures + figure-demerger + question-figures أحدث + @napi-rs/canvas) + ملف الإجابات الاختياري في مسار الملفات الكبيرة (ai-extract-pages answersOnly + تخزين المصدر sourceMediaId في ai-extract) + مزامنة smart-grader/ai-image-grader (و39)
+- tsc check: مفيش أخطاء جديدة (بس خط الـ baseline المعروف في extractAllImagePaths سطر ~80)
+
+Stage Summary:
+- Commit: cf87743 (main — origin/Adam-Hawash)
+- المفتاح الحالي: مفعّل (قبول تلقائي) زي ما المستر طلب بالظبط
+- قيد المراجعة عند الأستر زي الأول: زرار ✅ في إدارة الطلاب شغال بنفس الطريقة
