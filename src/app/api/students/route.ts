@@ -446,7 +446,17 @@ export async function POST(request: NextRequest) {
     var name = body.name || ''
     var phone = body.phone || ''
     var grade = body.grade || ''
-    var status = body.status || 'pending'
+    /* (ز29 — طلب المستر) القبول التلقائي للتسجيلات من صفحة الأدمن:
+       المفتاح auto_approve_students في إعدادات المنصة — «1» (مفعّل دلوقتي) أي طالب
+       يعمل حساب بيتقبل على طول من غير مراجعة، «0» يرجّع الوضع القديم
+       (الحساب يبقى «قيد المراجعة» والأستر هو اللي يوافقه من إدارة الطلاب).
+       لو الأستر نفسه بيسجل الطالب وهيحدد status صريح، كلامه بيتقدّم زي ما هو. */
+    var autoApprove = true
+    try {
+      var autoCfg = await db.siteConfig.findUnique({ where: { key: 'auto_approve_students' } })
+      if (autoCfg && String(autoCfg.value).trim() === '0') autoApprove = false
+    } catch (e) {}
+    var status = body.status || (autoApprove ? 'active' : 'pending')
     var parentName = body.parentName || body.fatherName || ''
     var parentPhone = body.parentPhone || body.motherPhone || ''
     var password = body.password || ''

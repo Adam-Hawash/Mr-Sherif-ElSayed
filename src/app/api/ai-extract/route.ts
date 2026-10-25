@@ -11,6 +11,7 @@
 import { NextResponse } from 'next/server'
 import { callGemini as callGeminiCentral, hasGeminiKey } from '@/lib/gemini'
 import { repairModelJson, repairCorruptMath } from '@/lib/math-text'
+import { db } from '@/lib/db'
 /* (و45) تصنيف موحّد اختياري/مقالي — سؤال له اختيارات (حتى لو صور) = اختياري */
 import { isWritingQuestion } from '@/lib/question-figures'
 
@@ -241,6 +242,30 @@ export async function POST(request) {
       }
     }
 
+    /* (ز29) تخزين الملف الأصلي على السيرفر — خط إنقاذ قص الرسومات:
+       أي رسمة ناقصة بعد استخراج المتصفح بتتقص من السيرفر من الملف ده
+       (/api/crop-figures و /api/backfill-figures) — والمفتاح بيرجع كـ sourceMediaId */
+    var srcMediaId = ''
+    try {
+      var srcB64 = qPart && qPart.inlineData ? String(qPart.inlineData.data || '') : ''
+      if (srcB64 && srcB64.length > 0 && srcB64.length < 6 * 1024 * 1024) {
+        var srcName = hasQuestionFile && questionFile ? String((questionFile as any).name || 'source') : (String(fileUrl || '').split('/').pop() || 'source')
+        var srcMedia = await db.media.create({
+          data: {
+            filename: srcName.substring(0, 120),
+            filePath: 'extraction-source/' + Date.now(),
+            fileType: (qPart && qPart.inlineData && qPart.inlineData.mimeType) || 'application/octet-stream',
+            fileSize: String(srcB64.length),
+            data: srcB64,
+            category: 'extraction-source',
+          },
+        })
+        srcMediaId = srcMedia.id
+      }
+    } catch (eStore: any) {
+      console.error('[AI Extract] source store failed (non-fatal):', (eStore && eStore.message) || eStore)
+    }
+
     // ============= Load answer file (or URL) if present =============
     var aPart: any = null
     var hasAnswerFile = answerFile && answerFile.size > 0
@@ -303,7 +328,7 @@ export async function POST(request) {
           }
         }
       }
-      return finalizeExtracted(extracted, type, grade, false)
+      return finalizeExtracted(Object.assign({}, extracted, { sourceMediaId: srcMediaId }), type, grade, false)
     }
 
     // ============= Mode 2: TWO FILES (separate questions + answers) =============
@@ -345,7 +370,7 @@ export async function POST(request) {
       questions: mergedQuestions,
       answerKey: typeof answersData === 'object' ? (answersData.answerKey || '') : '',
     }
-    return finalizeExtracted(extracted2, type, grade, true)
+    return finalizeExtracted(Object.assign({}, extracted2, { sourceMediaId: srcMediaId }), type, grade, true)
   } catch (error) {
     console.error('AI extract error:', error)
     return NextResponse.json({ error: 'Error: ' + (error.message || 'Unknown') }, { status: 500 })

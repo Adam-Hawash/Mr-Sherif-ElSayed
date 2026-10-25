@@ -356,7 +356,12 @@ export function RegisterView() {
     try {
       var res = await fetch('/api/students', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: fullName, phone: phone.trim(), grade: grade, parentName: fullParentName, parentPhone: parentPhone.trim(), password: password.trim(), deviceId: getDeviceId(), deviceIds: getDeviceCandidates(), deviceTraits: JSON.stringify(getDeviceTraits()), deviceType: getDeviceType() }) })
       var data = await res.json()
-      if (res.ok) { setCurrentStudent(data.student); setView('student-pending'); toast.success('تم تسجيل طلبك بنجاح! خش اعمل تسجيل دخول وشوف اتقبلت ولا لسه') }
+      if (res.ok) {
+        /* (ز29) القبول التلقائي: لو الحساب اتقبل على طول الرسالة بتفرّق — لو لسه في المراجعة بنفس الرسالة القديمة */
+        var regStatus = String((data.student || {}).status || '')
+        if (regStatus === 'pending') { setCurrentStudent(data.student); setView('student-pending'); toast.success('تم تسجيل طلبك بنجاح! خش اعمل تسجيل دخول وشوف اتقبلت ولا لسه') }
+        else { toast.success('تم إنشاء حسابك واتقبلت تلقائي 🎉 اعمل تسجيل دخول على طول وهتدخل على المنصة'); setView('auth-login') }
+      }
       else { toast.error(data.error || 'حدث خطأ في التسجيل') }
     } catch (e) { toast.error('حدث خطأ في الاتصال') }
     setLoading(false)

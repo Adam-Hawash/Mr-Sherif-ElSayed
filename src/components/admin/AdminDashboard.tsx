@@ -4,6 +4,7 @@ import { useAppStore, gradesFromConfig, type GradeItem, type Student, type Video
 import { chunkedUpload } from '@/lib/chunked-upload'
 import { PlatformLoader } from '@/components/PlatformLoader'
 import { QuestionsEditorDialog, EditQuestionsButton, RegradeButton, RegradeAllButton, OverrideButton } from '@/components/admin/QuestionsEditor'
+import FigureCropEditor, { type FigureCropTarget } from './FigureCropEditor'
 import { GradesSchedulePanel } from '@/components/admin/GradesSchedulePanel'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -17,7 +18,7 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import {
   Users, UserCheck, Clock, ClipboardList, FileText,
-  Megaphone, Plus, Check, X, Trash2, LogOut, Loader2,
+  Megaphone, Plus, Check, X, Trash2, LogOut, Loader2, Wrench,
   BarChart3, RefreshCw, Settings, Upload, MessageSquare,
   Link2, Activity, Eye, ImagePlus, Trophy, UserX, Camera,
   PlayCircle, Pause, Film, Search, FileDown, PictureInPicture2, Save, Sparkles, Wallet,
@@ -628,6 +629,29 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
 
   useEffect(() => { loadStudents() }, [filter, filterGrade])
 
+  /* (ز29 — طلب المستر) مفتاح القبول التلقائي للتسجيلات من صفحة الأدمن:
+     مفعّل (افتراضي) ← أي طالب يعمل حساب بيتقبل على طول | مقفول ← الحساب يبقى «قيد المراجعة» والأستر هو اللي يوافقه */
+  const [autoApprove, setAutoApprove] = useState(true)
+  useEffect(() => {
+    let alive = true
+    fetch('/api/config').then(function (r) { return r.json() }).then(function (d) {
+      if (alive) setAutoApprove(String((d && d.auto_approve_students) ?? '1') !== '0')
+    }).catch(function () {})
+    return function () { alive = false }
+  }, [])
+  const toggleAutoApprove = async (v: boolean) => {
+    const prev = autoApprove
+    setAutoApprove(v)
+    try {
+      const res = await fetch('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ auto_approve_students: v ? '1' : '0' }) })
+      if (!res.ok) throw new Error()
+      toast.success(v ? 'الطلاب هيتقبلوا تلقائي أول ما يعملوا حساب' : 'التسجيلات الجديدة هتستنى موافقتك (قيد المراجعة)')
+    } catch {
+      setAutoApprove(prev)
+      toast.error('مش قادر أحفظ الإعداد — جرّب تاني')
+    }
+  }
+
   // ملاحظة: قفل الأجهزة بقى صارم ودايمًا (شغال على السيرفر من غير مفتاح) —
   // الحساب بيتقفل على الجهاز اللي اتعمل بيه بس، والتحكم بيبقى لكل طالب
   // من زرار "سماح" في إدارة الطلاب.
@@ -796,6 +820,11 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
                   {f === 'pending' ? 'بانتظار' : f === 'approved' ? 'مقبول (مجاني)' : f === 'paid' ? 'بفلوس' : f === 'rejected' ? 'Rejected' : 'الكل'}
                 </Button>
               ))}
+            </div>
+            {/* (ز29) القبول التلقائي للتسجيلات — مفتاح من صفحة الأدمن */}
+            <div className="flex items-center gap-1.5 h-8 rounded-md border border-input bg-background px-2" title="لما الطالب يعمل حساب بيتقبل على طول من غير مراجعة — اقفلها لو عايز تراجع بنفسك">
+              <Switch checked={autoApprove} onCheckedChange={toggleAutoApprove} aria-label="قبول تلقائي للتسجيلات الجديدة" />
+              <span className="text-xs whitespace-nowrap">قبول تلقائي</span>
             </div>
           </div>
         </div>
@@ -4391,6 +4420,44 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
   const [aiSolving, setAiSolving] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const answerFileRef = useRef<HTMLInputElement>(null)
+  /* (ز29) مصدر القص الأخير — بنحتفظ بيه عشان زرار «الرسمة مش ظاهرة؟» ومحرر القص
+     اليدوي يقدروا يعيدوا المحاولة من نفس الملف من غير استخراج تاني */
+  const lastCropSourceRef = useRef<{ file?: File | null; doc?: any | null }>({})
+  /* (ز29) الملف الأصلي متخزن على السيرفر (Media) — خط الإنقاذ: أي رسمة ناقصة
+     بتتقص من السيرفر مباشرة من غير أي اعتماد على متصفح المستر */
+  const sourceMediaRef = useRef<string>('')
+  /* (ز29) إصلاح شامل للبيانات القديمة: أسئلة اتحفظت قبل منظومة القص فيها bbox
+     من غير url — الزرار بيلف على كل الواجبات/الامتحانات (وكل نموذج) بيقص من
+     الملف الأصلي المتخزن في Media ويكتب الأسئلة المصلحة في الداتابيز */
+  const [backfillBusy, setBackfillBusy] = useState(false)
+  var runBackfill = async function () {
+    if (backfillBusy) return
+    if (!adminId) { toast.error('مفيش جلسة أدمن — سجل دخول تاني', { duration: 8000 }); return }
+    setBackfillBusy(true)
+    try {
+      var res = await fetch('/api/backfill-figures', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminId: adminId }),
+      })
+      var d = await res.json()
+      if (!res.ok) { toast.error(d.error || 'فشل الإصلاح — جرب تاني', { duration: 8000 }); return }
+      if (d.cropped > 0) {
+        toast.success('اتصلحت ' + d.cropped + ' رسمة في ' + d.fixed + ' سجل (اتفحص ' + d.scanned + ') ✓ — الصور هتظهر للطلاب دلوقتي', { duration: 10000 })
+      } else if (d.withMissing === 0) {
+        toast.success('كل الأسئلة سليمة — مفيش رسمة ناقصة في أي واجب أو امتحان ✓', { duration: 8000 })
+      } else {
+        toast.warning('فيه ' + d.failed + ' رسمة محتاجة ملفاتها الأصلية مش متخزنة — ارفعها يدوي من محرر الأسئلة', { duration: 10000 })
+      }
+      if (d.remaining > 0) toast.info('فيه ' + d.remaining + ' رسمة لسه — دوس الإصلاح تاني عشان يكمل', { duration: 10000 })
+      onRefresh()
+    } catch (e) {
+      toast.error('فشل الإصلاح — جرب تاني', { duration: 8000 })
+    }
+    setBackfillBusy(false)
+  }
+  const [retryingCrop, setRetryingCrop] = useState<boolean>(false)
+  /* (ز29) محرر القص اليدوي — الهدف المفتوح دلوقتي (سؤال أو اختيار) */
+  const [cropEdit, setCropEdit] = useState<FigureCropTarget | null>(null)
   // YouTube state
   const [youtubeUrl, setYoutubeUrl] = useState('')
   const [numQuestions, setNumQuestions] = useState(10)
@@ -4535,6 +4602,8 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
   var resetAll = function() {
     setStep(1); setExtractType('exam'); setGrade(''); setTitle('')
     setFile(null); setFileUrl(''); setAnswerFile(null); setAnswerUrl('')
+    sourceMediaRef.current = ''
+    lastCropSourceRef.current = {}
     setExtractedQuestions([]); setStatusMsg('')
     setYoutubeUrl(''); setNumQuestions(10); setInputMode('file')
     setLessonId('')
@@ -4567,12 +4636,47 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
       newQs.forEach(function (q: any) {
         if (!q) return
         if (q.figure && q.figure.bbox && !q.figure.url) needCrop++
+        if (Array.isArray(q.optionFigures)) {
+          q.optionFigures.forEach(function (of: any) {
+            if (of && of.bbox && !of.url) needCrop++
+          })
+        }
       })
+      lastCropSourceRef.current = {
+        file: (cropSource && cropSource.file) || null,
+        doc: (cropSource && cropSource.doc) || null,
+      }
       if (needCrop > 0) {
         setStatusMsg('جهز الرسومات 0 من ' + needCrop + '…')
         await ensureFigureUrls(newQs, cropSource || {}, function (done: number, total: number) {
           setStatusMsg('جهز الرسومات ' + done + ' من ' + total + '…')
         })
+        /* (ز29) لو لسه ناقص بعد محاولة المتصفح → السيرفر يقص من الملف الأصلي
+           المتخزن (sourceMediaId) — صامت وسريع — ده اللي يضمن إن الصور تظهر
+           حتى لو pdf.js أو الرفع فشل في المتصفح */
+        var stillMissing = 0
+        try {
+          newQs.forEach(function (q: any) {
+            if (!q) return
+            if (q.figure && q.figure.bbox && !q.figure.url) stillMissing++
+            if (Array.isArray(q.optionFigures)) q.optionFigures.forEach(function (of: any) { if (of && of.bbox && !of.url) stillMissing++ })
+          })
+        } catch (eC) { stillMissing = 0 }
+        if (stillMissing > 0 && sourceMediaRef.current) {
+          try {
+            var rResc = await fetch('/api/crop-figures', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ sourceMediaId: sourceMediaRef.current, questions: newQs }),
+            })
+            var dResc = await rResc.json()
+            if (rResc.ok && dResc.success && Array.isArray(dResc.questions)) {
+              newQs = dResc.questions
+              if (dResc.figuresCrop && dResc.figuresCrop.cropped > 0) {
+                toast.success('السيرفر جهز ' + dResc.figuresCrop.cropped + ' رسمة من الملف الأصلي ✓')
+              }
+            }
+          } catch (eResc) { /* صامت — البلاكس هتفضل ظاهرة وزرار ✂️ موجود */ }
+        }
         setStatusMsg('')
       }
     } catch (eCrop: any) {
@@ -4708,6 +4812,33 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
               collected.push(chunkQs[pqi])
             }
           }
+          /* (ز29) ملف الإجابات الاختياري في مسار الملفات الكبيرة — بيتقري مرة واحدة
+             وبعد ما كل الصفحات تخلص بيتعمل تطابق نهائي: كل سؤال بإجابته من المفتاح */
+          var answerPayload: any = null
+          if (answerFile && answerFile.size > 0 && answerFile.size <= 8 * 1024 * 1024) {
+            try {
+              var ab64 = await new Promise<string>(function (resA, rejA) { var rd = new FileReader(); rd.onload = function () { resA(String(rd.result)) }; rd.onerror = rejA; rd.readAsDataURL(answerFile) })
+              answerPayload = { mime: answerFile.type || 'application/pdf', data: String(ab64).split(',')[1] || '' }
+            } catch (eAF) { answerPayload = null }
+          } else if (answerUrl.trim()) {
+            answerPayload = { url: answerUrl.trim() }
+          }
+          if (answerPayload && collected.length > 0) {
+            try {
+              setStatusMsg('بطابق الأسئلة بملف الإجابات…')
+              var ctrlA = new AbortController()
+              var tmrA = setTimeout(function() { ctrlA.abort() }, 240000)
+              var resA2 = await fetch('/api/ai-extract-pages', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ answersOnly: true, questions: collected, answer: answerPayload, grade: grade, type: extractType }),
+                signal: ctrlA.signal,
+              })
+              clearTimeout(tmrA)
+              var dataA2 = await resA2.json()
+              if (resA2.ok && dataA2.extracted && Array.isArray(dataA2.extracted.questions) && dataA2.extracted.questions.length > 0) collected = dataA2.extracted.questions
+            } catch (eA2) { /* من غير المفتاح — الإجابات الذكية تكمل زي ما هي */ }
+          }
           if (collected.length === 0) {
             toast.error('مقدرتش أستخرج أسئلة من الملف — جرب ملف تاني أو استخدم وضع «كتاب — صفحات محددة»')
             setStatusMsg('')
@@ -4736,6 +4867,8 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
         clearTimeout(tmr2)
         var data2 = await res2.json()
         if (res2.ok && data2.extracted && data2.extracted.questions && data2.extracted.questions.length > 0) {
+          /* (ز29) الملف الأصلي اتخزن على السيرفر — خط إنقاذ القص */
+          sourceMediaRef.current = String((data2.extracted && data2.extracted.sourceMediaId) || '')
           /* (2026-و40-w) قص الرسومات من ملف المصدر + دمج أكتر من ملف عبر النقطة المشتركة */
           await finishExtraction(data2.extracted.questions, { file: file || null })
           setStatusMsg('')
@@ -4871,6 +5004,71 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
       else toast.error('خطأ في الحل: ' + (err.message || ''))
     }
     setAiSolving(false)
+  }
+
+  /* (ز29) تطبيق نتيجة محرر القص اليدوي — الرسمة الجديدة تتكتب في السؤال فورًا */
+  var applyFigureCrop = function (t: FigureCropTarget, url: string, bbox: { x: number; y: number; w: number; h: number }, page: number) {
+    setExtractedQuestions(function (prev) {
+      return prev.map(function (q: any, i: number) {
+        if (i !== t.qi || !q) return q
+        if (t.kind === 'q') {
+          return Object.assign({}, q, { figure: Object.assign({}, q.figure || {}, { url: url, bbox: bbox, page: page }) })
+        }
+        var ofs = Array.isArray(q.optionFigures) ? q.optionFigures.slice() : []
+        while (ofs.length <= t.oi) ofs.push(null)
+        ofs[t.oi] = Object.assign({}, ofs[t.oi] || {}, { url: url, bbox: bbox, page: page })
+        return Object.assign({}, q, { optionFigures: ofs })
+      })
+    })
+    setCropEdit(null)
+    toast.success('الرسمة اتقصّت من الصفحة الأصلية واتحفظت ✓ — هتوصل للطالب بالشكل ده بالظبط')
+  }
+
+  /* (ز29) إعادة محاولة قص الرسمات لسؤال واحد — لو القص فشل لحظة الاستخراج
+     المستر يدوس زرار واحد والرسمة تتقص من المصدر الأصلي وترفع وتظهر */
+  var retryCropQuestion = async function (qi: number) {
+    var target = extractedQuestions[qi]
+    if (!target) return
+    if (retryingCrop) return
+    var src = lastCropSourceRef.current || {}
+    var needs = !!(target.figure && target.figure.bbox && !target.figure.url) ||
+      (Array.isArray(target.optionFigures) && target.optionFigures.some(function (of: any) { return of && of.bbox && !of.url }))
+    if (!needs) { toast.info('السؤال ده رسماته ظاهرة بالفعل'); return }
+    setRetryingCrop(true)
+    setStatusMsg('بيجهز رسمات السؤال ' + (qi + 1) + '…')
+    /* الأولوية للسيرفر: الملف الأصلي متخزن عنده — القص يحصل عنده حتى لو متصفح المستر كله بايظ */
+    var serverFixed = false
+    if (sourceMediaRef.current) {
+      try {
+        var rRes2 = await fetch('/api/crop-figures', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sourceMediaId: sourceMediaRef.current, questions: extractedQuestions }),
+        })
+        var dRes2 = await rRes2.json()
+        if (rRes2.ok && dRes2.success && Array.isArray(dRes2.questions)) {
+          setExtractedQuestions(dRes2.questions)
+          var croppedN = dRes2.figuresCrop && dRes2.figuresCrop.cropped ? dRes2.figuresCrop.cropped : 0
+          if (croppedN > 0) {
+            serverFixed = true
+            toast.success('السيرفر قصّ ' + croppedN + ' رسمة من الملف الأصلي ✓ — هتظهر في المراجعة وللطالب')
+          }
+        }
+      } catch (eSrv) { /* نكمل لمسار المتصفح */ }
+    }
+    if (serverFixed) { setStatusMsg(''); setRetryingCrop(false); return }
+    if (!src.file && !src.doc) { toast.error('مفيش مصدر للقص — الرسمة دي من استخراج قديم. ارفعها يدوي بزرار 📷 أو استخرج تاني'); setStatusMsg(''); setRetryingCrop(false); return }
+    var clone: any
+    try { clone = JSON.parse(JSON.stringify(target)) } catch (e) { clone = Object.assign({}, target) }
+    try { await ensureFigureUrls([clone], src) } catch (e) {}
+    setExtractedQuestions(function (prev) {
+      return prev.map(function (q: any, i: number) { return i === qi ? clone : q })
+    })
+    setStatusMsg('')
+    setRetryingCrop(false)
+    var gotNew = !!(clone.figure && clone.figure.url) ||
+      (Array.isArray(clone.optionFigures) && clone.optionFigures.some(function (of: any) { return of && of.url }))
+    if (gotNew) toast.success('الرسمة اتقصت واترفعت ✓ — هتظهر في المراجعة وللطالب')
+    else toast.error('مقدرتش أقص الرسمة من الملف الأصلي — ارفعها يدوي بزرار 📷')
   }
 
   var handleSave = async function() {
@@ -5245,6 +5443,17 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
           </button>
         </div>
 
+        {/* (ز29) إصلاح شامل — أسئلة قديمة اتحفظت ورسماتها ناقصة عند الطلاب */}
+        <button
+          type="button"
+          onClick={runBackfill}
+          disabled={backfillBusy}
+          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-xs font-medium hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors disabled:opacity-60"
+        >
+          {backfillBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wrench className="h-4 w-4" />}
+          {backfillBusy ? 'جاري فحص وإصلاح رسمات كل الأسئلة...' : '🛠 رسمة مش ظاهرة عند الطالب؟ دوس هنا — إصلاح شامل لكل الأسئلة القديمة'}
+        </button>
+
         {inputMode === 'file' ? (
           <div className="space-y-4">
             {/* Questions file */}
@@ -5567,10 +5776,14 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
                   <div className="p-2 rounded-md bg-violet-500/5 border border-violet-500/20">
                     <div className="flex items-center justify-between gap-2 mb-1">
                       <p className="text-[9px] font-semibold text-muted-foreground">📐 رسمة السؤال:</p>
-                      {/* (و43) زرار إزالة الرسمة المسجلة (رفع غلط أو قص ناقص) */}
-                      {q.figure && q.figure.url && (
-                        <Button type="button" variant="ghost" size="sm" className="h-6 text-[10px] text-destructive" onClick={function () { removeFigure(qi) }}>✕ إزالة</Button>
-                      )}
+                      <div className="flex items-center gap-1">
+                        {/* (ز29) تعديل القص يدويًا من الصفحة الأصلية — نفس بقية المنصات */}
+                        <button type="button" onClick={function() { setCropEdit({ qi: qi, kind: 'q', oi: -1, page: parseInt(String((q.figure && q.figure.page) || q.sourcePage || 1), 10) || 1, bbox: (q.figure && q.figure.bbox) || null }) }} className="text-[9px] font-bold text-violet-600 dark:text-violet-400 hover:underline">✂️ عدّل القص</button>
+                        {/* (و43) زرار إزالة الرسمة المسجلة (رفع غلط أو قص ناقص) */}
+                        {q.figure && q.figure.url && (
+                          <Button type="button" variant="ghost" size="sm" className="h-6 text-[10px] text-destructive" onClick={function () { removeFigure(qi) }}>✕ إزالة</Button>
+                        )}
+                      </div>
                     </div>
                     <WorksheetFigure figure={q.figure} />
                   </div>
@@ -5614,10 +5827,16 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
                                     <>
                                       {/* eslint-disable-next-line @next/next/no-img-element */}
                                       <img src={optFigUrl} alt={'صورة الاختيار ' + (oi + 1)} className="max-h-12 rounded border bg-white object-contain" />
+                                      {/* (ز29) تعديل قص صورة الاختيار من الصفحة الأصلية */}
+                                      <Button type="button" variant="ghost" size="sm" className="h-6 px-1.5 text-[10px] text-violet-600 dark:text-violet-400" title="عدّل قص صورة الاختيار من الملف الأصلي" onClick={function () { setCropEdit({ qi: qi, kind: 'of', oi: oi, page: parseInt(String((optFig && optFig.page) || q.sourcePage || 1), 10) || 1, bbox: (optFig && optFig.bbox) || null }) }}>✂️</Button>
                                       <Button type="button" variant="ghost" size="sm" className="h-6 w-6 p-0 text-destructive" title="إزالة صورة الاختيار" onClick={function () { removeOptionFigure(qi, oi) }}><X className="h-3 w-3" /></Button>
                                     </>
                                   ) : (
-                                    <Button type="button" variant="ghost" size="sm" className="h-6 px-1.5 text-[10px] text-muted-foreground" title="رفع صورة للاختيار (اختياري)" onClick={function () { var el = optionFigureInputRefs.current[qi + '_' + oi]; if (el) el.click() }}>📷</Button>
+                                    <>
+                                      <Button type="button" variant="ghost" size="sm" className="h-6 px-1.5 text-[10px] text-muted-foreground" title="رفع صورة للاختيار (اختياري)" onClick={function () { var el = optionFigureInputRefs.current[qi + '_' + oi]; if (el) el.click() }}>📷</Button>
+                                      {/* (ز29) قص صورة الاختيار يدويًا من الصفحة الأصلية */}
+                                      <Button type="button" variant="ghost" size="sm" className="h-6 px-1.5 text-[10px] text-violet-600 dark:text-violet-400" title="قص صورة الاختيار من الملف الأصلي" onClick={function () { setCropEdit({ qi: qi, kind: 'of', oi: oi, page: parseInt(String(q.sourcePage || 1), 10) || 1, bbox: null }) }}>✂️</Button>
+                                    </>
                                   )}
                                 </div>
                               )
@@ -5761,6 +5980,16 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
         {step === 1 && renderStep1()}
         {step === 2 && renderStep2()}
         {step === 3 && renderStep3()}
+        {/* (ز29) محرر قص الرسمات اليدوي — يشتغل من مصدر القص الأخير أو الملف المخزن على السيرفر */}
+        {cropEdit && (
+          <FigureCropEditor
+            target={cropEdit}
+            source={{ file: (lastCropSourceRef.current && lastCropSourceRef.current.file) || null, doc: (lastCropSourceRef.current && lastCropSourceRef.current.doc) || null }}
+            sourceMediaId={sourceMediaRef.current || ''}
+            onSaved={function (url, bbox, page) { applyFigureCrop(cropEdit, url, bbox, page) }}
+            onClose={function () { setCropEdit(null) }}
+          />
+        )}
       </CardContent>
     </Card>
   )

@@ -166,6 +166,144 @@ function buildSelectTopPrompt(count: number): string {
   return lines.join('\n')
 }
 
+/* ============================================================
+ * (ز29) ملف الإجابات الاختياري — مسار الملفات الكبيرة:
+ * الكلينت بيجمع كل الأسئلة المستخرجة من الصفحات وبيبعتها مع ملف الإجابات
+ * (base64 أو رابط) — نداء Gemini واحد بيقرا المفتاح ويرجّع إجابة كل سؤال
+ * (بقواعد القراءة الحرفية الصارمة: keyQuote + confidence + ممنوع التخمين)،
+ * واللي ملقاهوش في المفتاح بيتحل بالذكاء (extract-or-solve).
+ * ============================================================ */
+function buildAnswersOnlyPromptPages(grade: string, type: string, questions: any[]): string {
+  var lines = []
+  lines.push('You are an expert math teacher. I will give you ONE document containing ANSWERS / answer key for math questions.')
+  lines.push('Extract the answer for EACH question. The answers should match the questions I list below.')
+  lines.push('')
+  lines.push('Here are the questions extracted from the pages (in order):')
+  questions.forEach(function (q, i) {
+    var qType = isWritingQuestion(q) ? 'writing' : 'mcq'
+    if (qType === 'mcq') {
+      lines.push((i + 1) + '. [MCQ] ' + (q.question || ''))
+      if (Array.isArray(q.options) && q.options.length > 0) {
+        lines.push('   Options: ' + q.options.map(function (o, oi) { return String.fromCharCode(65 + oi) + ') ' + o }).join(' | '))
+      }
+    } else {
+      lines.push((i + 1) + '. [WRITING] ' + (q.question || ''))
+    }
+    if (q.table && Array.isArray(q.table.rows) && q.table.rows.length > 0) {
+      var tHead = Array.isArray(q.table.headers) ? q.table.headers.join(' | ') : ''
+      var tRows = q.table.rows.map(function (row: any) {
+        if (!Array.isArray(row)) return ''
+        return row.map(function (cell: any) {
+          var isBlank = cell && typeof cell === 'object' && cell.blank === true
+          return isBlank ? '____' : String((cell && typeof cell === 'object' ? cell.t : cell) || '')
+        }).join(' | ')
+      }).join(' ; ')
+      lines.push('   Table: ' + (tHead ? tHead + ' :: ' : '') + tRows)
+    }
+  })
+  lines.push('')
+  lines.push('For EACH question above, find its answer in the answer-key document and return:')
+  lines.push('- For MCQ: the correct option index (0=A, 1=B, 2=C, 3=D) and a step-by-step modelAnswer')
+  lines.push('- For WRITING: a complete step-by-step modelAnswer AND an array of acceptedAnswers (acceptable final answers)')
+  lines.push('')
+  lines.push('ACCURACY RULES (most important):')
+  lines.push('- READ the answer key EXACTLY as written. For MCQ the "correct" index MUST be the letter/number actually written in the key for that question (e.g. key says "12-B" → correct:1).')
+  lines.push('- ALWAYS include "keyQuote": the exact text you read from the key for that question (like "12-B" or "Q5: x=7"). This proves you read it, do not invent it.')
+  lines.push('- ALWAYS include "confidence": "high" when the key clearly states the answer, "low" when ambiguous or missing.')
+  lines.push('- If the answer for a question is NOT clearly found in the key → set "correct": -1 (MCQ) and confidence "low" — NEVER guess a letter. Still provide your best modelAnswer (marked as solved by you).')
+  lines.push('- Watch out for common traps: shifted numbering, columns read in the wrong order, and answer letters written next to the PREVIOUS question. Verify the question number in the key matches before assigning.')
+  lines.push('- Match by the question NUMBER first; only fall back to matching by text when the key has no numbers.')
+  lines.push('')
+  lines.push('SMART RULE: If the answer for a question IS found in the document → extract it exactly as written in the document.')
+  lines.push('If the answer is NOT found in the document → SOLVE that question yourself completely: expert math teacher, correct, clear step-by-step solution matching the grade curriculum level (Grade: ' + grade + ') — and mark confidence "low".')
+  lines.push('NEVER return empty values: EVERY question must get a complete modelAnswer (extracted OR solved by you). For writing questions also fill acceptedAnswers.')
+  lines.push('')
+  lines.push('Rules:')
+  lines.push('- ALL output text in English')
+  lines.push('- MATH FORMAT (very important — the platform renders this format as real math):')
+  lines.push('  * Powers: use the ^ symbol — x^2, y^5, 2^12 (rendered as REAL superscripts).')
+  lines.push('  * In modelAnswer / acceptedAnswers write every fraction as \\frac{numerator}{denominator} — rendered as a REAL stacked fraction. Example: "\\frac{3}{4}". NEVER write a/b.')
+  lines.push('  * Do NOT wrap the whole numerator or denominator in parentheses.')
+  lines.push('  * Use proper Unicode symbols: √ × ÷ π ≤ ≥ ≠ ≈ ∠ °. Do NOT use other LaTeX ($, \\sqrt, \\times…) or markdown.')
+  lines.push('- The "answers" array MUST have the same length and order as the questions above')
+  lines.push('- Each answer object MUST have an "index" field matching the question number (0-based)')
+  lines.push('')
+  lines.push('Return ONE single valid JSON object — no text before or after, no markdown fences, no fields outside the object:')
+  lines.push('{"answers":[{"index":0,"correct":0,"confidence":"high","keyQuote":"1-A","modelAnswer":"step by step"},{"index":1,"correct":-1,"confidence":"low","keyQuote":"","modelAnswer":"full solution","acceptedAnswers":["5","x=5"]}]}')
+  return lines.join('\n')
+}
+
+/* محلل JSON متسامح لكائن واحد (نفس أسلوب parseAIJson في /api/ai-extract) */
+function parseAIJsonObjectPages(text: string): any | null {
+  if (!text || !text.trim()) return null
+  var t = String(text).trim()
+  t = t.replace(/```(?:json)?/gi, '')
+  var start = t.indexOf('{')
+  if (start === -1) return null
+  var raw = repairModelJson(t.substring(start))
+  var end = raw.lastIndexOf('}')
+  if (end !== -1) {
+    try { var direct = JSON.parse(raw.substring(0, end + 1)); if (direct && typeof direct === 'object') return direct } catch (e) {}
+  }
+  var stack: string[] = []
+  var inStr = false
+  var esc = false
+  for (var j = 0; j < raw.length; j++) {
+    var ch = raw.charAt(j)
+    if (inStr) {
+      if (esc) { esc = false } else if (ch === '\\') { esc = true } else if (ch === '"') { inStr = false }
+      continue
+    }
+    if (ch === '"') { inStr = true } else if (ch === '{' || ch === '[') { stack.push(ch) } else if (ch === '}' || ch === ']') { stack.pop() }
+  }
+  while (stack.length > 0) { stack.pop(); raw += stack[stack.length] === '[' ? ']' : '}' }
+  try { var fixed = JSON.parse(raw); if (fixed && typeof fixed === 'object') return fixed } catch (e) {}
+  return null
+}
+
+/* (ز29) تطابق نهائي: ملف الإجابات × الأسئلة المستخرجة — بيرجّع نفس الأسئلة
+   زي ما هي مع correct/modelAnswer/acceptedAnswers من المفتاح */
+async function matchAnswersBatch(questions: any[], aPart: any, grade: string, type: string): Promise<any[] | null> {
+  var prompt = buildAnswersOnlyPromptPages(grade, type, questions)
+  var parts: any[] = [{ text: prompt }, { text: '\n\nQUESTIONS JSON (for reference):\n' + JSON.stringify(questions.map(function (q: any) { return { type: q.type, question: q.question, options: q.options, table: q.table } })) }, aPart]
+  for (var attempt = 0; attempt < 2; attempt++) {
+    var res = await callGeminiParts(parts)
+    if (res.ok && res.text) {
+      var data = parseAIJsonObjectPages(res.text)
+      if (data && Array.isArray(data.answers)) {
+        return questions.map(function (q: any, i: number) {
+          var ans = data.answers.find(function (a: any) { return a && (typeof a.index === 'number' ? a.index === i : false) }) || data.answers[i]
+          if (!ans) return q
+          var out = Object.assign({}, q)
+          if (typeof ans.modelAnswer === 'string' && ans.modelAnswer.trim() && !(out.modelAnswer || '').trim()) out.modelAnswer = normalizeMath(ans.modelAnswer)
+          if (Array.isArray(ans.acceptedAnswers) && ans.acceptedAnswers.length > 0 && (!Array.isArray(out.acceptedAnswers) || out.acceptedAnswers.length === 0)) {
+            out.acceptedAnswers = ans.acceptedAnswers.map(function (a: any) { return normalizeMath(String(a)) })
+          }
+          if (out.type !== 'writing') {
+            var idx = typeof ans.correct === 'number' ? ans.correct : parseInt(String(ans.correct), 10)
+            if (typeof idx === 'number' && isFinite(idx) && idx >= 0) {
+              var optCount = Array.isArray(out.options) ? out.options.length : 0
+              if (optCount === 0 && Array.isArray(out.optionFigures) && out.optionFigures.length > 0) optCount = out.optionFigures.length
+              if (idx < optCount) out.correct = idx
+              else out.correct = -1
+            } else if (out.correct === undefined || out.correct === null) {
+              out.correct = -1
+            }
+            if (ans.confidence === 'low' || ans.correct === -1) {
+              out.needsReview = true
+              if (ans.confidence === 'low' && (ans.correct === -1 || ans.correct === undefined)) out.correct = out.correct === undefined ? -1 : out.correct
+            }
+            if (ans.keyQuote) out.keyQuote = String(ans.keyQuote).substring(0, 80)
+          }
+          return out
+        })
+      }
+    }
+    if (attempt === 0) await new Promise(function (r) { setTimeout(r, 1200) })
+  }
+  return null
+}
+
 async function callGeminiParts(parts: any[]): Promise<{ ok: boolean; text?: string; error?: string }> {
   var result = await callGeminiCentral({
     parts: parts,
@@ -287,6 +425,51 @@ export async function POST(request: NextRequest) {
       }
       /* فشل الاختيار الذكي → فولباك حتمي: أول count سؤال في ترتيب الكتاب */
       return NextResponse.json({ success: true, extracted: { title: '', content: '', questions: selQs.slice(0, selCount), answerKey: '', stats: { mcq: 0, writing: 0, total: Math.min(selCount, selQs.length), batches: 0, pages: 0, skippedBatches: 0, topSelected: false } } })
+    }
+
+    /* ===== (ز29) المسار 3: تطابق الأسئلة المستخرجة مع ملف إجابات اختياري ===== */
+    if (body && body.answersOnly) {
+      var ansQs = body.answersOnly.questions
+      var ansGrade = String(body.answersOnly.grade || '')
+      var ansType = String(body.answersOnly.type || 'exam')
+      var ansDoc = body.answersOnly.answer || null
+      if (!Array.isArray(ansQs) || ansQs.length === 0) {
+        return NextResponse.json({ success: true, extracted: { title: '', content: '', questions: [], answerKey: '', stats: { mcq: 0, writing: 0, total: 0, batches: 0, pages: 0, skippedBatches: 0, answerMatched: false } } })
+      }
+      var ansPart: any = null
+      try {
+        if (ansDoc && typeof ansDoc.data === 'string' && ansDoc.data.length > 0) {
+          ansPart = { inlineData: { mimeType: String(ansDoc.mime || 'application/pdf'), data: ansDoc.data } }
+        } else if (ansDoc && typeof ansDoc.url === 'string' && ansDoc.url.trim()) {
+          var aFetch2 = await fetch(ansDoc.url.trim())
+          if (aFetch2.ok) {
+            var aBuf2 = await aFetch2.arrayBuffer()
+            var aCt2 = aFetch2.headers.get('content-type') || ''
+            var aMime2 = aCt2.includes('pdf') ? 'application/pdf' : aCt2.includes('png') ? 'image/png' : aCt2.includes('webp') ? 'image/webp' : aCt2.includes('image') ? aCt2 : 'application/pdf'
+            ansPart = { inlineData: { mimeType: aMime2, data: Buffer.from(new Uint8Array(aBuf2)).toString('base64') } }
+          }
+        }
+      } catch (eAF2) {
+        console.error('[AI Extract Pages] answer doc load failed (non-fatal):', (eAF2 && eAF2.message) || eAF2)
+      }
+      if (!ansPart) {
+        /* من غير ملف إجابات صالح — رجّع الأسئلة زي ما هي */
+        return NextResponse.json({ success: true, extracted: { title: '', content: '', questions: ansQs, answerKey: '', stats: { mcq: 0, writing: 0, total: ansQs.length, batches: 0, pages: 0, skippedBatches: 0, answerMatched: false } } })
+      }
+      var matched = await matchAnswersBatch(ansQs.slice(0, 80), ansPart, ansGrade, ansType)
+      var finalQs = matched || ansQs
+      var mMcq = finalQs.filter(function (q: any) { return q.type === 'mcq' }).length
+      var mWriting = finalQs.filter(function (q: any) { return q.type === 'writing' }).length
+      return NextResponse.json({
+        success: true,
+        extracted: {
+          title: '',
+          content: '',
+          questions: finalQs,
+          answerKey: '',
+          stats: { mcq: mMcq, writing: mWriting, total: finalQs.length, batches: 0, pages: 0, skippedBatches: 0, answerMatched: !!matched },
+        },
+      })
     }
 
     /* ===== المسار 1: استخراج من صور الصفحات ===== */
