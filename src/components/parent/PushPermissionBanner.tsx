@@ -11,6 +11,11 @@
 //   → برومبت البراوزر → حفظ الاشتراك → الإشعارات الجاية بتظهر بره على
 //   شاشة الموبايل. مع كارت حالة صغير دايم في البورتال (مفعّلة/متقفلة)
 //   + زرار إشعار تجريبي + زرار إيقاف.
+//
+//   (2026-ص6) خاصية المنصة دي: تفعيل صامت لجهاز جديد — لو الإذن متمنح
+//   أصلًا والجهاز ده مش متسجل → بيتسجل لوحده من غير أي بوب-أب.
+//   (Z-30) + كشف المتصفحات الداخلية وآيفون + شفاء ذاتي للاشتراكات
+//   زي Maths-Genius بالظبط.
 // ============================================================
 
 import { useCallback, useEffect, useState } from 'react'
@@ -25,7 +30,10 @@ import {
   sendTestParentPush,
   isParentPushEnabled,
   getPushPermissionState,
+  detectPushContext,
+  healParentPushIfNeeded,
   type PushPermState,
+  type PushContext,
 } from '@/lib/parent-push-client'
 
 /* ============================================================
@@ -81,13 +89,41 @@ export default function PushPermissionBanner({ parentId }: { parentId: string })
   var ready = readyState[0]
   var setReady = readyState[1]
 
+  var ctxState = useState<PushContext>('ok')
+  var ctx = ctxState[0]
+  var setCtx = ctxState[1]
+
+  var healingState = useState(false)
+  var healing = healingState[0]
+  var setHealing = healingState[1]
+
   /* تهيئة الحالة + إظهار البوب-أب تلقائيًا أول ما ولي الأمر يفتح بورتاله */
   useEffect(function () {
     if (!parentId) return
     var p = getPushPermissionState()
+    var c = detectPushContext()
     setPerm(p)
-    setEnabled(isParentPushEnabled(parentId))
+    setCtx(c)
+    var localEnabled = isParentPushEnabled(parentId)
+    setEnabled(localEnabled)
     setReady(true)
+    /* (2026-ص6) تفعيل صامت لجهاز جديد — طلب المستر: «عاوز أفرق ما بين
+       الأجهزة». الإذن متمنح على الجهاز ده بس مفيش اشتراك محلي
+       (المستر فعّلها على اللاب، ولما فتح المنصة من موبايله مكانش
+       بيوصله حاجة) — بنسجّل الجهاز ده لوحده من غير أي بوب-أب،
+       لأن الاشتراك لكل جهاز لوحده والمفتاح ده محلي على الجهاز. */
+    if (p === 'granted' && !localEnabled) {
+      enableParentPush(parentId).then(function (r) {
+        if (r && r.ok) {
+          setEnabled(true)
+          try { sessionStorage.setItem('parent_push_dismissed', '1') } catch (e) {}
+        }
+      }).catch(function () {})
+      return
+    }
+    /* (Z-30) متصفح داخلي أو آيفون من غير تطبيق مثبت — مفيش بوب-أب تلقائي أصلًا
+       عشان مفيش برومبت هيشتغل هنا — كارت الإرشاد هو اللي هيظهر */
+    if (c !== 'ok') return
     try {
       var dismissed = String(sessionStorage.getItem('parent_push_dismissed') || '') === '1'
       if (p === 'default' && !isParentPushEnabled(parentId) && !dismissed) {
@@ -108,6 +144,14 @@ export default function PushPermissionBanner({ parentId }: { parentId: string })
       setEnabled(true)
       setOpen(false)
       toast.success('تمام كده! 🎉 الإشعارات مفعّلة على الجهاز ده — أول ما ابنك يسلّم امتحان أو واجب هتوصلك درجته هنا أول بأول', { duration: 6000 })
+    } else if (r.reason === 'inapp') {
+      /* (Z-30) متصفح داخلي — رسالة صريحة بدل «مقفلتش نافذة الإذن» المضللة */
+      setOpen(false)
+      toast.error('انت فاتح المنصة من متصفح جوه تطبيق تاني (فيسبوك/إنستجرام/واتساب) — المتصفحات دي مش بتسمح بالإشعارات أصلًا. انسخ لينك المنصة وافتحه في كروم (أو سفاري على الآيفون) وسجّل دخولك وفعّل الإشعارات هناك وهيشتغلوا تمام', { duration: 14000 })
+    } else if (r.reason === 'ios-browser') {
+      /* (Z-30) آيفون من غير تطبيق مثبت — إشعارات iOS بتشتغل من التطبيق المثبت بس */
+      setOpen(false)
+      toast.error('على الآيفون: الإشعارات بتشتغل بعد تثبيت المنصة كتطبيق — افتح المنصة في سفاري واضغط زرار «تثبيت التطبيق» (أو زرار المشاركة ← Add to Home Screen) وافتحها من الأيقونة وفعّل الإشعارات من هناك', { duration: 14000 })
     } else if (r.reason === 'denied') {
       setPerm('denied')
       setOpen(false)
@@ -138,20 +182,32 @@ export default function PushPermissionBanner({ parentId }: { parentId: string })
   }, [parentId])
 
   var test = useCallback(async function () {
-    if (!parentId || testBusy) return
+    if (!parentId || testBusy || healing) return
     setTestBusy(true)
     var r = await sendTestParentPush(parentId)
-    setTestBusy(false)
-    /* (2026-ز32) التفريق بين «الإشعار اتقدم فعلاً» و«مفيش أجهزة متسجلة» —
-       لو مفيش أجهزة يبقى التفعيل من الجهاز ده مكتملش، والتوجيه الصح: إعادة تفعيل من هنا */
+    /* (2026-ز32) التفريق بين «الإشعار اتقدم فعلاً» و«مفيش أجهزة متسجلة» */
     if (r.ok && typeof r.sent === 'number' && r.sent > 0) {
+      setTestBusy(false)
       toast.success(r.message || 'اتبعت الإشعار — بص على شاشة موبايلك 📱', { duration: 6000 })
-    } else if (r.ok) {
-      toast.warning('مفيش جهاز متسجل على الحساب ده لسه — الإشعارات بتيجي على الجهاز اللي اتفعّل منها بس. اضغط «إيقاف» ثم «سماح بالتنبيهات» من الجهاز ده ووافق على إذن المتصفح، وبعدها جرب الإشعار التجريبي هيوصلك فورًا', { duration: 12000 })
+      return
+    }
+    /* (Z-30) الشفاء الذاتي: لو مفيش أجهزة متسجلة عند السيرفر والإذن ممنوح
+       على الجهاز ده — غالبًا اشتراك الجهاز ضاع من قاعدة البيانات (نشر/بارد)
+       فنعيد حفظه تلقائيًا من غير أي برومبت ونجرب تاني — ولي الأمر ماحسش بحاجة */
+    setTestBusy(false)
+    setHealing(true)
+    var h = await healParentPushIfNeeded(parentId)
+    setHealing(false)
+    if (h.healed && h.sent > 0) {
+      toast.success('رجّعنا نظبط اشتراك الجهاز ده تلقائيًا واتبعت الإشعار — بص على شاشة موبايلك 📱', { duration: 8000 })
+      return
+    }
+    if (r.ok) {
+      toast.warning('مفيش جهاز متسجل على الحساب ده لسه — الإشعارات بتيجي على الجهاز اللي اتفعّل منها بس. من الجهاز ده اضغط «إيقاف» ثم فعّلها تاني ووافق على إذن المتصفح، وبعدها جرب الإشعار التجريبي هيوصلك فورًا', { duration: 12000 })
     } else {
       toast.error('مفيش إشعار وصل — اتأكد إن التفعيل مكتوب «مفعّلة» وجرب تاني')
     }
-  }, [parentId, testBusy])
+  }, [parentId, testBusy, healing])
 
   var dismiss = useCallback(function () {
     try { sessionStorage.setItem('parent_push_dismissed', '1') } catch (e) {}
@@ -159,6 +215,38 @@ export default function PushPermissionBanner({ parentId }: { parentId: string })
   }, [])
 
   if (!parentId || !ready) return null
+
+  /* ============ (Z-30) كارت إرشاد للمتصفحات اللي مش بتدعم الإشعارات أصلًا ============ */
+  if (ctx === 'inapp') {
+    return (
+      <Card className="border-amber-500/30 bg-amber-500/[0.06]">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-2.5">
+            <div className="shrink-0 h-9 w-9 rounded-xl bg-amber-500/15 flex items-center justify-center"><BellOff className="h-4.5 w-4.5 text-amber-600" /></div>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-foreground">الإشعارات مش بتشتغل من المتصفح ده</p>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">انت فاتح المنصة من متصفح جوه تطبيق تاني (فيسبوك/إنستجرام/واتساب وحداهم مش بيسمحوا بالإشعارات). <span className="font-black text-foreground">انسخ لينك المنصة وافتحه في كروم</span> على موبايلك — سجّل دخولك وفعّل الإشعارات وهتوصلك عادي ✓</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+  if (ctx === 'ios-browser' && perm !== 'granted') {
+    return (
+      <Card className="border-amber-500/30 bg-amber-500/[0.06]">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-2.5">
+            <div className="shrink-0 h-9 w-9 rounded-xl bg-amber-500/15 flex items-center justify-center"><BellOff className="h-4.5 w-4.5 text-amber-600" /></div>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-foreground">على الآيفون: ثبّت المنصة كتطبيق الأول</p>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">إشعارات الآيفون بتشتغل من التطبيق المثبت على الشاشة الرئيسية — افتح المنصة في سفاري واضغط <span className="font-black text-foreground">زرار «تثبيت التطبيق»</span> (أو المشاركة ⬆️ ← Add to Home Screen)، وافتح المنصة من الأيقونة وسجّل دخولك وفعّل الإشعارات ✓</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
 
   /* ============ كارت الحالة الصغير (دايمًا ظاهر في البورتال) ============ */
   if (enabled && perm === 'granted') {
@@ -171,13 +259,13 @@ export default function PushPermissionBanner({ parentId }: { parentId: string })
                 <CheckCircle2 className="h-4.5 w-4.5 text-emerald-600" />
               </div>
               <div className="min-w-0">
-                <p className="text-sm font-bold text-foreground">إشعارات الموبايل مفعّلة ✓</p>
-                <p className="text-[11px] text-muted-foreground">هتوصلك درجات أبنائك بره على شاشة موبايلك أول بأول</p>
+                <p className="text-sm font-bold text-foreground">إشعارات الموبايل مفعّلة على الجهاز ده ✓</p>
+                <p className="text-[11px] text-muted-foreground">التفعيل لكل جهاز لوحده — عايز الإشعار يوصلك على موبايل تاني أو اللاب؟ افتح المنصة منه وفعّلها هناك كمان</p>
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs" onClick={test} disabled={testBusy}>
-                {testBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+              <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs" onClick={test} disabled={testBusy || healing}>
+                {(testBusy || healing) ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
                 جرّب إشعار تجريبي
               </Button>
               <Button size="sm" variant="ghost" className="h-8 gap-1.5 text-xs text-muted-foreground hover:text-destructive" onClick={disable}>

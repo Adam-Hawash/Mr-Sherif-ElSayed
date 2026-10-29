@@ -24,6 +24,44 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
 }
 
+/* ============================================================
+   (Z-30) التقاط الحدث على مستوى الموديول + وعد مشترك — جذر شكوى
+   «اللابتوب بيعرض تعليمات بدل ما ينزّل التطبيق»: الحدث
+   beforeinstallprompt بيترّي مرة واحدة بعد تحميل الصفحة، ولو المستر
+   داس على زرار التثبيت **قبل** ما الحدث يوصل كان الزرار يقع على
+   التعليمات فورًا. الحل: لو الحدث لسه ما وصلش — نستنى لحد 3 ثواني
+   (الوعد المشترك بيلتقط الحدث أول ما يحصل) وبعدين نفتح نافذة
+   التثبيت الرسمية. لو حقًا مفيش حدث (آيفون/متصفح مش داعم) — وقتها بس
+   نعرض التعليمات.
+   ============================================================ */
+var _moduleDeferred: BeforeInstallPromptEvent | null = null
+var _promptWaiters: Array<(e: BeforeInstallPromptEvent | null) => void> = []
+
+if (typeof window !== 'undefined') {
+  try {
+    window.addEventListener('beforeinstallprompt', function (e: Event) {
+      e.preventDefault()
+      _moduleDeferred = e as BeforeInstallPromptEvent
+      var waiters = _promptWaiters.splice(0)
+      for (var i = 0; i < waiters.length; i++) waiters[i](_moduleDeferred)
+    })
+  } catch (e) {}
+}
+
+function waitForInstallPrompt(ms: number): Promise<BeforeInstallPromptEvent | null> {
+  return new Promise(function (resolve) {
+    if (_moduleDeferred) { resolve(_moduleDeferred); return }
+    var done = false
+    var to = setTimeout(function () {
+      if (!done) { done = true; var ws = _promptWaiters.filter(function (w) { return w !== onEvt }); _promptWaiters = ws; resolve(null) }
+    }, ms)
+    var onEvt = function (e: BeforeInstallPromptEvent | null) {
+      if (!done) { done = true; clearTimeout(to); resolve(e) }
+    }
+    _promptWaiters.push(onEvt)
+  })
+}
+
 /* منطق التثبيت المشترك — نفس الحالة للأزرار كلها (الهيدر/القايمة/العايم) */
 function usePwaInstall() {
   var T = useT()
@@ -57,14 +95,20 @@ function usePwaInstall() {
   }
 
   var install = async function () {
-    /* 1) المتصفح جاهز → نافذة التثبيت الرسمية فورًا — من غير أي خطوات يدوية */
-    if (deferred) {
+    /* 1) المتصفح جاهز → نافذة التثبيت الرسمية فورًا — من غير أي خطوات يدوية
+       (Z-30) لو الحدث لسه ما وصلش، نستنى لحد 3 ثواني قبل ما نحكم —
+       ضغطة مبكرة ما تنزلش على التعليمات غير لو المتصفح فعلًا مش داعم */
+    var ev = deferred
+    if (!ev) {
+      try { ev = await waitForInstallPrompt(3000) } catch (e) { ev = null }
+    }
+    if (ev) {
       try {
         toast.info(T('تثبيت التطبيق — بنفتحلك نافذة التثبيت…', 'Installing the app — opening the install window…'), {
           description: T('دوس تثبيت / Install وأيقونة التطبيق هتنزل على شاشتك', 'Tap Install and the app icon will be added to your screen'),
         })
-        await deferred.prompt()
-        var choice = await deferred.userChoice
+        await ev.prompt()
+        var choice = await ev.userChoice
         if (choice.outcome === 'accepted') {
           toast.success(T('تم تثبيت التطبيق بنجاح 🎉', 'App installed successfully 🎉'), {
             description: T('افتح المنصة من أيقونة التطبيق — شاشة كاملة من غير متصفح', 'Open the platform from the app icon — full screen, no browser'),

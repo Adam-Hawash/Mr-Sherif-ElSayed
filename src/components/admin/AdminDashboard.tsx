@@ -197,6 +197,9 @@ export function AdminDashboard() {
   const [instapay, setInstapay] = useState('')
   const [fawry, setFawry] = useState('')
   const [paymentSaving, setPaymentSaving] = useState(false)
+  /* (Z-30) القبول التلقائي للطلاب الجدد — طلب المستر (كل المنصات) */
+  const [autoApprove, setAutoApprove] = useState(true)
+  const [autoApproveSaving, setAutoApproveSaving] = useState(false)
   // عداد الشكاوى الجديدة — بيدور كل دقيقة عشان المستر يشوف الشكاوى أول بأول
   const [newComplaints, setNewComplaints] = useState(0)
   useEffect(function () {
@@ -333,6 +336,8 @@ export function AdminDashboard() {
         setVodafoneCash(cfgData.payment_vodafone_cash || '')
         setInstapay(cfgData.payment_instapay || '')
         setFawry(cfgData.payment_fawry || '')
+        /* (Z-30) القبول التلقائي — افتراضي مفعّل */
+        setAutoApprove(String(cfgData.student_auto_approve ?? '1') !== '0')
       }
     } catch { /* silent */ }
     setSettingsLoading(false)
@@ -552,6 +557,28 @@ export function AdminDashboard() {
                       {paymentSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
                     </Button>
                   </div>
+                  {/* (Z-30) القبول التلقائي للطلاب الجدد — طلب المستر */}
+                  <div className="border-t pt-4 space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-foreground">قبول الطلاب الجدد تلقائيًا</p>
+                        <p className="text-[10px] text-muted-foreground leading-relaxed">لما يكون مفعّل: أي طالب يسجل يدخل المنصة فورًا من غير انتظار موافقتك. لما يتقفل: التسجيلات تبقى «قيد المراجعة» وتوافق عليها بنفسك من تاب الطلاب.</p>
+                      </div>
+                      <Switch checked={autoApprove} onCheckedChange={async (v: boolean) => {
+                        setAutoApprove(v)
+                        setAutoApproveSaving(true)
+                        try {
+                          const res = await fetch('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ student_auto_approve: v ? '1' : '0' }) })
+                          if (res.ok) {
+                            const cfg = useAppStore.getState().siteConfig
+                            useAppStore.getState().setSiteConfig({ ...cfg, student_auto_approve: v ? '1' : '0' })
+                            toast.success(v ? 'القبول التلقائي مفعّل — الطلاب الجدد يدخلوا فورًا' : 'القبول التلقائي متقفل — التسجيلات تستنى موافقتك')
+                          } else { toast.error('خطأ في الحفظ'); setAutoApprove(!v) }
+                        } catch { toast.error('خطأ في الاتصال'); setAutoApprove(!v) }
+                        setAutoApproveSaving(false)
+                      }} disabled={autoApproveSaving} aria-label="قبول الطلاب الجدد تلقائيًا" />
+                    </div>
+                  </div>
                   <div className="flex gap-2 pt-2">
                     <Button onClick={saveSettings} disabled={settingsSaving || !settingsOldPass} className="flex-1">
                       {settingsSaving ? <Loader2 className="h-4 w-4 ml-1 animate-spin" /> : <Save className="h-4 w-4 ml-1" />}
@@ -628,29 +655,6 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
   }
 
   useEffect(() => { loadStudents() }, [filter, filterGrade])
-
-  /* (ز29 — طلب المستر) مفتاح القبول التلقائي للتسجيلات من صفحة الأدمن:
-     مفعّل (افتراضي) ← أي طالب يعمل حساب بيتقبل على طول | مقفول ← الحساب يبقى «قيد المراجعة» والأستر هو اللي يوافقه */
-  const [autoApprove, setAutoApprove] = useState(true)
-  useEffect(() => {
-    let alive = true
-    fetch('/api/config').then(function (r) { return r.json() }).then(function (d) {
-      if (alive) setAutoApprove(String((d && d.auto_approve_students) ?? '1') !== '0')
-    }).catch(function () {})
-    return function () { alive = false }
-  }, [])
-  const toggleAutoApprove = async (v: boolean) => {
-    const prev = autoApprove
-    setAutoApprove(v)
-    try {
-      const res = await fetch('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ auto_approve_students: v ? '1' : '0' }) })
-      if (!res.ok) throw new Error()
-      toast.success(v ? 'الطلاب هيتقبلوا تلقائي أول ما يعملوا حساب' : 'التسجيلات الجديدة هتستنى موافقتك (قيد المراجعة)')
-    } catch {
-      setAutoApprove(prev)
-      toast.error('مش قادر أحفظ الإعداد — جرّب تاني')
-    }
-  }
 
   // ملاحظة: قفل الأجهزة بقى صارم ودايمًا (شغال على السيرفر من غير مفتاح) —
   // الحساب بيتقفل على الجهاز اللي اتعمل بيه بس، والتحكم بيبقى لكل طالب
@@ -821,11 +825,7 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
                 </Button>
               ))}
             </div>
-            {/* (ز29) القبول التلقائي للتسجيلات — مفتاح من صفحة الأدمن */}
-            <div className="flex items-center gap-1.5 h-8 rounded-md border border-input bg-background px-2" title="لما الطالب يعمل حساب بيتقبل على طول من غير مراجعة — اقفلها لو عايز تراجع بنفسك">
-              <Switch checked={autoApprove} onCheckedChange={toggleAutoApprove} aria-label="قبول تلقائي للتسجيلات الجديدة" />
-              <span className="text-xs whitespace-nowrap">قبول تلقائي</span>
-            </div>
+            {/* (Z-30) القبول التلقائي للطلاب بقا مفتاح واحد من شاشة الإعدادات — التبديل من هناك */}
           </div>
         </div>
       </CardHeader>

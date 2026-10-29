@@ -358,22 +358,33 @@ export function RegisterView() {
       var res = await fetch('/api/students', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: fullName, phone: phone.trim(), grade: grade, parentName: fullParentName, parentPhone: parentPhone.trim(), password: password.trim(), deviceId: getDeviceId(), deviceIds: getDeviceCandidates(), deviceTraits: JSON.stringify(getDeviceTraits()), deviceType: getDeviceType() }) })
       var data = await res.json()
       if (res.ok) {
-        /* (ز29) القبول التلقائي: لو الحساب اتقبل على طول الرسالة بتفرّق — لو لسه في المراجعة بنفس الرسالة القديمة */
-        var regStatus = String((data.student || {}).status || '')
-        if (regStatus === 'pending') { setCurrentStudent(data.student); setView('student-pending'); toast.success('تم تسجيل طلبك بنجاح! خش اعمل تسجيل دخول وشوف اتقبلت ولا لسه') }
-        else {
-          /* (ز30 — طلب المستر) التسجيل = دخول فوري: «عمل الحساب وتقبل تلقائي
-             خلاص يدخل على حسابه من غير ما يعمل تسجيل دخول» — وأول ما يقفل
-             المنصة ويفتحها تاني يعمل تسجيل دخول عادي زي أي حساب */
-          setCurrentStudent(data.student); setView('student-portal')
-          var firstName = String(fullName || '').trim().split(/\s+/)[0] || 'يا صديقي'
-          toast.success('أهلاً بيك يا ' + firstName + ' 🎉 — ده حسابك، وانت داخل عليه خلاص!')
-          fetch('/api/students/track-login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ studentId: (data.student || {}).id })
-          }).catch(function () {})
+        /* (Z-30) القبول التلقائي: لو الطالب اتقبل فورًا (approved) يدخل
+           المنصة على طول بنفس بيانات التسجيل — من غير شاشة «قيد المراجعة».
+           النزول لشاشة الانتظار بيحصل بس لو الأدمن مقفّل القبول التلقائي */
+        var newStu = data && data.student
+        if (newStu && (newStu.status === 'approved' || newStu.status === 'paid')) {
+          try {
+            var autoRes = await fetch('/api/students?phone=' + encodeURIComponent(phone.trim()) + '&password=' + encodeURIComponent(normPasswordInput(password)) + '&deviceId=' + encodeURIComponent(getDeviceId()) + '&deviceIds=' + encodeURIComponent(JSON.stringify(getDeviceCandidates())) + '&deviceTraits=' + encodeURIComponent(JSON.stringify(getDeviceTraits())) + '&deviceType=' + encodeURIComponent(getDeviceType()), { cache: 'no-store' })
+            var autoData = await autoRes.json()
+            var autoList = (autoData && autoData.students) || []
+            var autoStudent: any = null
+            var autoTyped = String(phone.trim()).replace(/[^0-9]/g, '')
+            if (autoTyped.length === 12 && autoTyped.indexOf('20') === 0) autoTyped = '0' + autoTyped.slice(2)
+            else if (autoTyped.length > 11) autoTyped = autoTyped.slice(autoTyped.length - 11)
+            for (var ai = 0; ai < autoList.length; ai++) {
+              var lp = String(autoList[ai].phone || '').replace(/[^0-9]/g, '')
+              if (lp === autoTyped) { autoStudent = autoList[ai]; break }
+            }
+            if (autoStudent && (autoStudent.status === 'approved' || autoStudent.status === 'paid')) {
+              setCurrentStudent(autoStudent); setView('student-portal')
+              toast.success('أهلاً بيك في المنصة يا ' + autoStudent.name + ' — حسابك اتفعّل فورًا وابدأ تعلّم على طول! 🎉', { duration: 6000 })
+              fetch('/api/students/track-login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ studentId: autoStudent.id }) }).catch(function () {})
+              setLoading(false)
+              return
+            }
+          } catch (autoErr) { /* أي فشل في الدخول التلقائي → نكمل كأنه pending عادي */ }
         }
+        setCurrentStudent(data.student); setView('student-pending'); toast.success('تم تسجيل طلبك بنجاح! خش اعمل تسجيل دخول وشوف اتقبلت ولا لسه')
       }
       else { toast.error(data.error || 'حدث خطأ في التسجيل') }
     } catch (e) { toast.error('حدث خطأ في الاتصال') }

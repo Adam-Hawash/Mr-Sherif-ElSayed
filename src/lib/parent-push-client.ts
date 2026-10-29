@@ -35,6 +35,39 @@ export function urlBase64ToUint8Array(base64String: string): Uint8Array {
 /* حالة إذن الإشعارات في البراوزر */
 export type PushPermState = 'granted' | 'denied' | 'default' | 'unsupported'
 
+/* ============================================================
+   (Z-30) كشف سياق المتصفح — درس من شكوى المستر: الصورة اللي بعتها
+   كانت من متصفح داخلي (جوه فيسبوك/واتساب) والرسالة كانت
+   «مقفلتش نافذة الإذن» والمشكلة الحقيقية إن المتصفح الداخلي أصلاً
+   مش بيسمح ببرومبت الإذن — فبنرجّع سبب واضح بدل رسالة مضللة.
+   ============================================================ */
+export type PushContext = 'ok' | 'inapp' | 'ios-browser'
+
+export function detectPushContext(): PushContext {
+  try {
+    if (typeof window === 'undefined' || !navigator) return 'ok'
+    var ua = String(navigator.userAgent || '')
+    /* متصفحات داخلية (in-app webviews) — مش بتسمح ببرومبت إذن الإشعارات */
+    var inAppMarkers = ['FBAN/', 'FBAV/', 'FB_IAB', 'Instagram', 'Line/', 'MicroMessenger', 'musical_ly', 'Bytedance', 'TikTok', 'Snapchat', 'Pinterest', 'Twitter', 'X/', 'LinkedIn', 'GSA/', ' Hey ', 'WhatsApp']
+    for (var i = 0; i < inAppMarkers.length; i++) {
+      if (ua.indexOf(inAppMarkers[i]) !== -1) return 'inapp'
+    }
+    /* Android WebView خام (مش كروم) — برضه بيفشل البرومبت بصمت */
+    if (/Android/.test(ua) && /;\s*wv\)/.test(ua)) return 'inapp'
+    /* آيفون/آيباد في سفاري عادي (مش تطبيق مثبت) — Web Push على iOS
+       بيشتغل من التطبيق المثبت على الشاشة الرئيسية بس */
+    var isIOS = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && (navigator as any).maxTouchPoints > 1)
+    if (isIOS) {
+      var standalone = false
+      try { standalone = window.matchMedia('(display-mode: standalone)').matches } catch (e1) {}
+      if (!standalone && !(navigator as any).standalone) return 'ios-browser'
+    }
+    return 'ok'
+  } catch (e) {
+    return 'ok'
+  }
+}
+
 export function getPushPermissionState(): PushPermState {
   try {
     if (typeof window === 'undefined') return 'unsupported'
@@ -124,8 +157,10 @@ async function ensureSWReady(): Promise<ServiceWorkerRegistration> {
  */
 export async function enableParentPush(parentId: string): Promise<{ ok: boolean; reason?: string }> {
   var result = await enableParentPushOnce(parentId)
-  /* (و90) إعادة محاولة كاملة تلقائية مرة واحدة — شكاوى «التالتة اللي ظبطت» */
-  if (!result.ok && result.reason !== 'denied' && result.reason !== 'dismissed' && result.reason !== 'unsupported') {
+  /* (و90) إعادة محاولة كاملة تلقائية مرة واحدة — شكاوى «التالتة اللي ظبطت»
+     (Z-30) السبب الجديدة (inapp/ios-browser) مبتعادش تُعاد محاوتها تلقائيًا —
+     إعادة المحاولة من غير إيماءة مستخدم مبتنفعش وممكن تضيع محاولات */
+  if (!result.ok && ['denied', 'dismissed', 'unsupported', 'inapp', 'ios-browser'].indexOf(result.reason || '') === -1) {
     await wait(900)
     result = await enableParentPushOnce(parentId)
   }
@@ -134,6 +169,11 @@ export async function enableParentPush(parentId: string): Promise<{ ok: boolean;
 
 async function enableParentPushOnce(parentId: string): Promise<{ ok: boolean; reason?: string }> {
   try {
+    /* (Z-30) 0) سياق المتصفح — نكشف المشكلة قبل ما نحاول ونرجّع سبب صريح
+       بدل «مقفلتش نافذة الإذن» المضللة في المتصفحات الداخلية */
+    var ctx = detectPushContext()
+    if (ctx === 'inapp') return { ok: false, reason: 'inapp' }
+    if (ctx === 'ios-browser') return { ok: false, reason: 'ios-browser' }
     /* 1) دعم البراوزر */
     if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
       return { ok: false, reason: 'unsupported' }
@@ -249,5 +289,32 @@ export async function sendTestParentPush(parentId: string): Promise<{ ok: boolea
     return { ok: !!(json && json.ok), sent: sentN, message: String((json && json.message) || '') }
   } catch (e) {
     return { ok: false, sent: -1, message: '' }
+  }
+}
+
+/* ============================================================
+   (Z-30) شفاء ذاتي للاشتراكات — جذر شكوى «الحساب مش متصل بجهاز معين»:
+   قاعدة البيانات على الاستضافة بترجع نسخة جديدة بعد كل نشر/بارد،
+   فاشتراكات الأجهزة بتضيع من جدول ParentPushSubscription رغم إن
+   الجهاز لسه مشترك فعلًا والإذن ممنوح. الحل: لما الإشعار التجريبي
+   يرجّع sent = 0 والإذن granted — نعيد حفظ نفس الاشتراك عند السيرفر
+   تلقائيًا (من غير أي برومبت) ونجرب تاني. لو نجح — ولي الأمر ما
+   يحسش بحاجة أصلًا.
+   ============================================================ */
+export async function healParentPushIfNeeded(parentId: string): Promise<{ healed: boolean; sent: number; message?: string }> {
+  try {
+    /* لازم الإذن يكون granted وسياق المتصفح سليم — غير كده مفيش حاجة نصلحها */
+    if (getPushPermissionState() !== 'granted') return { healed: false, sent: 0 }
+    if (detectPushContext() !== 'ok') return { healed: false, sent: 0 }
+    /* نعيد تشغيل التدفق كاملًا — بيعيد استخدام الاشتراك الموجود (نفس المفتاح)
+       وبس يعيد حفظه عند السيرفر — من غير أي برومبت لأن الإذن granted بالفعل */
+    var r = await enableParentPushOnce(parentId)
+    if (!r.ok) return { healed: false, sent: 0 }
+    setParentPushFlag(parentId, true)
+    /* نجرب الإشعار التجريبي تاني بعد الشفاء */
+    var t = await sendTestParentPush(parentId)
+    return { healed: true, sent: t.sent, message: t.message }
+  } catch (e) {
+    return { healed: false, sent: 0 }
   }
 }
