@@ -340,8 +340,15 @@ export async function notifyAssignmentPosted(opts: { kind: 'exam' | 'homework'; 
    ============================================================ */
 var _lastSweepAt = 0
 var _sweeping = false
-export async function sweepAssignmentNotifications(opts?: { force?: boolean }): Promise<{ posted: number; due24: number; overdue: number; skipped: boolean }> {
-  var out = { posted: 0, due24: 0, overdue: 0, skipped: false }
+/* (و97) ميزانية أمان — أول تشغيل على قاعدة بيانات قديمة ممنوع يغرق
+   أولياء الأمور بمئات الإشعارات في ثانية ولا يضرب timeout الفانكشن:
+   الماسح بيمشي على 3 عناصر كحد أقصى في التشغيلة الواحدة (الأقدم أولًا)
+   وبحد أقصى 120 إشعار — والتشغيلات الجاية بتكمّل بالتدريج (45 ثانية
+   بين كل تشغيل + المفاتيح بتمنع التكرار) */
+var SWEEP_MAX_ITEMS = 3
+var SWEEP_MAX_NOTIFS = 120
+export async function sweepAssignmentNotifications(opts?: { force?: boolean }): Promise<{ posted: number; due24: number; overdue: number; skipped: boolean; budgetReached?: boolean }> {
+  var out = { posted: 0, due24: 0, overdue: 0, skipped: false, budgetReached: false }
   try {
     var now = Date.now()
     if (!opts || !opts.force) {
@@ -350,6 +357,12 @@ export async function sweepAssignmentNotifications(opts?: { force?: boolean }): 
     _sweeping = true
     _lastSweepAt = now
     await ensureAssignmentTables()
+
+    var notifs = 0
+    var budgetHit = function (): boolean {
+      if (notifs >= SWEEP_MAX_NOTIFS) { out.budgetReached = true; return true }
+      return false
+    }
 
     var icon = '/push-icon.png'
     try { icon = await resolveParentPushIcon() } catch (eI) {}
@@ -389,10 +402,11 @@ export async function sweepAssignmentNotifications(opts?: { force?: boolean }): 
     } catch (eH) { console.error('[assignment-notify] homework sweep query failed (ignored):', eH) }
 
     /* أحدث أولًا + سقف أمان */
-    items.sort(function (a: any, b: any) { return String(b.createdAt || '').localeCompare(String(a.createdAt || '')) })
+    /* الأقدم أولًا — الميزانية بتوزع الباك-لوج على التشغيلات بالتدريج */
+    items.sort(function (a: any, b: any) { return String(a.createdAt || '').localeCompare(String(b.createdAt || '')) })
     if (items.length > 60) items = items.slice(0, 60)
 
-    for (var k = 0; k < items.length; k++) {
+    for (var k = 0; k < items.length && k < SWEEP_MAX_ITEMS; k++) {
       var it = items[k]
       if (!it || !it.id) continue
       var kind: 'exam' | 'homework' = it.kind === 'exam' ? 'exam' : 'homework'
@@ -449,6 +463,8 @@ export async function sweepAssignmentNotifications(opts?: { force?: boolean }): 
           await writeStudentNotice(st1.id, 'exam', '⚠️ امتحان «' + String(it.title) + '» فاضل عليه أقل من 24 ساعة', 'يلا ادخل وحل بسرعة قبل الوقت يخلص (' + fmtAr(endsAt as Date) + ')')
           await markSweep(k1)
           out.due24++
+          notifs++
+          if (budgetHit()) return out
         }
       }
 
@@ -478,6 +494,8 @@ export async function sweepAssignmentNotifications(opts?: { force?: boolean }): 
           await writeStudentNotice(st2.id, 'exam', '⛔ وقت امتحان «' + String(it.title) + '» خلص وما حليتش', 'المرة الجاية يلا تدخل تحل قبل الوقت يخلص')
           await markSweep(k2)
           out.overdue++
+          notifs++
+          if (budgetHit()) return out
         }
         continue
       }
@@ -508,6 +526,8 @@ export async function sweepAssignmentNotifications(opts?: { force?: boolean }): 
           await writeStudentNotice(st3.id, kind, emoji + ' ' + label + ' «' + String(it.title) + '» نزل من أكتر من 24 ساعة وما حليتوش', 'يلا ادخل حله دلوقتي قبل ما تتراكم عليك')
           await markSweep(k3)
           out.overdue++
+          notifs++
+          if (budgetHit()) return out
         }
       }
     }
