@@ -224,6 +224,19 @@ var _pnTableReady = false
 export async function ensureParentNotificationsTable(force?: boolean): Promise<void> {
   if (_pnTableReady && !force) return
   try {
+    /* (2026-و97) فحص شكل الجدول — لو جدول قديم شكله مختلف (من نسخة أقدم)
+       الـ CREATE IF NOT EXISTS مش هيصلحه فالـ INSERT بيفشل بصمت
+       والإشعارات مش بتوصل — بنكشف الشكل الغلط ونعيد بناء الجدول */
+    try {
+      var cols: any = await db.$queryRawUnsafe('PRAGMA table_info(parent_notifications)')
+      var names: string[] = (cols || []).map(function (c: any) { return String(c && c.name || '').toLowerCase() })
+      var need = ['id', 'parent_id', 'student_name', 'message', 'is_read', 'created_at']
+      var ok = need.every(function (n) { return names.indexOf(n) !== -1 })
+      if (names.length > 0 && !ok) {
+        console.warn('[parent-notify] parent_notifications shape mismatch — rebuilding (cols: ' + names.join(',') + ')')
+        try { await db.$executeRawUnsafe('DROP TABLE parent_notifications') } catch (eD) {}
+      }
+    } catch (eP) {}
     await db.$executeRawUnsafe("CREATE TABLE IF NOT EXISTS parent_notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, parent_id TEXT NOT NULL DEFAULT '', student_name TEXT NOT NULL DEFAULT '', message TEXT NOT NULL DEFAULT '', is_read INTEGER NOT NULL DEFAULT 0, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)")
     try { await db.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS idx_pn_parent ON parent_notifications(parent_id, is_read)') } catch (e) {}
     try { await db.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS idx_pn_created ON parent_notifications(created_at)') } catch (e) {}

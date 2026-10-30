@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { db } from '@/lib/db'
-import { ensureParentNotificationsTable, normalizeParentPhone } from '@/lib/parent-notify'
+import { ensureParentNotificationsTable, normalizeParentPhone, resolveParentPushIcon } from '@/lib/parent-notify'
+/* (2026-و97) ماسح إشعارات الواجبات/الامتحانات — بينادي بأمان كل ما ولي الأمر يفتح إشعاراته */
+import { sweepAssignmentNotifications } from '@/lib/assignment-notify'
 
 /* (2026-و37/و38) شفاء ذاتي لجدول Parent — نفس حماية مسارَي الدخول والنتايج */
 var parentDdlDone: Promise<void> | null = null
@@ -52,6 +54,15 @@ export async function GET(request: NextRequest) {
     }
 
     var phone = normalizeParentPhone(String(parent.phone || ''))
+
+    /* (2026-و97) ماسح الإشعارات — fire-and-forget: بيولد إشعارات النزول
+       والتحذير والـ 24 ساعة الناقصة (متكرر-safe بمفتاح منع تكرار) */
+    try {
+      after(async function () {
+        try { await sweepAssignmentNotifications() } catch (sE) { console.error('[parent-notif] sweep error (ignored):', sE) }
+      })
+    } catch (sE2) {}
+
     var rows: any = []
     try {
       rows = await db.$queryRawUnsafe(
@@ -88,7 +99,11 @@ export async function GET(request: NextRequest) {
     var unread = 0
     for (var u = 0; u < list.length; u++) { if (!list[u].isRead) unread++ }
 
-    return NextResponse.json({ ok: true, notifications: list, unread: unread })
+    /* (2026-و97) صورة الفافيكون بتاعة المنصة — طلب المستر: الإشعارات كلها بصورة المنصة */
+    var siteIcon = '/push-icon.png'
+    try { siteIcon = await resolveParentPushIcon() } catch (siE) {}
+
+    return NextResponse.json({ ok: true, notifications: list, unread: unread, site: { icon: siteIcon } })
   } catch (err) {
     console.error('Parent notifications GET error:', err)
     return NextResponse.json({ error: 'حدث خطأ مؤقت في السيرفر — جرب تاني بعد لحظات' }, { status: 500 })

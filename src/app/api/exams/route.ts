@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { db, safeWrite } from '@/lib/db'
 import { notifyStudents } from '@/lib/notify'
+/* (2026-و97) إشعار فوري لولي الأمر: امتحان جديد نزل */
+import { notifyAssignmentPosted } from '@/lib/assignment-notify'
 import { notifyParentsOfNewContent } from '@/lib/parent-notify'
 import { isAdmin } from '@/lib/video-guard'
 
@@ -314,6 +316,25 @@ export async function POST(request: NextRequest) {
         /* (2026-ص5) إشعار ولي الأمر بالمحتوى الجديد — تيجي على ولي الأمر وللطالب */
         try { await notifyParentsOfNewContent({ studentIds: nIds, grade: String(grade || ''), kind: 'exam', title: String(title), body: 'اتبعت امتحان جديد — تابع مع ابني/بنتي من شاشة ولي الأمر' }) } catch (npE) {}
     } catch (nE) {}
+
+    /* (2026-و97) إشعار فوري لولي الأمر: امتحان جديد نزل على ابنه —
+       fire-and-forget بعد الرد (الطالب واخد إشعاره فوق من notifyStudents) */
+    try {
+      var ex97 = exam as any
+      after(async function () {
+        try {
+          await notifyAssignmentPosted({
+            kind: 'exam',
+            id: String(ex97 && ex97.id || ''),
+            title: String(title || ''),
+            grade: String(grade || ''),
+            endsAt: (ex97 && ex97.endsAt) || null,
+            targetStudentIds: targetIds,
+            targetGroupIds: targetGids,
+          })
+        } catch (e97) { console.error('[exam-post] parent posted notify error (ignored):', e97) }
+      })
+    } catch (e97) { console.error('[exam-post] after() setup error (ignored):', e97) }
 
     return NextResponse.json({ message: 'Exam added', exam }, { status: 201 })
   } catch (error: any) {

@@ -20,6 +20,18 @@ var _notificationTableReady = false
 async function ensureNotificationTable(): Promise<void> {
   if (_notificationTableReady) return
   try {
+    /* (2026-و97) فحص شكل الجدول — جدول قديم شكله مختلف بيتعمله rebuild
+       (كان بيسبب فشل INSERT بصمت والإشعارات ما كانتش بتوصل) */
+    try {
+      var cols: any = await db.$queryRawUnsafe('PRAGMA table_info(Notification)')
+      var names: string[] = (cols || []).map(function (c: any) { return String(c && c.name || '').toLowerCase() })
+      var need = ['id', 'studentid', 'type', 'title', 'body', 'read', 'createdat']
+      var ok = need.every(function (n) { return names.indexOf(n) !== -1 })
+      if (names.length > 0 && !ok) {
+        console.warn('[notify] Notification shape mismatch — rebuilding (cols: ' + names.join(',') + ')')
+        try { await db.$executeRawUnsafe('DROP TABLE Notification') } catch (eD) {}
+      }
+    } catch (eP) {}
     await db.$executeRawUnsafe("CREATE TABLE IF NOT EXISTS Notification (id TEXT PRIMARY KEY, studentId TEXT NOT NULL, type TEXT NOT NULL DEFAULT 'general', title TEXT NOT NULL, body TEXT NOT NULL DEFAULT '', read INTEGER NOT NULL DEFAULT 0, createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)")
     try { await db.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS idx_notification_student ON Notification(studentId, read)') } catch (e) {}
     try { await db.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS idx_notification_created ON Notification(createdAt)') } catch (e) {}

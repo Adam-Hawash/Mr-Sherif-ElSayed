@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { BellRing, CheckCheck, Loader2, MessageSquareText } from 'lucide-react'
+import { CheckCheck, Loader2, MessageSquareText } from 'lucide-react'
 
 interface ParentNotificationRow {
   id: number
@@ -50,6 +50,9 @@ export default function ParentNotificationsCard({ parentId }: { parentId: string
   var mkState = useState(false)
   var marking = mkState[0]
   var setMarking = mkState[1]
+  var iconState = useState('/push-icon.png')
+  var siteIcon = iconState[0]
+  var setSiteIcon = iconState[1]
 
   var load = useCallback(async function () {
     if (!parentId) return
@@ -57,7 +60,10 @@ export default function ParentNotificationsCard({ parentId }: { parentId: string
     try {
       var res = await fetch('/api/parent/notifications?parentId=' + encodeURIComponent(parentId), { cache: 'no-store' })
       var json = await res.json()
-      if (res.ok && json && json.ok) setRows(Array.isArray(json.notifications) ? json.notifications : [])
+      if (res.ok && json && json.ok) {
+        setRows(Array.isArray(json.notifications) ? json.notifications : [])
+        if (json.site && json.site.icon) setSiteIcon(String(json.site.icon))
+      }
     } catch (e) {}
     setLoading(false)
   }, [parentId])
@@ -100,8 +106,9 @@ export default function ParentNotificationsCard({ parentId }: { parentId: string
       <CardContent className="p-5">
         <div className="flex items-center justify-between gap-3 mb-3">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="relative shrink-0 h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center">
-              <BellRing className="h-4.5 w-4.5 text-primary" />
+            <div className="relative shrink-0 h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center overflow-hidden">
+              {/* (2026-و97) صورة المنصة (الفافيكون) بدل الجرس */}
+              <img src={siteIcon} alt="شعار المنصة" className="h-7 w-7 object-contain" />
               {unread > 0 && (
                 <span className="absolute -top-1.5 -left-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center" aria-label={unread + ' إشعار جديد'}>
                   {unread > 9 ? '9+' : unread}
@@ -146,7 +153,8 @@ export default function ParentNotificationsCard({ parentId }: { parentId: string
                   className={'rounded-xl border px-3.5 py-3 transition-colors ' + (unreadRow ? 'border-primary/30 bg-primary/10 cursor-pointer hover:bg-primary/15' : 'border-border bg-card')}
                 >
                   <div className="flex items-start gap-2.5">
-                    <span className={'mt-1.5 h-2 w-2 shrink-0 rounded-full ' + (unreadRow ? 'bg-primary' : 'bg-muted-foreground/25')} aria-hidden="true" />
+                    {/* (2026-و97) الفافيكون بتاعة المنصة على كل إشعار */}
+                    <img src={siteIcon} alt="" aria-hidden="true" className="mt-0.5 h-8 w-8 shrink-0 rounded-lg border border-border/60 bg-background object-contain p-0.5" />
                     <div className="min-w-0 flex-1">
                       <p className={'whitespace-pre-line break-words text-[13px] leading-relaxed ' + (unreadRow ? 'font-bold text-foreground' : 'text-muted-foreground')}>{r.message}</p>
                       <div className="mt-1.5 flex items-center gap-2">

@@ -8,6 +8,10 @@
 // ============================================================
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { after } from 'next/server'
+/* (2026-و97) ماسح إشعارات الواجبات/الامتحانات — بينادي بأمان كل ما الطالب يفتح جرس الإشعارات */
+import { sweepAssignmentNotifications } from '@/lib/assignment-notify'
+import { resolveParentPushIcon } from '@/lib/parent-notify'
 
 async function ensureTable(): Promise<void> {
   try {
@@ -21,6 +25,13 @@ export async function GET(request: NextRequest) {
     var studentId = new URL(request.url).searchParams.get('studentId') || ''
     if (!studentId) return NextResponse.json({ notifications: [], unreadCount: 0 })
     await ensureTable()
+    /* (2026-و97) ماسح الإشعارات — fire-and-forget: بيولد تحذيرات الـ 24 ساعة
+       والنزول الجديد (متكرر-safe بمفتاح منع تكرار) */
+    try {
+      after(async function () {
+        try { await sweepAssignmentNotifications() } catch (sE) { console.error('[notif] sweep error (ignored):', sE) }
+      })
+    } catch (sE2) {}
     /* تنظيف هادئ: إشعارات أقدم من 60 يوم تشيل نفسها — الجدول ميبقاش ضخم */
     try { await db.$executeRawUnsafe("DELETE FROM Notification WHERE createdAt < datetime('now', '-60 days')") } catch (e) {}
     var rows: any = await db.$queryRawUnsafe(
@@ -31,11 +42,15 @@ export async function GET(request: NextRequest) {
       'SELECT COUNT(*) as c FROM Notification WHERE studentId = ? AND read = 0',
       studentId
     )
+    /* (2026-و97) صورة الفافيكون بتاعة المنصة — طلب المستر: الإشعارات كلها بصورة المنصة */
+    var siteIcon = '/push-icon.png'
+    try { siteIcon = await resolveParentPushIcon() } catch (siE) {}
     return NextResponse.json({
       notifications: (rows || []).map(function (r: any) {
         return { id: r.id, type: r.type, title: r.title, body: r.body, read: !!Number(r.read), createdAt: r.createdAt }
       }),
       unreadCount: unread && unread.length ? Number(unread[0].c) || 0 : 0,
+      site: { icon: siteIcon },
     })
   } catch (e) {
     console.error('[notifications] GET error:', e)

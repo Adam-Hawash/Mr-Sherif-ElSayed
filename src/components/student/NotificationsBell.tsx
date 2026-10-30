@@ -22,15 +22,6 @@ interface NotifItem {
   createdAt: string
 }
 
-var TYPE_ICONS: Record<string, string> = {
-  complaint_reply: '💬',
-  book: '📕',
-  exam: '📝',
-  homework: '📚',
-  announcement: '📣',
-  general: '🔔',
-}
-
 export function NotificationsBell({ studentId }: { studentId: string }) {
   var openState = React.useState(false)
   var open = openState[0]
@@ -41,6 +32,9 @@ export function NotificationsBell({ studentId }: { studentId: string }) {
   var unreadState = React.useState(0)
   var unread = unreadState[0]
   var setUnread = unreadState[1]
+  var iconState = React.useState('/push-icon.png')
+  var siteIcon = iconState[0]
+  var setSiteIcon = iconState[1]
   var boxRef = React.useRef<HTMLDivElement | null>(null)
 
   var load = React.useCallback(async function () {
@@ -51,6 +45,7 @@ export function NotificationsBell({ studentId }: { studentId: string }) {
       if (res.ok) {
         setItems(json.notifications || [])
         setUnread(Number(json.unreadCount) || 0)
+        if (json.site && json.site.icon) setSiteIcon(String(json.site.icon))
       }
     } catch (e) { /* صامت — الإشعارات مش سبب لكسر حاجة */ }
   }, [studentId])
@@ -125,7 +120,8 @@ export function NotificationsBell({ studentId }: { studentId: string }) {
                 return (
                   <div key={n.id} className={'px-3 py-2.5 border-b border-border/60 last:border-0 ' + (n.read ? 'opacity-70' : 'bg-primary/5')}>
                     <div className="flex items-start gap-2">
-                      <span className="shrink-0 text-sm mt-0.5">{TYPE_ICONS[n.type] || '🔔'}</span>
+                      {/* (2026-و97) الفافيكون بتاعة المنصة على كل إشعار */}
+                      <img src={siteIcon} alt="" aria-hidden="true" className="mt-0.5 h-7 w-7 shrink-0 rounded-lg border border-border/60 bg-background object-contain p-0.5" />
                       <div className="min-w-0 flex-1">
                         <p className={'text-xs leading-snug break-words ' + (n.read ? 'text-foreground' : 'font-bold text-foreground')}>{n.title}</p>
                         {n.body && <p className="text-[11px] text-muted-foreground mt-0.5 whitespace-pre-wrap break-words">{n.body}</p>}
