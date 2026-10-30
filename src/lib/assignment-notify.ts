@@ -223,11 +223,14 @@ async function assignmentAudience(kind: string, item: any): Promise<{ id: string
         for (var g = 0; g < groups.length; g++) args.push(groups[g])
       }
       if (conds.length === 0) conds.push('1=0') /* استهداف بس من غير عمود مجموعات → مفيش جمهور */
-      rows = await db.$queryRawUnsafe("SELECT id, name" + (hasPhone ? ', parentPhone' : ", '' as parentPhone") + " FROM Student WHERE status IN ('approved','paid') AND (" + conds.join(' OR ') + ')', ...args)
+      /* (و97-إصلاح) status='active' — القبول التلقائي بيسجل الطلاب الجدد active
+         والفلتر القديم (approved,paid) كان بيستبعدهم كلهم بصمت = مفيش إشعارات
+         للطلاب الجدد أصلًا — ده كان السبب الجذري لشكوى المستر */
+      rows = await db.$queryRawUnsafe("SELECT id, name" + (hasPhone ? ', parentPhone' : ", '' as parentPhone") + " FROM Student WHERE status IN ('approved','paid','active') AND (" + conds.join(' OR ') + ')', ...args)
     } else {
       var cols2 = await studentColumns()
       var hasPhone2 = cols2.indexOf('parentPhone') !== -1
-      rows = await db.$queryRawUnsafe("SELECT id, name" + (hasPhone2 ? ', parentPhone' : ", '' as parentPhone") + " FROM Student WHERE status IN ('approved','paid') AND grade = ?", String(item.grade || ''))
+      rows = await db.$queryRawUnsafe("SELECT id, name" + (hasPhone2 ? ', parentPhone' : ", '' as parentPhone") + " FROM Student WHERE status IN ('approved','paid','active') AND grade = ?", String(item.grade || ''))
     }
   } catch (eQ) {
     console.error('[assignment-notify] audience query failed (ignored):', eQ)
@@ -263,7 +266,8 @@ export async function notifyAssignmentPosted(opts: { kind: 'exam' | 'homework'; 
     await ensureAssignmentTables()
     var key = 'posted:' + opts.kind + ':' + String(opts.id)
     if (await sweepDone(key)) return
-    await markSweep(key)
+    /* (و97-إصلاح) المفتاح بيتسجل **بعد** الكتابة مش قبلها — لو الكتابة فشلت
+       التشغيلة الجاية بتعيد المحاولة بدل ما يضيع الإشعار للأبد */
 
     var audience = await assignmentAudience(opts.kind, {
       grade: opts.grade,
@@ -327,6 +331,9 @@ export async function notifyAssignmentPosted(opts: { kind: 'exam' | 'homework'; 
         await writeParentNotice(targets[t], stu.name, message, payload)
       }
     }
+
+    /* (و97-إصلاح) تسجيل المفتاح بعد إتمام الكتابة — الإشعار مضمون */
+    await markSweep(key)
   } catch (e) {
     console.error('[assignment-notify] posted notify failed (ignored):', e)
   }

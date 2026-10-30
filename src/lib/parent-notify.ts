@@ -395,7 +395,7 @@ export async function notifyParentsOfNewContent(opts: { studentIds?: string[]; g
     if (ids.length === 0 && opts.grade) {
       try {
         var rowsG: any = await db.$queryRawUnsafe(
-          "SELECT id FROM Student WHERE status IN ('approved','paid') AND grade = ?",
+          "SELECT id FROM Student WHERE status IN ('approved','paid','active') AND grade = ?",
           String(opts.grade)
         )
         ids = (rowsG || []).map(function (r: any) { return String(r.id) })

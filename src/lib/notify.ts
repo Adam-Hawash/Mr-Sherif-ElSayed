@@ -82,14 +82,14 @@ export async function notifyStudents(opts: {
     if (ids.length === 0 && opts.grade) {
       try {
         var rows: any = await db.$queryRawUnsafe(
-          "SELECT id FROM Student WHERE status IN ('approved','paid') AND grade = ?",
+          "SELECT id FROM Student WHERE status IN ('approved','paid','active') AND grade = ?",
           opts.grade
         )
         ids = (rows || []).map(function (r: any) { return String(r.id) })
       } catch (eG) {
         try {
           var rows2: any = await db.$queryRawUnsafe(
-            "SELECT id FROM Student WHERE status IN ('approved','paid')"
+            "SELECT id FROM Student WHERE status IN ('approved','paid','active')"
           )
           ids = (rows2 || []).map(function (r: any) { return String(r.id) })
         } catch (eG2) { ids = [] }
@@ -97,7 +97,7 @@ export async function notifyStudents(opts: {
     }
     if (ids.length === 0 && !opts.grade) {
       try {
-        var all: any = await db.$queryRawUnsafe("SELECT id FROM Student WHERE status IN ('approved','paid')")
+        var all: any = await db.$queryRawUnsafe("SELECT id FROM Student WHERE status IN ('approved','paid','active')")
         ids = (all || []).map(function (r: any) { return String(r.id) })
       } catch (eA) { ids = [] }
     }
