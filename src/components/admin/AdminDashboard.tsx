@@ -24,7 +24,7 @@ import {
   PlayCircle, Pause, Film, Search, FileDown, PictureInPicture2, Save, Sparkles, Wallet,
   Video as VideoIcon, LinkIcon,
   ChevronLeft, CheckCircle2, Smartphone, RotateCcw, ShieldCheck, Monitor, Tablet, Flag, GraduationCap, UsersRound, PieChart, BookOpen, ChevronDown,
-  MessageCircle, MonitorPlay, Brain, Swords, EyeOff
+  MessageCircle, MonitorPlay, Brain, Swords, EyeOff, Zap
 } from 'lucide-react'
 import { AdminComplaints } from './AdminComplaints'
 import { CMSPanel } from './CMSPanel'
@@ -615,8 +615,34 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
   const gradesList = useGradesList()
   const [students, setStudents] = useState<Student[]>([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'paid' | 'rejected'>('pending')
+  const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'paid'>('pending')
   const [filterGrade, setFilterGrade] = useState('')
+
+  /* (Z-36) زرار القبول التلقائي جوه تاب الطلاب — طلب المستر:
+     «زرار القبول التلقائي عاوزه يبقى موجود أقدر أتحكم فيه» —
+     نفس مفتاح student_auto_approve بتاع شاشة الإعدادات (مفتاح واحد) */
+  const [autoApproveBar, setAutoApproveBar] = useState<boolean | null>(null)
+  const [autoApproveBarBusy, setAutoApproveBarBusy] = useState(false)
+  useEffect(() => {
+    var alive = true
+    fetch('/api/config?fresh=1').then(function (r) { return r.json() }).then(function (cfg: any) {
+      if (alive) setAutoApproveBar(String((cfg && cfg.student_auto_approve) ?? '1') !== '0')
+    }).catch(function () { if (alive) setAutoApproveBar(true) })
+    return function () { alive = false }
+  }, [])
+  const toggleAutoApproveBar = async () => {
+    var v = !(autoApproveBar !== false)
+    setAutoApproveBar(v); setAutoApproveBarBusy(true)
+    try {
+      const res = await fetch('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ student_auto_approve: v ? '1' : '0' }) })
+      if (res.ok) {
+        const cfg = useAppStore.getState().siteConfig
+        useAppStore.getState().setSiteConfig({ ...cfg, student_auto_approve: v ? '1' : '0' })
+        toast.success(v ? 'القبول التلقائي مفعّل — الطلاب الجدد يدخلوا فورًا' : 'القبول التلقائي متقفل — التسجيلات تستنى موافقتك من تاب «بانتظار»')
+      } else { toast.error('خطأ في الحفظ'); setAutoApproveBar(!v) }
+    } catch { toast.error('خطأ في الاتصال'); setAutoApproveBar(!v) }
+    setAutoApproveBarBusy(false)
+  }
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null)
   const [studentProgress, setStudentProgress] = useState<any>(null)
   const [loadingProgress, setLoadingProgress] = useState(false)
@@ -819,13 +845,26 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
               {gradesList.map((g) => <option key={g.ar} value={g.ar}>{(g.emoji ? g.emoji + ' ' : '') + g.ar}</option>)}
             </select>
             <div className="flex gap-1 bg-muted rounded-lg p-1">
-              {(['pending', 'all', 'approved', 'paid', 'rejected'] as const).map((f) => (
+              {(['pending', 'all', 'approved', 'paid'] as const).map((f) => (
                 <Button key={f} variant={filter === f ? 'default' : 'ghost'} size="sm" className="text-xs h-7 px-2" onClick={() => setFilter(f)}>
-                  {f === 'pending' ? 'بانتظار' : f === 'approved' ? 'مقبول (مجاني)' : f === 'paid' ? 'بفلوس' : f === 'rejected' ? 'Rejected' : 'الكل'}
+                  {f === 'pending' ? 'بانتظار' : f === 'approved' ? 'مقبول (مجاني)' : f === 'paid' ? 'بفلوس' : 'الكل'}
                 </Button>
               ))}
             </div>
-            {/* (Z-30) القبول التلقائي للطلاب بقا مفتاح واحد من شاشة الإعدادات — التبديل من هناك */}
+            {/* (Z-36) زرار القبول التلقائي — ظاهر هنا في تاب الطلاب بطلب المستر
+               (Z-30) وكمان موجود في شاشة الإعدادات — الاتنين نفس المفتاح */}
+            <Button
+              size="sm"
+              variant="outline"
+              className={"h-8 text-xs gap-1.5 " + (autoApproveBar ? "border-emerald-400 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-900/20" : "border-amber-400 text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-900/20")}
+              onClick={toggleAutoApproveBar}
+              disabled={autoApproveBarBusy || autoApproveBar === null}
+              title="لما يكون مفعّل: أي طالب يسجل يدخل المنصة فورًا. لما يتقفل: التسجيلات تبقى «قيد المراجعة» وتوافق عليها من تاب «بانتظار»"
+            >
+              {autoApproveBarBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+              {autoApproveBar === null ? '...' : autoApproveBar ? 'القبول التلقائي: مفعّل' : 'القبول التلقائي: متقفل'}
+            </Button>
+            {/* (ز19) فلتر Rejected اتشال — الحذف بقى نهائي حقيقي ومفيش رفض خالص (طلب المستر) */}
           </div>
         </div>
       </CardHeader>
