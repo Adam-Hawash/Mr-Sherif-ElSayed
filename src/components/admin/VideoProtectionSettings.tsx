@@ -14,6 +14,7 @@ import { Switch } from '@/components/ui/switch'
 import { Slider } from '@/components/ui/slider'
 import { ShieldCheck, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useAppStore } from '@/stores/app-store'
 
 function useConfig(key: string, defaultValue: string) {
   var st = useState<string>(defaultValue)
@@ -32,6 +33,8 @@ function useConfig(key: string, defaultValue: string) {
 }
 
 export function VideoProtectionSettings() {
+  // (Z-36a) كتابة /api/site-config بقت محتاجة أدمن موثّق (?adminId=...)
+  var adminId = useAppStore(function (s) { return s.currentAdmin?.id || '' })
   var wmEnabledC = useConfig('wm_enabled', '1')
   var wmEnabled = wmEnabledC[0]
   var setWmEnabled = wmEnabledC[1]
@@ -48,7 +51,7 @@ export function VideoProtectionSettings() {
   var save = async function (key: string, value: string) {
     setLoading(true)
     try {
-      var res = await fetch('/api/site-config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: key, value: value }) })
+      var res = await fetch('/api/site-config?adminId=' + encodeURIComponent(adminId), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: key, value: value }) })
       if (!res.ok) throw new Error()
     } catch {
       toast.error('خطأ في حفظ الإعداد')

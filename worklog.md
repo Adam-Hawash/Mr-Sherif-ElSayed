@@ -182,3 +182,16 @@ Work Log:
 Stage Summary:
 - المنصات كلها دلوقتي: نزول واجب/امتحان = إشعار فوري لولي الأمر (وللطالب) + تحذير 24 ساعة قبل قفل الامتحانات المحددة بوقت + تنبيه بعد 24 ساعة من غير حل — كل الإشعارات داخلية وPush بصورة فافيكون كل منصة — والسبب الجذري (استبعاد طلاب active) اتصلح في كل ملفات الإشعارات
 - للمستر: لو عايز تشغّل الماسح يدويًا في أي وقت: /api/notify-sweep?force=1 — والتشخيص: /api/notify-sweep?diag=1
+
+---
+Task ID: Z-36a
+Agent: Z.ai Code (Sub)
+Task: سد ثغرة /api/site-config — GET كان بيرجّع كل الصفوف الخام (حتى الأسرار) وPUT/POST مفتوحين لأي زائر
+
+Work Log:
+- src/app/api/site-config/route.ts: إعادة كتابة كاملة — GET بقى بيرجّع المفاتيح العامة بس (PUBLIC_KEYS = grades_data, schedule_data, video_sequence_lock, wm_enabled, wm_opacity, wm_interval) ومحدد الشكل {key, value, updatedAt} عشان مفيش سر يطلع؛ ولو all=1 + adminId موثّق (عبر isAdmin من @/lib/video-guard) بيرجّع كل الصفوف للوحة الأدمن. PUT/POST بقوا محتاجين isAdmin(adminId) وإلا 401 «غير مصرح»، مع رفض مفتاح session_secret بـ403 «مفتاح محمي»، وتحقق إن المفتاح string ≤120 حرف. POST كان create مفتوح — بقى نفس PUT (upsert) ورا توثيق الأدمن.
+- src/components/admin/GradesSchedulePanel.tsx: جبت adminId بنفس نمط المنصة (useAppStore(function (s) { return s.currentAdmin?.id || '' })) زي BooksManager بالظبط، وربطته بطلبَي PUT (grades_data وschedule_data) بـ ?adminId=' + encodeURIComponent(adminId).
+- src/components/admin/VideoProtectionSettings.tsx: أضفت استيراد useAppStore من @/stores/app-store ونفس نمط adminId، وربطته بـ PUT (wm_*). الـ GET فضل عادي لأنه بيقرا wm_enabled/wm_opacity/wm_interval وكلها مفاتيح عامة.
+- الفوتر: اتأكدت إن توقيع «Developed by Adam Hawash» موجود في src/components/landing/Footer.tsx (سطر 56: var madeByLabel = cfg.footer_made_by_label || 'Developed by Adam Hawash') — سيبته زي ما هو.
+التحقق: tsc نظيف على الملفات المتغيرة
+Stage Summary: الكونفج العام بس اللي بيخرج للعامة، وأي كتابة محتاجة أدمن موثّق بنفس نظام adminId بتاع المنصة
