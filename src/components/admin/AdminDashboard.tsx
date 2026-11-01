@@ -630,8 +630,9 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
     }).catch(function () { if (alive) setAutoApproveBar(true) })
     return function () { alive = false }
   }, [])
-  const toggleAutoApproveBar = async () => {
-    var v = !(autoApproveBar !== false)
+  /* (Z-36c) بياخد القيمة من السويتش على طول — لو اتنده من غير قيمة يقلب الحالة */
+  const toggleAutoApproveBar = async (vArg?: boolean) => {
+    var v = typeof vArg === 'boolean' ? vArg : !(autoApproveBar !== false)
     setAutoApproveBar(v); setAutoApproveBarBusy(true)
     try {
       const res = await fetch('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ student_auto_approve: v ? '1' : '0' }) })
@@ -851,19 +852,25 @@ function StudentsManager({ onStatsRefresh, onViewImage }: { onStatsRefresh: () =
                 </Button>
               ))}
             </div>
-            {/* (Z-36) زرار القبول التلقائي — ظاهر هنا في تاب الطلاب بطلب المستر
-               (Z-30) وكمان موجود في شاشة الإعدادات — الاتنين نفس المفتاح */}
-            <Button
-              size="sm"
-              variant="outline"
-              className={"h-8 text-xs gap-1.5 " + (autoApproveBar ? "border-emerald-400 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-900/20" : "border-amber-400 text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-900/20")}
-              onClick={toggleAutoApproveBar}
-              disabled={autoApproveBarBusy || autoApproveBar === null}
+            {/* (Z-36c) القبول التلقائي بقى سويتش حقيقي في تاب الطلاب — طلب المستر حرفيًا:
+               «عايز الزرار يبقى زي سويتش زي بتاع زيكولا ماث» — نفس سويتش شاشة الإعدادات
+               (Z-30) ونفس المفتاح student_auto_approve — مفتاح واحد لكل حتة */}
+            <div
+              className="flex items-center gap-2 h-8 pl-2.5 pr-2 rounded-lg border bg-card"
               title="لما يكون مفعّل: أي طالب يسجل يدخل المنصة فورًا. لما يتقفل: التسجيلات تبقى «قيد المراجعة» وتوافق عليها من تاب «بانتظار»"
             >
-              {autoApproveBarBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
-              {autoApproveBar === null ? '...' : autoApproveBar ? 'القبول التلقائي: مفعّل' : 'القبول التلقائي: متقفل'}
-            </Button>
+              {autoApproveBarBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" /> : <Zap className={"h-3.5 w-3.5 shrink-0 " + (autoApproveBar ? "text-emerald-500" : "text-muted-foreground")} />}
+              <span className="text-xs font-medium whitespace-nowrap">القبول التلقائي</span>
+              <Switch
+                checked={autoApproveBar === true}
+                onCheckedChange={function (v: boolean) { toggleAutoApproveBar(v) }}
+                disabled={autoApproveBarBusy || autoApproveBar === null}
+                aria-label="قبول الطلاب الجدد تلقائيًا"
+              />
+              <span className={"text-[10px] font-bold whitespace-nowrap " + (autoApproveBar ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400")}>
+                {autoApproveBar === null ? '...' : autoApproveBar ? 'مفعّل' : 'متقفل'}
+              </span>
+            </div>
             {/* (ز19) فلتر Rejected اتشال — الحذف بقى نهائي حقيقي ومفيش رفض خالص (طلب المستر) */}
           </div>
         </div>
