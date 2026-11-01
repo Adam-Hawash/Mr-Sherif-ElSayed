@@ -2308,7 +2308,7 @@ function ExamTrackingPanel({ onViewImage }: { onViewImage?: (src: string) => voi
       fd.append('type', 'exam')
       fd.append('grade', formGrade)
       var ctrl = new AbortController()
-      var tmr = setTimeout(function () { ctrl.abort() }, 180000)
+      var tmr = setTimeout(function () { ctrl.abort() }, 300000)
       var res = await fetch('/api/ai-extract', { method: 'POST', body: fd, signal: ctrl.signal })
       clearTimeout(tmr)
       var data = await res.json()
@@ -4018,7 +4018,7 @@ function ContentManager<T extends { id: string; grade: string; createdAt: string
       fd.append('type', 'exam')
       fd.append('grade', formGrade)
       var ctrl = new AbortController()
-      var tmr = setTimeout(function() { ctrl.abort() }, 180000)
+      var tmr = setTimeout(function() { ctrl.abort() }, 300000)
       var res = await fetch('/api/ai-extract', { method: 'POST', body: fd, signal: ctrl.signal })
       clearTimeout(tmr)
       var data = await res.json()
@@ -4775,7 +4775,7 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
         }
         // YouTube extraction
         var ctrl = new AbortController()
-        var tmr = setTimeout(function() { ctrl.abort() }, 180000)
+        var tmr = setTimeout(function() { ctrl.abort() }, 300000)
         var res = await fetch('/api/ai-extract-youtube', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -4824,7 +4824,7 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
             for (var attempt = 0; attempt < 2 && !chunkQs; attempt++) {
               try {
                 var ctrlP = new AbortController()
-                var tmrP = setTimeout(function() { ctrlP.abort() }, 180000)
+                var tmrP = setTimeout(function() { ctrlP.abort() }, 300000)
                 var resP = await fetch('/api/ai-extract-pages', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
@@ -4897,7 +4897,7 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
         fd.append('type', extractType)
         fd.append('grade', grade)
         var ctrl2 = new AbortController()
-        var tmr2 = setTimeout(function() { ctrl2.abort() }, 180000)
+        var tmr2 = setTimeout(function() { ctrl2.abort() }, 300000)
         var res2 = await fetch('/api/ai-extract', { method: 'POST', body: fd, signal: ctrl2.signal })
         clearTimeout(tmr2)
         var data2 = await res2.json()
@@ -5356,7 +5356,7 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
         for (var attempt = 0; attempt < 2 && !extractedChunk; attempt++) {
           try {
             var ctrlB = new AbortController()
-            var tmrB = setTimeout(function() { ctrlB.abort() }, 180000)
+            var tmrB = setTimeout(function() { ctrlB.abort() }, 300000)
             var resB = await fetch('/api/ai-extract-pages', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -5386,7 +5386,7 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
         var picked: any[] | null = null
         try {
           var ctrlS = new AbortController()
-          var tmrS = setTimeout(function() { ctrlS.abort() }, 180000)
+          var tmrS = setTimeout(function() { ctrlS.abort() }, 300000)
           var resS = await fetch('/api/ai-extract-pages', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

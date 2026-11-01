@@ -32,7 +32,7 @@ import { isWritingQuestion } from '@/lib/question-figures'
 import { ensureEnglishQuestions } from '@/lib/english-only'
 
 export const runtime = 'nodejs'
-export const maxDuration = 180
+export const maxDuration = 300
 
 var MAX_PAGES_PER_REQUEST = 30
 var BATCH_SIZE = 5

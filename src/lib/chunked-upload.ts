@@ -39,14 +39,57 @@ function uploadWithTimeout(url: string, options: RequestInit): Promise<Response>
 }
 
 /* 2026-و19 — محاولة إضافية أوتوماتيكية لكل جزء: فشل شبكة لحظي
- * مبيفشّلش الرفع كله (المستر كان شايف «فشل الرفع» كتير ببلاش) */
+ * مبيفشّلش الرفع كله (المستر كان شايف «فشل الرفع» كتير ببلاش)
+ * (Z-35) بقى 3 محاولات بفواصل متزايدة — الموبايل بيققط الاتصال
+ * كتير وسط الرفع فمحاولة واحدة مش كفاية */
 async function uploadChunkWithRetry(url: string, options: RequestInit): Promise<Response> {
-  try {
-    return await uploadWithTimeout(url, options)
-  } catch (err) {
-    await new Promise((r) => setTimeout(r, 900))
-    return uploadWithTimeout(url, options)
+  var attempts = [
+    { wait: 0 },
+    { wait: 900 },
+    { wait: 2200 },
+  ]
+  var lastErr: any = null
+  for (var i = 0; i < attempts.length; i++) {
+    if (attempts[i].wait) {
+      await new Promise((r) => setTimeout(r, attempts[i].wait))
+    }
+    try {
+      return await uploadWithTimeout(url, options)
+    } catch (err) {
+      lastErr = err
+    }
   }
+  throw lastErr || new Error('فشل الرفع')
+}
+
+/* (Z-35) قراءة رد السيرفر بأمان — لو السيرفر رجّع صفحة HTML (صفحة خطأ
+ * من Vercel/الشبكة) الـ res.json() كان يرمي «Unexpected token <» ورسالة
+ * ملهاش معنى. دلوقتي أي رد بيتترجم لرسالة عربية واضحة بسبب الفشل */
+async function readUploadError(res: Response): Promise<string> {
+  var detail = ''
+  try {
+    var text = await res.text()
+    try {
+      var j = JSON.parse(text)
+      detail = String((j && j.error) || '')
+    } catch (e) {
+      if (text && text.indexOf('<') === 0) detail = ''
+      else detail = text.slice(0, 120)
+    }
+  } catch (e2) {}
+  if (res.status === 401 || res.status === 403) {
+    return 'انتهت جلسة الدخول — حدّث الصفحة وسجّل دخول تاني'
+  }
+  if (res.status === 413) {
+    return 'الملف أكبر من الحد المسموح — استخدم وضع «لينك خارجي» للملفات الكبيرة'
+  }
+  if (res.status === 429) {
+    return 'محاولات رفع كتير في وقت قصير — استنى دقيقة وجرب تاني'
+  }
+  if (res.status >= 500) {
+    return 'مشكلة مؤقتة في السيرفر — جرب تاني بعد لحظات' + (detail ? ' (' + detail + ')' : '')
+  }
+  return detail || 'فشل الرفع (كود ' + res.status + ') — جرب تاني'
 }
 
 export interface ChunkedUploadResult {
@@ -86,8 +129,8 @@ async function uploadOneChunk(
   fd.append('category', category)
 
   const res = await uploadChunkWithRetry('/api/upload/chunk', { method: 'POST', body: fd })
+  if (!res.ok) throw new Error(await readUploadError(res))
   const data = await res.json()
-  if (!res.ok) throw new Error(data.error || `خطأ في رفع الجزء ${index + 1}`)
   return Number(data.received ?? end - start)
 }
 
@@ -107,8 +150,8 @@ async function finalizeUpload(
   fd.append('finalize', '1')
 
   const res = await uploadChunkWithRetry('/api/upload/chunk', { method: 'POST', body: fd })
+  if (!res.ok) throw new Error(await readUploadError(res))
   const data = await res.json()
-  if (!res.ok) throw new Error(data.error || 'فشل إتمام الرفع')
   return data
 }
 
@@ -133,8 +176,8 @@ async function uploadOnce(
     fd.append('category', category)
 
     const res = await uploadChunkWithRetry('/api/upload/chunk', { method: 'POST', body: fd })
+    if (!res.ok) throw new Error(await readUploadError(res))
     const data = await res.json()
-    if (!res.ok) throw new Error(data.error || 'فشل الرفع')
     verifySize(data, file.size)
     if (onProgress) onProgress(100)
     if (statusMsg) statusMsg('تم الرفع بنجاح!')
