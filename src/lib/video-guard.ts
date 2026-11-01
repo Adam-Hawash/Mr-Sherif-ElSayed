@@ -197,10 +197,38 @@ export async function checkSequentialUnlock(
   try {
     const video = await db.video.findUnique({ where: { id: videoId } })
     if (!video) return { ok: true }
-    const gradeVideos = await db.video.findMany({
+    var gradeVideos = await db.video.findMany({
       where: { grade: video.grade },
       orderBy: { createdAt: 'asc' },
-      select: { id: true, url: true, filePath: true, fileType: true, price: true },
+      select: { id: true, groupKey: true, url: true, filePath: true, fileType: true, price: true },
+    })
+    /* (ز28 — طلب المستر): الإخفاء = مش موجود. الفيديو المخفي عن الطالب
+       (VideoSchedule.hiddenStudentIds) أو الدرس المخفي كامل عنه (LessonHide)
+       ما بيدخلش في سلسلة التسلسل خالص — عشان فيديو الطالب مش شايفه
+       عمره ما يحجب اللي بعده. نفس القايمة اللي الطالب شايفها بالظبط. */
+    var hidBySchedule: Record<string, boolean> = {}
+    var hidGroups: Record<string, boolean> = {}
+    try {
+      var hSchRows: any[] = await db.$queryRawUnsafe('SELECT videoId, hiddenStudentIds FROM VideoSchedule')
+      for (var hsi = 0; hsi < (hSchRows || []).length; hsi++) {
+        var hSchIds: string[] = []
+        try { hSchIds = JSON.parse(String(hSchRows[hsi].hiddenStudentIds || '[]')) } catch (eHS) {}
+        if (Array.isArray(hSchIds) && hSchIds.indexOf(String(studentId)) !== -1) hidBySchedule[String(hSchRows[hsi].videoId || '')] = true
+      }
+    } catch (eHS2) { /* جدول ناقص — من غير إخفاء فيديوهات */ }
+    try {
+      var hLhRows: any[] = await db.$queryRawUnsafe('SELECT groupKey, studentIds FROM LessonHide')
+      for (var hli = 0; hli < (hLhRows || []).length; hli++) {
+        var hLhIds: string[] = []
+        try { hLhIds = JSON.parse(String(hLhRows[hli].studentIds || '[]')) } catch (eHL) {}
+        if (Array.isArray(hLhIds) && hLhIds.indexOf(String(studentId)) !== -1) hidGroups[String(hLhRows[hli].groupKey || '')] = true
+      }
+    } catch (eHL2) { /* جدول ناقص — من غير إخفاء دروس */ }
+    gradeVideos = gradeVideos.filter(function (hv: any) {
+      if (hidBySchedule[String(hv.id)]) return false
+      var hgk = String((hv as any).groupKey || '')
+      if (hgk && hidGroups[hgk]) return false
+      return true
     })
     const idx = gradeVideos.findIndex((v) => v.id === videoId)
     // أول فيديو في الترتيب دايمًا مفتوح
