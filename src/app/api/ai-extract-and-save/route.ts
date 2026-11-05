@@ -10,6 +10,7 @@
 
 import { NextResponse } from 'next/server'
 import { db, safeWrite } from '@/lib/db'
+import { ensureEnglishQuestions } from '@/lib/english-only'
 import { repairModelJson, repairCorruptMath } from '@/lib/math-text'
 import { callGemini as callGeminiCentral, hasGeminiKey } from '@/lib/gemini'
 
@@ -92,6 +93,7 @@ export async function POST(request) {
       lines.push('')
       lines.push('Rules:')
       lines.push('- Write ALL questions and options in English only')
+      lines.push('- ENGLISH ONLY GUARANTEE (the teacher REQUIRES it): EVERY word you output — question text, options — MUST be ENGLISH. NEVER output a single Arabic character anywhere. If the document text is Arabic, TRANSLATE it to natural English (same meaning, same numbers) and output only the English.')
       lines.push('- MATH NOTATION (very important — the platform renders this format as real math):')
       lines.push('  * Copy every question EXACTLY as it appears in the document — same wording, same numbers, same order. NEVER rewrite, rephrase or renumber it.')
       lines.push('  * Powers: use the ^ symbol — 2^5, x^2, (2^3)^4, a^{2n}. The platform renders them as REAL superscripts stacked ON the digit itself.')
@@ -142,6 +144,8 @@ export async function POST(request) {
         while (opts.length < 4) opts.push('N/A')
         return { question: q.question || '', options: opts.slice(0, 4), correct: typeof q.correct === 'number' ? q.correct : 0 }
       }).filter(function(q) { return q.question.trim().length > 0 })
+      /* (ز37) ضمانة «كل حاجة بالإنجليزي» — أي عربي زلّق بيتترجم قبل الحفظ */
+      try { extractedQuestions = await ensureEnglishQuestions(extractedQuestions) } catch (eEn) { /* صامت */ }
     }
 
     if (extractedQuestions.length === 0) {

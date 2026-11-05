@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { useAppStore } from '@/stores/app-store'
 import { useT } from '@/lib/i18n'
 import { useEffect, useState } from 'react'
-import { Users, BookOpen, Clock, CalendarClock, LogIn, UserPlus, Sparkles } from 'lucide-react'
+import { Users, BookOpen, Clock, CalendarClock, LogIn, UserPlus, Sparkles, LayoutDashboard } from 'lucide-react'
 
 export default function HeroSection() {
   const {
@@ -16,6 +16,25 @@ export default function HeroSection() {
   } = useAppStore()
 
   const [fallbackPhotoExists, setFallbackPhotoExists] = useState(false)
+  /* (ز37) زرار «لوحة الطالب» — بيظهر بس للطلاب اللي عندهم حساب متسجل على الجهاز ده
+     (mg_student في localStorage) — الضغطة بتفتح البورتال على طول من غير تسجيل دخول */
+  const [savedStudent, setSavedStudent] = useState<any>(null)
+  useEffect(function () {
+    try {
+      var raw = localStorage.getItem('mg_student')
+      if (raw) {
+        var s = JSON.parse(raw)
+        if (s && s.id) setSavedStudent(s)
+      }
+    } catch (e) { /* مفيش جلسة صالحة */ }
+  }, [])
+  var openStudentPanel = function () {
+    try {
+      if (!savedStudent) return
+      useAppStore.getState().setCurrentStudent(savedStudent)
+      setView('student-portal')
+    } catch (e) { setView('auth-login') }
+  }
   const T = useT()
 
   var initialCfg = (typeof window !== 'undefined' && (window as any).__INITIAL_CONFIG__) || {}
@@ -132,6 +151,18 @@ export default function HeroSection() {
 
             {/* CTA Buttons */}
             <div className="flex flex-col sm:flex-row gap-3 justify-center lg:justify-start pt-1">
+              {/* (ز37) زرار لوحة الطالب — بس للطلاب اللي ليهم حساب على الجهاز ده:
+                 ضغطة واحدة بتفتح الحساب المسجل على الجهاز من غير تسجيل دخول */}
+              {savedStudent && savedStudent.id && (
+                <Button
+                  size="lg"
+                  className="gloss-btn text-sm sm:text-base px-6 sm:px-8 py-3.5 sm:py-6 min-h-[52px] text-white font-bold rounded-2xl border-0 bg-emerald-600 hover:bg-emerald-700"
+                  onClick={openStudentPanel}
+                >
+                  <LayoutDashboard className="h-5 w-5 ml-2" />
+                  {T('لوحة الطالب', 'My Dashboard')}
+                </Button>
+              )}
               <Button
                 size="lg"
                 className="gloss-btn text-sm sm:text-base px-6 sm:px-8 py-3.5 sm:py-6 min-h-[52px] text-white font-bold rounded-2xl border-0"

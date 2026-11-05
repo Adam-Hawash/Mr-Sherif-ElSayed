@@ -37,6 +37,7 @@ import { AdminItemAnalytics } from './AdminItemAnalytics'
 import { ParentsManager } from './ParentsManager'
 import { GroupTargetPicker } from './GroupTargetPicker'
 import { VideoGroupScheduleDialog } from './VideoGroupScheduleDialog'
+import { HomeworkGroupScheduleDialog } from './HomeworkGroupScheduleDialog'
 import { CommunityPanel } from './CommunityPanel'
 import { ActivityPanel } from './ActivityPanel'
 import { PaymentsPanel } from '@/components/PaymentsPanel'
@@ -3946,8 +3947,11 @@ function ContentManager<T extends { id: string; grade: string; createdAt: string
   const [schedSaving, setSchedSaving] = useState(false)
   /* (2026-و26) استهداف الطلاب للواجب — زي الفيديوهات بالظبط */
   const [targetEditId, setTargetEditId] = useState<string | null>(null)
-  /* (2026-و29) منتقي المجموعات للواجبات */
-  const [groupEditId, setGroupEditId] = useState<string | null>(null)
+  /* (ز37) جدولة المجموعات للواجب — نفس نظام الفيديوهات بالظبط (ميعاد لكل مجموعة)
+     (ز37) منتقي المجموعات القديم للواجبات اتشال — الدايلوج الجديد بيقوم بعمله */
+  /* (ز37) جدولة المجموعات للواجب — نفس نظام الفيديوهات بالظبط (ميعاد لكل مجموعة) */
+  const [hwGroupSchedId, setHwGroupSchedId] = useState<string | null>(null)
+  const [hwGroupSchedTitle, setHwGroupSchedTitle] = useState<string>('')
   const fileRef = useRef<HTMLInputElement>(null)
   const answerKeyRef = useRef<HTMLInputElement>(null)
   const thumbnailRef = useRef<HTMLInputElement>(null)
@@ -4335,6 +4339,10 @@ function ContentManager<T extends { id: string; grade: string; createdAt: string
                     {isHomeworkManager && parseTargetStudentIds((item as any).targetStudentIds).length > 0 && (
                       <Badge className="text-[10px] bg-teal-600 text-white" title={'موجه لـ ' + parseTargetStudentIds((item as any).targetStudentIds).length + ' طالب بس'}>👥 موجه لـ {parseTargetStudentIds((item as any).targetStudentIds).length} طالب</Badge>
                     )}
+                    {/* (ز37) بادج جدولة المجموعات — لكل مجموعة ميعادها (زي الفيديوهات) */}
+                    {isHomeworkManager && (item as any).groupPlansCount > 0 && (
+                      <Badge className="text-[10px] bg-indigo-600 text-white" title={'مجدول لـ ' + (item as any).groupPlansCount + ' مجموعة — كل مجموعة بميعادها'}>🕒 جدولة مجموعات ({(item as any).groupPlansCount})</Badge>
+                    )}
                     {(item as any).thumbnail && <Badge variant="outline" className="text-[10px] border-purple-500/40 text-purple-600">صورة</Badge>}
                     {item.filePath && <Badge variant="outline" className="text-[10px] border-primary/40 text-primary">أسئلة</Badge>}
                     {item.answerKeyPath && <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-600">إجابة</Badge>}
@@ -4367,12 +4375,16 @@ function ContentManager<T extends { id: string; grade: string; createdAt: string
                       👥
                     </Button>
                   )}
-                  {/* (2026-و29) زرار استهداف المجموعات للواجب — نفس النمط */}
+                  {/* (ز37) زرار جدولة المجموعات للواجب — نفس دايلوج الفيديوهات بالظبط:
+                     اختار المجموعات + ميعاد كل مجموعة — قبل الميعاد الواجب مخفي تمامًا */}
                   {isHomeworkManager && (
                     <Button size="icon" variant="ghost"
-                      className={'h-8 w-8 shrink-0 ' + (parseTargetStudentIds((item as any).targetGroupIds).length > 0 ? 'text-indigo-600 dark:text-indigo-400' : 'text-muted-foreground')}
-                      title="تحديد المجموعات اللي تشوف الواجب ده"
-                      onClick={function () { setGroupEditId(groupEditId === item.id ? null : item.id) }}>
+                      className={'h-8 w-8 shrink-0 ' + ((item as any).groupPlansCount > 0 ? 'text-indigo-600 dark:text-indigo-400' : 'text-muted-foreground')}
+                      title="جدولة المجموعات — ميعاد ظهور لكل مجموعة (زي الفيديوهات)"
+                      onClick={function () {
+                        setHwGroupSchedTitle(renderTitle(item))
+                        setHwGroupSchedId(hwGroupSchedId === item.id ? null : item.id)
+                      }}>
                       🧑‍🤝‍🧑
                     </Button>
                   )}
@@ -4392,16 +4404,13 @@ function ContentManager<T extends { id: string; grade: string; createdAt: string
                     onSaved={function () { loadItems(false); if (onRefresh) onRefresh() }}
                   />
                 )}
-                {/* (2026-و29) منتقي المجموعات المستهدفة للواجب */}
-                {isHomeworkManager && groupEditId === item.id && (
-                  <GroupTargetPicker
+                {/* (ز37) دايلوج جدولة المجموعات للواجب — ميعاد لكل مجموعة (زي الفيديوهات) */}
+                {isHomeworkManager && hwGroupSchedId === item.id && (
+                  <HomeworkGroupScheduleDialog
                     open={true}
-                    onOpenChange={function (o) { if (!o) setGroupEditId(null) }}
-                    apiPath="/api/homework"
-                    itemId={item.id}
-                    initialIds={parseTargetStudentIds((item as any).targetGroupIds)}
-                    itemTitle={renderTitle(item)}
-                    adminId={currentAdminId}
+                    onOpenChange={function (o) { if (!o) setHwGroupSchedId(null) }}
+                    homeworkId={item.id}
+                    homeworkTitle={hwGroupSchedTitle}
                     onSaved={function () { loadItems(false); if (onRefresh) onRefresh() }}
                   />
                 )}

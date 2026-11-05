@@ -17,6 +17,7 @@
 
 import { extractFramesFromVideoUrl, hasFfmpeg } from '@/lib/video-frames'
 import { extractQuestionsFromVideoUrl } from '@/lib/video-gemini'
+import { ensureEnglishQuestions } from '@/lib/english-only'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { callGemini as callGeminiCentral, hasGeminiKey } from '@/lib/gemini'
@@ -46,13 +47,12 @@ function stripDataUrl(img: string): string {
 function buildFramesPrompt(context: string, numQuestions: number, sourceLabel: string): string {
   var lines = []
   lines.push('You are an expert math teacher creating an exam from a LESSON VIDEO.')
-  lines.push('هتلاقي تحت لقطات (فريمات) من فيديو درس — السبورة أو الشرح أو مسائل مكتوبة. طبّع من محتوى الفيديو.')
+  lines.push('You will find below FRAMES (snapshots) from a lesson video — a board, explanations, or written problems. Base everything on the video content.')
   if (context && String(context).trim()) {
     lines.push('LESSON CONTEXT (title/parts/topics — use it to know exactly what this lesson covers):')
     lines.push(String(context).slice(0, 1200))
   }
   lines.push('TASK: Generate ' + numQuestions + ' exam-style questions that test the CONTENT SHOWN/EXPLAINED in these video frames.')
-  lines.push('المطلوب: أسئلة امتحان على محتوى الدرس اللي ظاهر في اللقطات دي — بأعلى دقة ممكنة مع اللي اتشرح فعلاً.')
   lines.push('')
   lines.push('HARD RULES (follow exactly):')
   lines.push('- Base every question ONLY on content actually visible/explained in the frames (board writing, solved examples, formulas, graphs). Do NOT invent topics that are clearly not part of this lesson.')
@@ -62,6 +62,7 @@ function buildFramesPrompt(context: string, numQuestions: number, sourceLabel: s
   lines.push('- WRITING: for questions without printed choices: type "writing", options [], correct: -1, modelAnswer = complete step-by-step solution.')
   lines.push('- MATH FORMAT (the platform renders it as real math): powers as x^2; EVERY fraction as \\frac{numerator}{denominator}; square root √, cube root ∛, × ÷ π ≤ ≥ ≠ ∠ °. No $ signs, no LaTeX beyond \\frac, no markdown.')
   lines.push('- ALL output text in English (same as the rest of the platform).')
+  lines.push('- ENGLISH ONLY GUARANTEE (the teacher REQUIRES it): EVERY word you output — question text, options, modelAnswer, acceptedAnswers — MUST be ENGLISH. NEVER output a single Arabic character anywhere. If the board/frames show Arabic text, TRANSLATE it to natural English (same meaning, same numbers) and output only the English.')
   lines.push('')
   lines.push('Return ONE single valid JSON array — no text before or after, no markdown fences. Shape:')
   lines.push('[{"type":"mcq","question":"...","options":["opt1","opt2","opt3","opt4"],"correct":0,"points":1,"modelAnswer":"step by step solution"},{"type":"writing","question":"...","options":[],"correct":-1,"points":5,"modelAnswer":"full solution","acceptedAnswers":["5","x=5"]}]')
@@ -198,6 +199,8 @@ export async function POST(request: NextRequest) {
 
     var mcq = result.filter(function (q: any) { return q.type === 'mcq' }).length
     var writing = result.length - mcq
+    /* (ز37) ضمانة «كل حاجة بالإنجليزي» — أي عربي زلّق من الموديل بيتترجم قبل الرجوع */
+    try { result = await ensureEnglishQuestions(result) } catch (eEn) { /* صامت */ }
     return NextResponse.json({
       success: true,
       extracted: {

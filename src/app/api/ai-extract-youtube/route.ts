@@ -6,6 +6,7 @@
 import { NextResponse } from 'next/server'
 import { repairModelJson, repairCorruptMath } from '@/lib/math-text'
 import { callGemini as callGeminiCentral, hasGeminiKey } from '@/lib/gemini'
+import { ensureEnglishQuestions, ensureEnglishText, containsArabic } from '@/lib/english-only'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -28,6 +29,7 @@ function buildPrompt(numQuestions, grade, type) {
   lines.push('- Each question must have exactly 4 options (A, B, C, D)')
   lines.push('- correct = index (0, 1, 2, or 3)')
   lines.push('- ALL text in English')
+  lines.push('- ENGLISH ONLY GUARANTEE (the teacher REQUIRES it): EVERY word you output — question text, options, title, content, answerKey — MUST be ENGLISH. NEVER output a single Arabic character anywhere. If the video explanation/title is in Arabic, TRANSLATE it to natural English (same meaning, same numbers) and output only the English.')
   lines.push('- MATH NOTATION (the platform renders this format as real math):')
   lines.push('  * Powers: use the ^ symbol — 2^5, x^2, (2^3)^4, a^{2n}. The platform renders them as REAL superscripts stacked ON the digit itself. Do NOT use Unicode superscripts like x².')
   lines.push('  * Fractions: EVERY fraction must use \\frac{numerator}{denominator} — the platform renders it as a REAL stacked fraction. NEVER write fractions as a/b or with ÷.')
@@ -114,6 +116,15 @@ export async function POST(request) {
     if (extracted.questions.length === 0) {
       return NextResponse.json({ error: 'No questions extracted.' }, { status: 400 })
     }
+
+    /* (ز37) ضمانة «كل حاجة بالإنجليزي» — نفس حارس ز31: أي عربي زلّق من الموديل بيتترجم قبل الرجوع */
+    try {
+      extracted.questions = await ensureEnglishQuestions(extracted.questions)
+      if (containsArabic(extracted.title)) {
+        var tEn = await ensureEnglishText(String(extracted.title))
+        if (tEn) extracted.title = tEn
+      }
+    } catch (eEn) { /* صامت — النتيجة الأصلية بتفضل */ }
 
     return NextResponse.json({ success: true, extracted: extracted })
   } catch (error) {

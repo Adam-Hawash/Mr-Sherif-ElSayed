@@ -103,6 +103,22 @@ export async function GET(request: NextRequest) {
       db.homework.count({ where }),
     ])
 
+    /* (ز37) جدولة المجموعات للواجبات — نفس نظام الفيديوهات بالظبط:
+       واجب له خطط مجموعات → يشوفه بس أعضاء المجموعات دي، وكل مجموعة
+       تشوفه من موعدها. قبل الميعاد الواجب **مختفي تمامًا** عن طلاب
+       المجموعة (بدون عداد — نفس طلب المستر في الفيديوهات)، وغير أعضاء
+       المجموعات المستهدفة ما يشوفوه أصلًا. الواجب من غير خطط = سلوكه القديم. */
+    var groupPlansByHw: Record<string, { groupId: string; unlockAt: string | null }[]> = {}
+    try {
+      var hgsRows = await db.$queryRawUnsafe('SELECT homeworkId, groupId, unlockAt FROM HomeworkGroupSchedule') as any[]
+      for (var hri = 0; hri < (hgsRows || []).length; hri++) {
+        var hRow = hgsRows[hri]
+        var hwId = String(hRow.homeworkId || '')
+        if (!groupPlansByHw[hwId]) groupPlansByHw[hwId] = []
+        groupPlansByHw[hwId].push({ groupId: String(hRow.groupId || ''), unlockAt: hRow.unlockAt || null })
+      }
+    } catch (hgsErr) { /* الجدول لسه متعملش — مفيش خطط */ }
+
     /* (2026-و26) استهداف الطلاب (نفس نمط الفيديوهات): الواجب الموجه
        لطلاب محددين مش بيوصل غير للي اسمه في القايمة — فلترة على السيرفر */
     let visibleHw = homework as unknown as any[]
@@ -115,7 +131,22 @@ export async function GET(request: NextRequest) {
           if (sgRowsHw && sgRowsHw.length > 0) studentGroupHw = String(sgRowsHw[0].groupId || '')
         } catch (sgErr) {}
       }
+      var nowHgsMs = Date.now()
       visibleHw = visibleHw.filter(function (h) {
+        /* (ز37) خطط المجموعات أولًا — لو الواجب له خطط هي الحاكمة (زي الفيديوهات) */
+        var hPlans = groupPlansByHw[String(h && (h as any).id || '')]
+        if (hPlans && hPlans.length > 0) {
+          if (!studentGroupHw) return false // موجه لمجموعات والطالب مش في مجموعة
+          for (var hpi = 0; hpi < hPlans.length; hpi++) {
+            if (hPlans[hpi].groupId !== studentGroupHw) continue
+            if (!hPlans[hpi].unlockAt) return true // مجموعته من غير ميعاد → ظاهر فورًا
+            var hT = new Date(hPlans[hpi].unlockAt as string).getTime()
+            if (isNaN(hT)) return true
+            return nowHgsMs >= hT // جه الميعاد → ظاهر | لسه → مخفي تمامًا
+          }
+          return false // مجموعته مش مستهدفة في الواجب ده
+        }
+        /* (2026-و29) من غير خطط مجموعات = السلوك القديم بالظبط */
         var t = parseTargetIds(h && (h as any).targetStudentIds)
         var g = parseTargetIds(h && (h as any).targetGroupIds)
         /* (2026-و29) من غير استهداف = الكل — استهداف طلاب أو مجموعات =
@@ -132,7 +163,9 @@ export async function GET(request: NextRequest) {
     const outHomework = admin
       ? visibleHw.map(function (h: any) {
           var isScheduled = h && h.scheduledAt ? new Date(h.scheduledAt).getTime() > Date.now() : false
-          return { ...h, scheduled: isScheduled }
+          /* (ز37) عدد خطط المجموعات المحفوظة — عشان بادج الجدولة في اللوحة */
+          var hPlanCount = (groupPlansByHw[String(h && h.id || '')] || []).length
+          return { ...h, scheduled: isScheduled, groupPlansCount: hPlanCount }
         })
       : visibleHw
 
