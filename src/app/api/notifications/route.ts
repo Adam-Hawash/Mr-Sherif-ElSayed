@@ -70,6 +70,9 @@ export async function POST(request: NextRequest) {
       await db.$executeRawUnsafe('UPDATE Notification SET read = 1, updatedAt = CURRENT_TIMESTAMP WHERE studentId = ?', studentId)
     } else if (action === 'read' && body.id) {
       await db.$executeRawUnsafe('UPDATE Notification SET read = 1, updatedAt = CURRENT_TIMESTAMP WHERE studentId = ? AND id = ?', studentId, String(body.id))
+    } else if (action === 'delete' && body.id) {
+      /* (2026-ج2) زرار X — الإشعار يمسح خالص «ما بتبقاش موجود» — طلب المستر */
+      await db.$executeRawUnsafe('DELETE FROM Notification WHERE studentId = ? AND id = ?', studentId, String(body.id))
     }
     return NextResponse.json({ ok: true })
   } catch (e) {

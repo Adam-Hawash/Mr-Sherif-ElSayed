@@ -10,7 +10,7 @@
 // ============================================================
 
 import * as React from 'react'
-import { Bell, CheckCheck } from 'lucide-react'
+import { Bell, CheckCheck, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface NotifItem {
@@ -85,6 +85,19 @@ export function NotificationsBell({ studentId }: { studentId: string }) {
     } catch (e) { /* صامت */ }
   }
 
+  /* (2026-ج2) زرار X — الإشعار يمسح خالص «ما بتبقاش موجود» — طلب المستر */
+  var deleteNotif = async function (id: string) {
+    setItems(function (prev) { return prev.filter(function (n) { return n.id !== id }) })
+    try {
+      await fetch('/api/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentId: studentId, action: 'delete', id: id }),
+      })
+    } catch (e) { /* صامت */ }
+    load()
+  }
+
   if (!studentId) return null
 
   return (
@@ -112,6 +125,7 @@ export function NotificationsBell({ studentId }: { studentId: string }) {
               </button>
             )}
           </div>
+          <p className="text-[10px] text-muted-foreground px-3 pt-2">دوس على الـ ✕ اللي جنب أي إشعار يمسح نهائيًا — مش هيظهر تاني</p>
           <div className="max-h-96 overflow-y-auto custom-scrollbar">
             {items.length === 0 ? (
               <p className="text-xs text-muted-foreground text-center py-6">مفيش إشعارات لسه — أول ما المستر يبعت حاجة هتلاقيها هنا</p>
@@ -130,6 +144,16 @@ export function NotificationsBell({ studentId }: { studentId: string }) {
                         </p>
                       </div>
                       {!n.read && <span className="shrink-0 h-2 w-2 rounded-full bg-red-500 mt-1.5" />}
+                      {/* (2026-ج2) زرار X — يمسح الإشعار نهائيًا */}
+                      <button
+                        type="button"
+                        onClick={function () { deleteNotif(n.id) }}
+                        className="shrink-0 h-6 w-6 rounded-md hover:bg-destructive/10 hover:text-destructive text-muted-foreground flex items-center justify-center cursor-pointer transition-colors"
+                        aria-label="مسح الإشعار نهائيًا"
+                        title="مسح نهائي — مش هيظهر تاني"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                   </div>
                 )

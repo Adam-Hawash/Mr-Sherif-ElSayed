@@ -122,7 +122,7 @@ export async function PUT(req: NextRequest) {
 
     if (action === 'delete') {
       await db.$executeRawUnsafe('DELETE FROM ChallengeQuestion WHERE seriesId = ?', sid)
-      await db.$executeRawUnsafe('DELETE FROM ChallengeAttempt WHERE seriesId = ?', sid)
+      await db.$executeRawUnsafe('DELETE FROM GamifyAttempt WHERE seriesId = ?', sid)
       await db.$executeRawUnsafe('DELETE FROM ChallengeSeries WHERE id = ?', sid)
       return NextResponse.json({ ok: true })
     }

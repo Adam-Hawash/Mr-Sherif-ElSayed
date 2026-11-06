@@ -55,6 +55,8 @@ export interface GamifyState {
   todayAnsweredCount: number
   todayTotal: number
   totalQuestions: number
+  /* (2026-ج2) الطالب قفل إشعار سؤال اليوم بالـ X لليوم المفتوح ده؟ */
+  popupDismissed?: boolean
   streakReset: boolean
   boxReady: boolean
   boxCooldownMs: number

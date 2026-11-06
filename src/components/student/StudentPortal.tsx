@@ -64,6 +64,10 @@ import { BooksTab } from '@/components/student/BooksTab'
 /* التحدي اليومي — شريط النقاط (النافبار) + غرفة المكافآت (التاب) — نظام الجيفاي */
 import { GamifyNavbar } from '@/components/student/gamify/GamifyNavbar'
 import { GamifyHub } from '@/components/student/gamify/GamifyHub'
+/* (2026-ج2) سؤال اليوم بيجي زي إشعار أول ما الطالب يدخل صفحته — وتقدمه بيتحفظ */
+import { DailyQuestionPopup } from '@/components/student/gamify/DailyQuestionPopup'
+
+
 /* نظام الترجمة (عربي/إنجليزي) — التابات والواجهة */
 import { useT } from '@/lib/i18n'
 /* (2026-و40-w) ورقة العمل: جداول قابلة للكتابة + رسومات مقصوصة + تجميع صفحات المصدر */
@@ -273,6 +277,10 @@ function StudentPortalInner() {
     return (
       <div className="flex-1 py-6 px-4 sm:px-6">
         <div className="mx-auto max-w-4xl space-y-5">
+          {/* (2026-ج2) إشعار سؤال اليوم — أول حاجة الطالب يشوفها وهو داخل */}
+          <DailyQuestionPopup studentId={studentId} grade={grade} />
+
+
           {/* Welcome Card + Quick Actions on top */}
           <Card className="bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border-primary/20">
             <CardContent className="p-5">
@@ -432,6 +440,10 @@ function StudentPortalInner() {
 
   return (
     <div className="flex-1 flex flex-col">
+      {/* (2026-ج2) إشعار سؤال اليوم — بيجي زي الإشعارات، وبيختفي خالص بالـ X — مخفي لو الطالب واقف في تاب التحدي نفسه */}
+      <DailyQuestionPopup studentId={studentId} grade={grade} suppressed={activeTab === 'gamify'} />
+
+
       {/* Top Bar */}
       <div className="border-b px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -456,7 +468,7 @@ function StudentPortalInner() {
       <GamifyNavbar studentId={studentId} grade={grade} onOpenHub={() => setActiveTab('gamify')} />
 
       {/* Tab Bar — (2026-و109) تحسين الموبايل: قص بتدرج عند الحافة + سحب ناعم snap + من غير سكرول بار */}
-      <div className="border-b px-4 flex gap-1 overflow-x-auto snap-x [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [mask-image:linear-gradient(to_right,transparent,black_16px,black_calc(100%_-_32px),transparent)]">
+      <div className="border-b px-4 flex gap-1 overflow-x-auto snap-x [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [m[mask-image:linear-gradient(to_right,transparent,black_16px,black_calc(100%_-_32px),transparent)]">
         {tabs.map(tab => (
           <button
             key={tab.id}

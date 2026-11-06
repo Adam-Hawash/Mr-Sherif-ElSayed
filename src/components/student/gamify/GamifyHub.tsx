@@ -14,7 +14,7 @@
 // ============================================================
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { ReactNode, Dispatch, SetStateAction } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { toast } from 'sonner'
 import {
@@ -651,12 +651,16 @@ interface BetRow {
   payout: number
   actual: number
   createdAt: string
+  /* (ج2) نوع الهدف — امتحان أو واجب */
+  targetType?: string
 }
 
 interface AvailableExam {
   id: string
   title: string
   totalQuestions: number
+  /* (ج2) المراهنة على الواجبات والامتحانات — الاثنين مع بعض */
+  type?: 'exam' | 'homework'
 }
 
 function BetSection({ studentId, grade, onChanged }: {
@@ -702,7 +706,7 @@ function BetSection({ studentId, grade, onChanged }: {
       const res = await fetch('/api/gamify/bet', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentId, grade, examId: exam.id, stake, prediction: Number(predRaw) }),
+        body: JSON.stringify({ studentId, grade, targetId: exam.id, targetType: exam.type || 'exam', stake, prediction: Number(predRaw) }),
       })
       const data = await res.json()
       if (!res.ok || !(data && data.ok)) throw new Error(String((data && data.error) || 'خطأ في تسجيل الرهان'))
@@ -727,93 +731,38 @@ function BetSection({ studentId, grade, onChanged }: {
       <CardContent className="space-y-3 px-4">
         {/* قواعد الرهان */}
         <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-200/90">
-          توقع تام = ضعف الرهان ×2 • فارق سؤال واحد = رجوع الرهان • غلط = الرهان يتحرق 🔥
+          راهن على واجباتك وامتحاناتك 📚📝 — توقع تام = ضعف الرهان ×2 • فارق سؤال واحد = رجوع الرهان • غلط = الرهان يتحرق 🔥
         </div>
 
-        {/* الامتحانات المتاحة */}
+        {/* المتاح للرهان — واجبات وامتحانات (الاثنين مع بعض بطلب المستر) */}
         {loading ? (
           <div className="space-y-2">
             <Skeleton className="h-24 w-full rounded-xl bg-zinc-800" />
             <Skeleton className="h-24 w-full rounded-xl bg-zinc-800" />
           </div>
         ) : available.length === 0 ? (
-          <p className="py-2 text-center text-xs text-zinc-500">مفيش امتحانات متاحة للرهان دلوقتي — أول ما المستر ينزل امتحان هتلاقيه هنا 👀</p>
+          <p className="py-2 text-center text-xs text-zinc-500">مفيش واجبات أو امتحانات متاحة للرهان دلوقتي — أول ما المستر ينزل حاجة هتلاقيها هنا 👀</p>
         ) : (
           <div className="space-y-3">
-            {available.map(function (ex) {
-              const maxStake = Math.max(10, Math.min(xp, 500))
-              const stake = safeStake(stakes[ex.id], xp)
-              const pred = preds[ex.id] == null ? '' : String(preds[ex.id])
-              const canBet = xp >= 10
+            {/* (ج2) مجموعتين واضحتين: واجبات 📚 وامتحانات 📝 — سهلة الفهم */}
+            {(['exam', 'homework'] as const).map(function (groupType) {
+              const group = available.filter(function (a) { return (a.type || 'exam') === groupType })
+              if (group.length === 0) return null
               return (
-                <div key={ex.id} className="space-y-3 rounded-xl border border-zinc-700/70 bg-zinc-900/60 p-3">
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-bold text-zinc-100">{ex.title}</div>
-                    <div className="text-[11px] text-zinc-400">عدد الأسئلة: {ex.totalQuestions}</div>
-                  </div>
-
-                  {/* سلايدر الرهان */}
-                  <div>
-                    <div className="mb-1.5 flex items-center justify-between text-xs text-zinc-300">
-                      <span>قيمة الرهان</span>
-                      <span className="font-extrabold text-amber-300">{stake} XP</span>
-                    </div>
-                    <Slider
-                      min={10}
-                      max={maxStake}
-                      step={5}
-                      value={[stake]}
-                      onValueChange={function (v) {
-                        const val = Array.isArray(v) ? Number(v[0]) : 10
-                        setStakes(function (prev) { return { ...prev, [ex.id]: isNaN(val) ? 10 : val } })
-                      }}
-                      disabled={!canBet || placing === ex.id}
-                    />
-                    <div className="mt-1 flex justify-between text-[10px] text-zinc-500">
-                      <span>10 XP</span>
-                      <span>{maxStake} XP</span>
-                    </div>
-                  </div>
-
-                  {/* توقع النتيجة */}
-                  <Select
-                    value={pred}
-                    onValueChange={function (v) {
-                      setPreds(function (prev) { return { ...prev, [ex.id]: v } })
-                    }}
-                    disabled={!canBet || placing === ex.id}
-                  >
-                    <SelectTrigger className="min-h-12 w-full rounded-xl border-zinc-700 bg-zinc-800/60 text-zinc-100">
-                      <SelectValue placeholder="توقع عدد إجاباتك الصحيحة" />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-60 border-zinc-700 bg-zinc-900 text-zinc-100">
-                      {Array.from({ length: ex.totalQuestions + 1 }, function (_, i) {
-                        return (
-                          <SelectItem key={i} value={String(i)}>
-                            {i}{i === ex.totalQuestions ? ' — كلهم! 🔥' : ''}
-                          </SelectItem>
-                        )
-                      })}
-                    </SelectContent>
-                  </Select>
-
-                  <Button
-                    onClick={() => placeBet(ex)}
-                    disabled={!canBet || placing === ex.id || pred === ''}
-                    className="min-h-12 w-full gap-2 border-0 bg-gradient-to-l from-amber-500 to-orange-500 font-bold text-zinc-950 shadow-[0_0_16px_rgba(245,158,11,0.25)] hover:from-amber-400 hover:to-orange-400"
-                  >
-                    {placing === ex.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
-                    راهن {stake} XP
-                  </Button>
-                  {!canBet && (
-                    <p className="text-[11px] text-orange-300">محتاج 10 XP على الأقل عشان تراهن — حل سؤال النهاردة الأول ⚡</p>
-                  )}
+                <div key={groupType} className="space-y-2">
+                  <p className="text-[11px] font-extrabold text-zinc-400">
+                    {groupType === 'exam' ? '📝 امتحانات' : '📚 واجبات'}
+                    <span className="text-zinc-600"> ({group.length})</span>
+                  </p>
+                  {group.map(function (ex) { return (
+                    <BetTargetCard key={ex.id} ex={ex} xp={xp} placing={placing} stakes={stakes} preds={preds}
+                      setStakes={setStakes} setPreds={setPreds} placeBet={placeBet} />
+                  )})}
                 </div>
               )
             })}
           </div>
         )}
-
         {/* رهاناتي */}
         <div className="space-y-2">
           <h3 className="text-sm font-extrabold text-zinc-200">رهاناتي</h3>
@@ -824,7 +773,7 @@ function BetSection({ studentId, grade, onChanged }: {
               return (
                 <div key={b.id} className="flex items-center justify-between gap-2 rounded-xl border border-zinc-800 bg-zinc-900/60 px-3 py-2.5">
                   <div className="min-w-0">
-                    <div className="truncate text-xs font-bold text-zinc-100 sm:text-sm">{b.examTitle}</div>
+                    <div className="truncate text-xs font-bold text-zinc-100 sm:text-sm">{String(b.targetType || 'exam') === 'homework' ? '📚 ' : '📝 '}{b.examTitle}</div>
                     <div className="text-[11px] text-zinc-400">
                       راهن {b.stake} XP • توقع {b.prediction} من {b.totalQuestions}
                     </div>
@@ -837,6 +786,88 @@ function BetSection({ studentId, grade, onChanged }: {
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+/* كارت هدف الرهان (امتحان أو واجب) — نفس الشكل للاتنين عشان يكون سهل ومألوف */
+function BetTargetCard({ ex, xp, placing, stakes, preds, setStakes, setPreds, placeBet }: {
+  ex: AvailableExam
+  xp: number
+  placing: string | null
+  stakes: Record<string, number>
+  preds: Record<string, string | null>
+  setStakes: Dispatch<SetStateAction<Record<string, number>>>
+  setPreds: Dispatch<SetStateAction<Record<string, string | null>>>
+  placeBet: (ex: AvailableExam) => void
+}) {
+  const maxStake = Math.max(10, Math.min(xp, 500))
+  const stake = safeStake(stakes[ex.id], xp)
+  const pred = preds[ex.id] == null ? '' : String(preds[ex.id])
+  const canBet = xp >= 10
+  return (
+    <div className="space-y-3 rounded-xl border border-zinc-700/70 bg-zinc-900/60 p-3">
+      <div className="min-w-0">
+        <div className="truncate text-sm font-bold text-zinc-100">{ex.type === 'homework' ? '📚 ' : '📝 '}{ex.title}</div>
+        <div className="text-[11px] text-zinc-400">عدد الأسئلة: {ex.totalQuestions}</div>
+      </div>
+
+      {/* سلايدر الرهان */}
+      <div>
+        <div className="mb-1.5 flex items-center justify-between text-xs text-zinc-300">
+          <span>قيمة الرهان</span>
+          <span className="font-extrabold text-amber-300">{stake} XP</span>
+        </div>
+        <Slider
+          min={10}
+          max={maxStake}
+          step={5}
+          value={[stake]}
+          onValueChange={function (v) {
+            const val = Array.isArray(v) ? Number(v[0]) : 10
+            setStakes(function (prev) { return { ...prev, [ex.id]: isNaN(val) ? 10 : val } })
+          }}
+          disabled={!canBet || placing === ex.id}
+        />
+        <div className="mt-1 flex justify-between text-[10px] text-zinc-500">
+          <span>10 XP</span>
+          <span>{maxStake} XP</span>
+        </div>
+      </div>
+
+      {/* توقع النتيجة */}
+      <Select
+        value={pred}
+        onValueChange={function (v) {
+          setPreds(function (prev) { return { ...prev, [ex.id]: v } })
+        }}
+        disabled={!canBet || placing === ex.id}
+      >
+        <SelectTrigger className="min-h-12 w-full rounded-xl border-zinc-700 bg-zinc-800/60 text-zinc-100">
+          <SelectValue placeholder="توقع عدد إجاباتك الصحيحة" />
+        </SelectTrigger>
+        <SelectContent className="max-h-60 border-zinc-700 bg-zinc-900 text-zinc-100">
+          {Array.from({ length: ex.totalQuestions + 1 }, function (_, i) {
+            return (
+              <SelectItem key={i} value={String(i)}>
+                {i}{i === ex.totalQuestions ? ' — كلهم! 🔥' : ''}
+              </SelectItem>
+            )
+          })}
+        </SelectContent>
+      </Select>
+
+      <Button
+        onClick={() => placeBet(ex)}
+        disabled={!canBet || placing === ex.id || pred === ''}
+        className="min-h-12 w-full gap-2 border-0 bg-gradient-to-l from-amber-500 to-orange-500 font-bold text-zinc-950 shadow-[0_0_16px_rgba(245,158,11,0.25)] hover:from-amber-400 hover:to-orange-400"
+      >
+        {placing === ex.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+        راهن {stake} XP
+      </Button>
+      {!canBet && (
+        <p className="text-[11px] text-orange-300">محتاج 10 XP على الأقل عشان تراهن — حل سؤال النهاردة الأول ⚡</p>
+      )}
+    </div>
   )
 }
 

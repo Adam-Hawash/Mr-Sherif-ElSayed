@@ -113,8 +113,8 @@ export async function ensureGamifyTables(): Promise<void> {
     // أسئلة التحدي — كل سؤال على يوم محدد
     'CREATE TABLE IF NOT EXISTS ChallengeQuestion (id TEXT PRIMARY KEY, seriesId TEXT NOT NULL, dayNumber INTEGER NOT NULL DEFAULT 1, orderInDay INTEGER NOT NULL DEFAULT 1, text TEXT NOT NULL, options TEXT NOT NULL DEFAULT "[]", correctIndex INTEGER NOT NULL DEFAULT -1, correctText TEXT NOT NULL DEFAULT "", xpReward REAL NOT NULL DEFAULT 20, difficulty TEXT NOT NULL DEFAULT "normal", createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
     // محاولات الطالب — صف واحد لكل (طالب, سؤال, حقبة) — الحقبة بتزيد لما السلسلة تعاد من الأول
-    'CREATE TABLE IF NOT EXISTS ChallengeAttempt (id TEXT PRIMARY KEY, seriesId TEXT NOT NULL, studentId TEXT NOT NULL, questionId TEXT NOT NULL, dayNumber INTEGER NOT NULL DEFAULT 1, epoch INTEGER NOT NULL DEFAULT 0, correct INTEGER NOT NULL DEFAULT 0, rewarded INTEGER NOT NULL DEFAULT 0, xp REAL NOT NULL DEFAULT 0, dateKey TEXT NOT NULL DEFAULT "", createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
-    'CREATE UNIQUE INDEX IF NOT EXISTS idx_attempt_unique ON ChallengeAttempt(seriesId, studentId, questionId, epoch)',
+    'CREATE TABLE IF NOT EXISTS GamifyAttempt (id TEXT PRIMARY KEY, seriesId TEXT NOT NULL, studentId TEXT NOT NULL, questionId TEXT NOT NULL, dayNumber INTEGER NOT NULL DEFAULT 1, epoch INTEGER NOT NULL DEFAULT 0, correct INTEGER NOT NULL DEFAULT 0, rewarded INTEGER NOT NULL DEFAULT 0, xp REAL NOT NULL DEFAULT 0, dateKey TEXT NOT NULL DEFAULT "", createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_attempt_unique ON GamifyAttempt(seriesId, studentId, questionId, epoch)',
     // الشارات — قابلة للتعديل من الأدمن (إضافة/حذف/تعديل النص)
     'CREATE TABLE IF NOT EXISTS Badge (id TEXT PRIMARY KEY, name TEXT NOT NULL, desc TEXT NOT NULL DEFAULT "", icon TEXT NOT NULL DEFAULT "🏅", rarity TEXT NOT NULL DEFAULT "common", conditionType TEXT NOT NULL DEFAULT "streak_days", threshold REAL NOT NULL DEFAULT 1, active INTEGER NOT NULL DEFAULT 1, sort INTEGER NOT NULL DEFAULT 0, createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
     'CREATE TABLE IF NOT EXISTS StudentBadge (id TEXT PRIMARY KEY, studentId TEXT NOT NULL, badgeId TEXT NOT NULL, unlockedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(studentId, badgeId))',
@@ -123,14 +123,20 @@ export async function ensureGamifyTables(): Promise<void> {
     // دفتر XP — مصدر كل نقطة (تحدي/صندوق/رهان/شارة)
     'CREATE TABLE IF NOT EXISTS XpLedger (id TEXT PRIMARY KEY, studentId TEXT NOT NULL, source TEXT NOT NULL, amount REAL NOT NULL DEFAULT 0, note TEXT NOT NULL DEFAULT "", createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
     'CREATE INDEX IF NOT EXISTS idx_xp_ledger_student ON XpLedger(studentId, createdAt)',
-    // رهانات XP — الطالب يتنبأ بعدد الإجابات الصحيحة قبل الامتحان
+    // رهانات XP — الطالب يتنبأ بعدد الإجابات الصحيحة قبل الامتحان **أو الواجب**
+    // (ج2: «المراهنات تبقى على الواجبات والامتحانات، تبقى على الاثنين»)
     'CREATE TABLE IF NOT EXISTS XpBet (id TEXT PRIMARY KEY, studentId TEXT NOT NULL, examId TEXT NOT NULL, examTitle TEXT NOT NULL DEFAULT "", stake REAL NOT NULL DEFAULT 0, prediction REAL NOT NULL DEFAULT 0, totalQuestions INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT "locked", payout REAL NOT NULL DEFAULT 0, actual REAL, settledAt DATETIME, createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
+    // (ج2) عمود نوع الهدف — exam أو homework — عمود متسامح للداتا القديمة (كلها امتحانات)
+    // + جدول إخفاء إشعار السؤال بالـ X — «لما بدوس على الـ X ما بتبقاش موجودة»
+    'CREATE TABLE IF NOT EXISTS GamifyPopupDismissal (studentId TEXT NOT NULL, seriesId TEXT NOT NULL, day INTEGER NOT NULL, createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(studentId, seriesId, day))',
     // علامة تصفير لوحة الترتيب الدراسية — طلب المستر «تمسح حاليًا وبعدها تشتغل عادي»
     'CREATE TABLE IF NOT EXISTS LeaderboardReset (id TEXT PRIMARY KEY, resetAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)',
   ]
   for (var i = 0; i < DDL.length; i++) {
     try { await db.$executeRawUnsafe(DDL[i]) } catch (e) { console.error('[gamify] DDL fail #' + i, e) }
   }
+  // (ج2) عمود targetType للرهانات القديمة — كلها كانت امتحانات
+  try { await db.$executeRawUnsafe("ALTER TABLE XpBet ADD COLUMN targetType TEXT NOT NULL DEFAULT 'exam'") } catch (e) { /* موجود أصلًا */ }
   _tablesReady = true
   try { await seedDefaultBadges() } catch (e) {}
 }
@@ -302,7 +308,7 @@ export async function computeStudentState(studentId: string, grade: string): Pro
     var attempts: any = []
     try {
       attempts = await db.$queryRawUnsafe(
-        'SELECT * FROM ChallengeAttempt WHERE seriesId = ? AND studentId = ? AND epoch = ? AND rewarded = 1',
+        'SELECT * FROM GamifyAttempt WHERE seriesId = ? AND studentId = ? AND epoch = ? AND rewarded = 1',
         series.id, studentId, Number(profile.epoch) || 0
       ) || []
     } catch (e) {}
@@ -335,7 +341,7 @@ export async function computeStudentState(studentId: string, grade: string): Pro
     var todayAttempts: any = []
     try {
       todayAttempts = await db.$queryRawUnsafe(
-        'SELECT questionId FROM ChallengeAttempt WHERE seriesId = ? AND studentId = ? AND epoch = ? AND dateKey = ? AND correct = 1',
+        'SELECT questionId FROM GamifyAttempt WHERE seriesId = ? AND studentId = ? AND epoch = ? AND dateKey = ? AND correct = 1',
         series.id, studentId, Number(profile.epoch) || 0, today
       ) || []
     } catch (e) {}
@@ -398,6 +404,8 @@ export async function computeStudentState(studentId: string, grade: string): Pro
       prize: String(series.prize || DEFAULT_PRIZE_TEXT),
     } : null,
     unlockedDay, dayQuestions, todayAnsweredCount, todayTotal, totalQuestions,
+    // (ج2) إشعار السؤال اليومي: الطالب قفله بالـ X من قبل لليوم المفتوح ده؟
+    popupDismissed: series ? await isPopupDismissed(studentId, String(series.id), unlockedDay) : false,
     streakReset, boxReady, boxCooldownMs, windowUrgent, hoursLeft,
     badges, today: today,
   }
@@ -439,7 +447,7 @@ export async function answerQuestion(opts: {
   var prev: any = []
   try {
     prev = await db.$queryRawUnsafe(
-      'SELECT * FROM ChallengeAttempt WHERE seriesId = ? AND studentId = ? AND questionId = ? AND epoch = ?',
+      'SELECT * FROM GamifyAttempt WHERE seriesId = ? AND studentId = ? AND questionId = ? AND epoch = ?',
       opts.seriesId, opts.studentId, opts.questionId, Number(profile.epoch) || 0
     ) || []
   } catch (e) { prev = [] }
@@ -455,12 +463,12 @@ export async function answerQuestion(opts: {
     var newRewarded = (correct || alreadyRewarded) ? 1 : Number(prev[0].rewarded) || 0
     var newXp = alreadyRewarded ? Number(prev[0].xp) : xpEarned
     await db.$executeRawUnsafe(
-      'UPDATE ChallengeAttempt SET correct = ?, rewarded = ?, xp = ?, dateKey = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
+      'UPDATE GamifyAttempt SET correct = ?, rewarded = ?, xp = ?, dateKey = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
       correct ? 1 : 0, newRewarded, newXp, today, String(prev[0].id)
     )
   } else {
     await db.$executeRawUnsafe(
-      'INSERT INTO ChallengeAttempt (id, seriesId, studentId, questionId, dayNumber, epoch, correct, rewarded, xp, dateKey) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO GamifyAttempt (id, seriesId, studentId, questionId, dayNumber, epoch, correct, rewarded, xp, dateKey) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       id(), opts.seriesId, opts.studentId, opts.questionId, Number(q.dayNumber) || 1, Number(profile.epoch) || 0,
       correct ? 1 : 0, correct ? 1 : 0, xpEarned, today
     )
@@ -564,54 +572,80 @@ export async function openMysteryBox(studentId: string, grade?: string): Promise
 }
 
 /* ----------------------------- رهان XP ----------------------------- */
+/* (ج2) الرهان بقى على الواجبات والامتحانات — الاثنين مع بعض بطلب المستر:
+   «والمراهنات تبقى على الواجبات والامتحانات، تبقى على الاثنين»
+   targetType: 'exam' | 'homework' — القديم كله امتحانات (Default exam) */
 
 export async function placeBet(opts: {
-  studentId: string; grade: string; examId: string; stake: number; prediction: number
+  studentId: string; grade: string; examId: string; stake: number; prediction: number; targetType?: string
 }): Promise<any> {
   await ensureGamifyTables()
   var profile: any = await getOrCreateProfile(opts.studentId, opts.grade)
   var stake = Math.floor(Number(opts.stake) || 0)
   var prediction = Math.floor(Number(opts.prediction) || 0)
+  var targetType = String(opts.targetType || 'exam') === 'homework' ? 'homework' : 'exam'
   if (stake < 10) return { ok: false, error: 'أقل رهان 10 XP' }
   if (Number(profile.xp) < stake) return { ok: false, error: 'مش معاك XP كفاية للرهان ده' }
 
-  // الامتحان لازم يكون من نفس الصف وماكانش الطالب سلّمه
-  var examRows: any = await db.$queryRawUnsafe('SELECT id, title, questions FROM Exam WHERE id = ?', opts.examId)
-  if (!examRows || !examRows.length) return { ok: false, error: 'الامتحان مش موجود' }
-  var exam = examRows[0]
+  // الهدف لازم يكون من نفس الصف وماكانش الطالب سلّمه
+  var targetTitle = ''
   var totalQ = 10
-  try {
-    var qs = safeParse(exam.questions, [])
-    if (Array.isArray(qs) && qs.length > 0) totalQ = qs.length
-  } catch (e) {}
+  if (targetType === 'homework') {
+    var hwRows: any = await db.$queryRawUnsafe('SELECT id, title, questions FROM Homework WHERE id = ?', opts.examId)
+    if (!hwRows || !hwRows.length) return { ok: false, error: 'الواجب مش موجود' }
+    targetTitle = String(hwRows[0].title || 'واجب')
+    try {
+      var hwQs = safeParse(hwRows[0].questions, [])
+      if (Array.isArray(hwQs) && hwQs.length > 0) totalQ = hwQs.length
+    } catch (e) {}
+    var hwDone: any = []
+    try { hwDone = await db.$queryRawUnsafe('SELECT id FROM HomeworkResult WHERE homeworkId = ? AND studentId = ?', opts.examId, opts.studentId) } catch (e) {}
+    if (hwDone && hwDone.length) return { ok: false, error: 'سلّمت الواجب ده بالفعل — الرهان بقى بعد الحلبة ممنوع!' }
+  } else {
+    var examRows: any = await db.$queryRawUnsafe('SELECT id, title, questions FROM Exam WHERE id = ?', opts.examId)
+    if (!examRows || !examRows.length) return { ok: false, error: 'الامتحان مش موجود' }
+    targetTitle = String(examRows[0].title || 'امتحان')
+    try {
+      var qs = safeParse(examRows[0].questions, [])
+      if (Array.isArray(qs) && qs.length > 0) totalQ = qs.length
+    } catch (e) {}
+    var hasResult: any = []
+    try {
+      hasResult = await db.$queryRawUnsafe('SELECT id FROM ExamResult WHERE examId = ? AND studentId = ?', opts.examId, opts.studentId)
+    } catch (e) {}
+    if (hasResult && hasResult.length) return { ok: false, error: 'سلّمت الامتحان ده بالفعل — الرهان بقى بعد الحلبة ممنوع!' }
+  }
   if (prediction < 0 || prediction > totalQ) return { ok: false, error: 'التوقع لازم يكون بين 0 و ' + totalQ }
   var already: any = await db.$queryRawUnsafe(
-    "SELECT id FROM XpBet WHERE studentId = ? AND examId = ? AND status = 'locked'", opts.studentId, opts.examId
+    "SELECT id FROM XpBet WHERE studentId = ? AND examId = ? AND targetType = ? AND status = 'locked'", opts.studentId, opts.examId, targetType
   )
-  if (already && already.length) return { ok: false, error: 'عندك رهان شغال على الامتحان ده بالفعل' }
-  var hasResult: any = []
-  try {
-    hasResult = await db.$queryRawUnsafe('SELECT id FROM ExamResult WHERE examId = ? AND studentId = ?', opts.examId, opts.studentId)
-  } catch (e) {}
-  if (hasResult && hasResult.length) return { ok: false, error: 'سلّمت الامتحان ده بالفعل — الرهان بقى بعد الحلبة ممنوع!' }
+  if (already && already.length) return { ok: false, error: targetType === 'homework' ? 'عندك رهان شغال على الواجب ده بالفعل' : 'عندك رهان شغال على الامتحان ده بالفعل' }
 
   // خصم الـ XP فورًا (محتجز كرصيد رهان)
-  await awardXp(opts.studentId, 'bet_lock', -stake, 'رهان على ' + String(exam.title || '').slice(0, 60))
+  await awardXp(opts.studentId, 'bet_lock', -stake, 'رهان على ' + targetTitle.slice(0, 60))
   await db.$executeRawUnsafe(
-    'INSERT INTO XpBet (id, studentId, examId, examTitle, stake, prediction, totalQuestions, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    id(), opts.studentId, opts.examId, String(exam.title || ''), stake, prediction, totalQ, 'locked'
+    'INSERT INTO XpBet (id, studentId, examId, examTitle, stake, prediction, totalQuestions, status, targetType) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    id(), opts.studentId, opts.examId, targetTitle, stake, prediction, totalQ, 'locked', targetType
   )
   return { ok: true, totalQuestions: totalQ }
 }
 
-/** تسوية الرهانات — بتتنادى تلقائيًا من computeStudentState */
+/** تسوية الرهانات — بتتنادى تلقائيًا من computeStudentState
+ *  (ج2) بتسوّى رهانات الواجبات والامتحانات حسب targetType */
 export async function settleBets(studentId: string): Promise<void> {
   try {
     var pending: any = await db.$queryRawUnsafe("SELECT * FROM XpBet WHERE studentId = ? AND status = 'locked'", studentId) || []
     for (var i = 0; i < pending.length; i++) {
       var bet = pending[i]
+      var betType = String(bet.targetType || 'exam')
       var res: any = []
-      try { res = await db.$queryRawUnsafe('SELECT score, maxScore FROM ExamResult WHERE examId = ? AND studentId = ? LIMIT 1', bet.examId, studentId) } catch (e) {}
+      try {
+        if (betType === 'homework') {
+          res = await db.$queryRawUnsafe('SELECT score, maxScore FROM HomeworkResult WHERE homeworkId = ? AND studentId = ? LIMIT 1', bet.examId, studentId)
+        } else {
+          res = await db.$queryRawUnsafe('SELECT score, maxScore FROM ExamResult WHERE examId = ? AND studentId = ? LIMIT 1', bet.examId, studentId)
+        }
+      } catch (e) {}
       if (!res || !res.length) continue // لسه ما سلّمش
       var score = Number(res[0].score) || 0
       var maxScore = Number(res[0].maxScore) || 100
@@ -626,14 +660,36 @@ export async function settleBets(studentId: string): Promise<void> {
         'UPDATE XpBet SET status = ?, payout = ?, actual = ?, settledAt = CURRENT_TIMESTAMP WHERE id = ?',
         status, payout, actual, String(bet.id)
       )
+      var kind = betType === 'homework' ? 'الواجب' : 'الامتحان'
       var msg = status === 'won'
-        ? '🎯 توقعك مظبوط بالحرف! كسبت ' + payout + ' XP (ضعف رهانك)'
+        ? '🎯 توقعك مظبوط بالحرف في ' + kind + ' «' + String(bet.examTitle || '').slice(0, 40) + '»! كسبت ' + payout + ' XP (ضعف رهانك)'
         : status === 'push'
-          ? '😅 قربت جدًا — فارق سؤال واحد بس. رجعتلك رهانك كامل (' + payout + ' XP)'
-          : '💸 التوقع بعيد — خسرت رهان (' + Number(bet.stake) + ' XP). جرّب تاني وركّز أحسن!'
+          ? '😅 قربت جدًا — فارق سؤال واحد بس في ' + kind + '. رجعتلك رهانك كامل (' + payout + ' XP)'
+          : '💸 التوقع بعيد في ' + kind + ' — خسرت رهان (' + Number(bet.stake) + ' XP). جرّب تاني وركّز أحسن!'
       try { await notifyStudent(studentId, 'gamify', status === 'won' ? '🏆 رهانك كسب!' : status === 'push' ? '🤝 رهان انعاد' : '💔 رهان خسر', msg) } catch (e) {}
     }
   } catch (e) { console.error('[gamify] settleBets fail', e) }
+}
+
+/** (ج2) إخفاء إشعار السؤال اليومي بالـ X — دايمًا للسلسلة/اليوم ده */
+export async function dismissPopup(studentId: string, seriesId: string, day: number): Promise<boolean> {
+  try {
+    await db.$executeRawUnsafe(
+      'INSERT OR IGNORE INTO GamifyPopupDismissal (studentId, seriesId, day) VALUES (?, ?, ?)',
+      studentId, seriesId, Math.max(1, Math.floor(Number(day) || 1))
+    )
+    return true
+  } catch (e) { return false }
+}
+
+export async function isPopupDismissed(studentId: string, seriesId: string, day: number): Promise<boolean> {
+  try {
+    var rows: any = await db.$queryRawUnsafe(
+      'SELECT 1 as x FROM GamifyPopupDismissal WHERE studentId = ? AND seriesId = ? AND day = ? LIMIT 1',
+      studentId, seriesId, Math.max(1, Math.floor(Number(day) || 1))
+    )
+    return !!(rows && rows.length)
+  } catch (e) { return false }
 }
 
 export async function getStudentBets(studentId: string): Promise<any[]> {
@@ -672,13 +728,13 @@ export async function checkBadges(studentId: string, grade?: string): Promise<vo
     var streak = Number(profile.streak) || 0
     var xp = Number(profile.xp) || 0
     var attempts: any = await db.$queryRawUnsafe(
-      'SELECT COUNT(*) AS c, SUM(correct) AS cc FROM ChallengeAttempt WHERE studentId = ?', studentId
+      'SELECT COUNT(*) AS c, SUM(correct) AS cc FROM GamifyAttempt WHERE studentId = ?', studentId
     ) || []
     var totalAttempts = Number(attempts[0] && attempts[0].c) || 0
     var correctAttempts = Number(attempts[0] && attempts[0].cc) || 0
     var accuracy = totalAttempts > 0 ? (correctAttempts / totalAttempts) * 100 : 0
     var daysDone: any = await db.$queryRawUnsafe(
-      'SELECT COUNT(DISTINCT dayNumber) AS d FROM ChallengeAttempt WHERE studentId = ? AND rewarded = 1', studentId
+      'SELECT COUNT(DISTINCT dayNumber) AS d FROM GamifyAttempt WHERE studentId = ? AND rewarded = 1', studentId
     ) || []
     var challengeDays = Number(daysDone[0] && daysDone[0].d) || 0
     // سرعة الواجب — أول واجب بدرجة 70%+ خلال 24 ساعة من نزوله
