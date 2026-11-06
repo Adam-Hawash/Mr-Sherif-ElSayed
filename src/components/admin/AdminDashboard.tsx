@@ -24,11 +24,7 @@ import {
   PlayCircle, Pause, Film, Search, FileDown, PictureInPicture2, Save, Sparkles, Wallet,
   Video as VideoIcon, LinkIcon,
   ChevronLeft, CheckCircle2, Smartphone, RotateCcw, ShieldCheck, Monitor, Tablet, Flag, GraduationCap, UsersRound, PieChart, BookOpen, ChevronDown,
-<<<<<<< HEAD
-  MessageCircle, MonitorPlay, Brain, Swords, EyeOff, Zap, Gamepad2
-=======
-  MessageCircle, MonitorPlay, Brain, Swords, Crown, EyeOff
->>>>>>> 753585e (غ2: منظومة التحفيز الكاملة — تحدي يومي + ستريك + صندوق كنز (60XP نادرة) + شارات (بدون المقامر الشجاع) + رهان XP + لوحتي ترتيب منفصلتين + تصفير الدراسية — تأمين routes الأدمن بـ isAdmin + إصلاح تزامن الشريط (trailing refresh))
+  MessageCircle, MonitorPlay, Brain, Swords, Crown, EyeOff, Zap
 } from 'lucide-react'
 import { AdminComplaints } from './AdminComplaints'
 import { CMSPanel } from './CMSPanel'
@@ -63,12 +59,8 @@ import { WhatsAppParentDialog } from './WhatsAppParentDialog'
 /* (2026-و66) استوديو الخرائط الذهنية + إدارة تحدي المستر — منقول من Maths-Genius (و106) */
 import { MindMapStudio } from './MindMapStudio'
 import { TeacherChallengePanel } from './TeacherChallengePanel'
-<<<<<<< HEAD
-/* (2026-ز38) مركز الألعاب — لوحة الجيميفيكيشن (دورة التحدي لكل صف + باني الأسئلة + الشارات) */
-=======
 /* لوحة الجوائز والتحدي (Gamification) — منقولة من Maths-Genius */
 import { GamifyPanel } from './GamifyPanel'
->>>>>>> 753585e (غ2: منظومة التحفيز الكاملة — تحدي يومي + ستريك + صندوق كنز (60XP نادرة) + شارات (بدون المقامر الشجاع) + رهان XP + لوحتي ترتيب منفصلتين + تصفير الدراسية — تأمين routes الأدمن بـ isAdmin + إصلاح تزامن الشريط (trailing refresh))
 /* (2026-و106) تثبيت المنصة كتطبيق على الموبايل — PWA */
 import { InstallPwaButton } from '@/components/InstallPwaButton'
 import { useState, useEffect, useRef, useMemo, Fragment } from 'react'
@@ -419,12 +411,8 @@ export function AdminDashboard() {
             <TabsTrigger value="mindmaps" className="text-xs sm:text-sm gap-1 text-violet-600 dark:text-violet-400"><Brain className="h-4 w-4" /><span className="hidden sm:inline">{T('الخرائط الذهنية', 'Mind Maps')}</span></TabsTrigger>
             {/* (2026-و66) تحدي المستر — نزّل تحدي وادخل بنفسك */}
             <TabsTrigger value="teacher-challenge" className="text-xs sm:text-sm gap-1 text-amber-600 dark:text-amber-400"><Swords className="h-4 w-4" /><span className="hidden sm:inline">{T('تحدي المستر', 'Challenge')}</span></TabsTrigger>
-<<<<<<< HEAD
-            {/* (2026-ز38) مركز الألعاب — الجيميفيكيشن الكامل بطلب المستر */}
-=======
             {/* تاب الجوائز والتحدي — سلاسل + أوسمة + لوحة الترتيب */}
             <TabsTrigger value="gamify" className="text-xs sm:text-sm gap-1 text-amber-600 dark:text-amber-400"><Crown className="h-4 w-4" /><span className="hidden sm:inline">{T('الجوائز والتحدي', 'Gamification')}</span></TabsTrigger>
->>>>>>> 753585e (غ2: منظومة التحفيز الكاملة — تحدي يومي + ستريك + صندوق كنز (60XP نادرة) + شارات (بدون المقامر الشجاع) + رهان XP + لوحتي ترتيب منفصلتين + تصفير الدراسية — تأمين routes الأدمن بـ isAdmin + إصلاح تزامن الشريط (trailing refresh))
             <TabsTrigger value="announcements" className="text-xs sm:text-sm gap-1"><Megaphone className="h-4 w-4" /><span className="hidden sm:inline">{T('الإعلانات', 'Announcements')}</span></TabsTrigger>
             <TabsTrigger value="community" className="text-xs sm:text-sm gap-1"><MessageSquare className="h-4 w-4" /><span className="hidden sm:inline">{T('المجتمعات', 'Communities')}</span>{newCommunityCount > 0 && <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-emerald-500 text-white text-[10px] font-bold">{newCommunityCount > 99 ? '99+' : newCommunityCount}</span>}</TabsTrigger>
             <TabsTrigger value="activity" className="text-xs sm:text-sm gap-1"><Activity className="h-4 w-4" /><span className="hidden sm:inline">{T('المتابعة', 'Activity')}</span></TabsTrigger>
@@ -459,12 +447,8 @@ export function AdminDashboard() {
           <TabsContent value="mindmaps"><MindMapStudio /></TabsContent>
           {/* (2026-و66) تحدي المستر — سؤال صعب أسبوعي + لوحة ترتيب + دخول المستر بنفسه */}
           <TabsContent value="teacher-challenge"><TeacherChallengePanel /></TabsContent>
-<<<<<<< HEAD
-          {/* (2026-ز38) مركز الألعاب — الجيميفيكيشن الكامل */}
-=======
           {/* تاب الجوائز والتحدي — GamifyPanel */}
           <TabsContent value="gamify"><GamifyPanel adminId={(currentAdmin && currentAdmin.id) || ''} /></TabsContent>
->>>>>>> 753585e (غ2: منظومة التحفيز الكاملة — تحدي يومي + ستريك + صندوق كنز (60XP نادرة) + شارات (بدون المقامر الشجاع) + رهان XP + لوحتي ترتيب منفصلتين + تصفير الدراسية — تأمين routes الأدمن بـ isAdmin + إصلاح تزامن الشريط (trailing refresh))
           <TabsContent value="announcements">
             <ContentManager<Announcement> title="إدارة الإعلانات | Announcements" apiPath="/api/announcements" itemName="announcements"
               fields={{ title: { label: 'عنوان | Title', type: 'text' }, content: { label: 'المحتوى | Content', type: 'textarea' } }}

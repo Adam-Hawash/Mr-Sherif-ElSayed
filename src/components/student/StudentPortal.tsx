@@ -12,11 +12,7 @@ import {
   BookOpen, Target, TrendingUp, GraduationCap, ChevronLeft, ExternalLink,
   User, Phone, Award, Lock, X, ListTodo, Search,
   HelpCircle, ArrowLeft, Rocket, Flag, XCircle, Timer,
-<<<<<<< HEAD
-  Brain, MonitorPlay, Swords, Gamepad2,
-=======
   Brain, MonitorPlay, Swords, Flame,
->>>>>>> 753585e (غ2: منظومة التحفيز الكاملة — تحدي يومي + ستريك + صندوق كنز (60XP نادرة) + شارات (بدون المقامر الشجاع) + رهان XP + لوحتي ترتيب منفصلتين + تصفير الدراسية — تأمين routes الأدمن بـ isAdmin + إصلاح تزامن الشريط (trailing refresh))
 } from 'lucide-react'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import Image from 'next/image'
