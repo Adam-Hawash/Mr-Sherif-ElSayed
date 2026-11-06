@@ -448,3 +448,37 @@ export async function notifyParentsOfNewContent(opts: { studentIds?: string[]; g
     console.error('[parent-notify] new-content notify failed (ignored):', e)
   }
 }
+
+/* ============================================================
+   (2026-غ1) إشعار ولي الأمر لأحداث التحفيز — طلب المستر:
+   «ولي الأمر كمان لازم يستلم إشعار، خصوصًا لما الابن يكون
+   ما حلش سؤال اليوم» — تنبيه + تشجيع من المنصة نفسها.
+   ============================================================ */
+export async function notifyParentsOfGamify(opts: { studentId: string; studentName?: string; message: string }): Promise<void> {
+  try {
+    if (!opts || !opts.studentId) return
+    await ensureParentNotificationsTable()
+
+    var studentName = String(opts.studentName || '')
+    if (!studentName) {
+      var stu: any = await db.$queryRawUnsafe('SELECT name FROM Student WHERE id = ? LIMIT 1', String(opts.studentId))
+      stu = stu || []
+      if (!stu.length) return
+      studentName = String(stu[0].name || '')
+    }
+
+    var targets = await collectParentTargets(String(opts.studentId), '')
+    if (!targets.length) return
+
+    var message = String(opts.message || '').slice(0, 400)
+    await dispatchParentNotice(targets, studentName.slice(0, 120), message, {
+      title: '🎯 متابعة التحدي اليومي',
+      body: message,
+      url: '/',
+      tag: 'gamify-' + Date.now(),
+      icon: '/push-icon.png',
+    })
+  } catch (e) {
+    console.error('[parent-notify] gamify notify failed (ignored):', e)
+  }
+}

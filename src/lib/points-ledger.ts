@@ -26,6 +26,10 @@ export async function ensureLedgerTable() {
   try {
     await db.$executeRawUnsafe('ALTER TABLE PointsLedger ADD COLUMN note TEXT')
   } catch (e) { /* العمود موجود — عادي */ }
+  // (غ1) عمود تصفير اللوحة — طلب المستر «تمسح حاليًا وبعدها تشتغل عادي»
+  try {
+    await db.$executeRawUnsafe('ALTER TABLE PointsLedger ADD COLUMN preReset INTEGER DEFAULT 0')
+  } catch (e) { /* العمود موجود — عادي */ }
 }
 
 // مزامنة المرآة: أي نتيجة موجودة دلوقتي في ExamResult/HomeworkResult
@@ -34,17 +38,24 @@ export async function ensureLedgerTable() {
 export async function syncLedger() {
   await ensureLedgerTable()
   try {
+    // (غ1) UPSERT محافظ على preReset — الصفوف القديمة المصفّرة ما بترجعش
     await db.$executeRawUnsafe(
-      'INSERT OR REPLACE INTO PointsLedger (resultId, studentId, kind, points, updatedAt) ' +
-      "SELECT er.id, er.studentId, 'exam', COALESCE(er.score, 0), CURRENT_TIMESTAMP " +
-      'FROM ExamResult er WHERE er.studentId IS NOT NULL AND er.studentId != \'\''
+      'INSERT INTO PointsLedger (resultId, studentId, kind, points, updatedAt, preReset) ' +
+      "SELECT er.id, er.studentId, 'exam', COALESCE(er.score, 0), CURRENT_TIMESTAMP, 0 " +
+      'FROM ExamResult er WHERE er.studentId IS NOT NULL AND er.studentId != \'\' ' +
+      'ON CONFLICT(resultId) DO UPDATE SET points = excluded.points, kind = excluded.kind, ' +
+      'preReset = PointsLedger.preReset, ' +
+      'updatedAt = CASE WHEN PointsLedger.points != excluded.points THEN CURRENT_TIMESTAMP ELSE PointsLedger.updatedAt END'
     )
   } catch (e) { console.error('ledger sync exam error:', e) }
   try {
     await db.$executeRawUnsafe(
-      'INSERT OR REPLACE INTO PointsLedger (resultId, studentId, kind, points, updatedAt) ' +
-      "SELECT hr.id, hr.studentId, 'homework', COALESCE(hr.score, 0), CURRENT_TIMESTAMP " +
-      'FROM HomeworkResult hr WHERE hr.studentId IS NOT NULL AND hr.studentId != \'\''
+      'INSERT INTO PointsLedger (resultId, studentId, kind, points, updatedAt, preReset) ' +
+      "SELECT hr.id, hr.studentId, 'homework', COALESCE(hr.score, 0), CURRENT_TIMESTAMP, 0 " +
+      'FROM HomeworkResult hr WHERE hr.studentId IS NOT NULL AND hr.studentId != \'\' ' +
+      'ON CONFLICT(resultId) DO UPDATE SET points = excluded.points, kind = excluded.kind, ' +
+      'preReset = PointsLedger.preReset, ' +
+      'updatedAt = CASE WHEN PointsLedger.points != excluded.points THEN CURRENT_TIMESTAMP ELSE PointsLedger.updatedAt END'
     )
   } catch (e) { console.error('ledger sync homework error:', e) }
   // طالب اتمسح → نقاطه تتمسح من الدفتر (ممنوع أشباح في الترتيب)

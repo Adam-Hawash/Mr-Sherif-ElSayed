@@ -12,7 +12,11 @@ import {
   BookOpen, Target, TrendingUp, GraduationCap, ChevronLeft, ExternalLink,
   User, Phone, Award, Lock, X, ListTodo, Search,
   HelpCircle, ArrowLeft, Rocket, Flag, XCircle, Timer,
+<<<<<<< HEAD
   Brain, MonitorPlay, Swords, Gamepad2,
+=======
+  Brain, MonitorPlay, Swords, Flame,
+>>>>>>> 753585e (غ2: منظومة التحفيز الكاملة — تحدي يومي + ستريك + صندوق كنز (60XP نادرة) + شارات (بدون المقامر الشجاع) + رهان XP + لوحتي ترتيب منفصلتين + تصفير الدراسية — تأمين routes الأدمن بـ isAdmin + إصلاح تزامن الشريط (trailing refresh))
 } from 'lucide-react'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import Image from 'next/image'
@@ -29,7 +33,6 @@ import { useAntiCheat, AntiCheatModal, AntiCheatBadge } from '@/components/stude
 /* (2026-و66) الميزات الجديدة — ساحة التحدي + الخرائط الذهنية — منقولة من Maths-Genius (و106) */
 import { BattleArena } from '@/components/student/BattleArena'
 /* (2026-ز38) مركز الألعاب — الجيميفيكيشن الكامل (تحدي يومي + ستريك + صناديق + مراهنات + شارات + ترتيب XP) */
-import { GameCenter } from '@/components/student/GameCenter'
 /* (2026-ز13) اتدرب أكتر — مولد التدريب الذكي (إنجليزي بطلب المستر) */
 import { PracticeGenerator } from '@/components/student/PracticeGenerator'
 import { MindMapView } from '@/components/student/MindMapView'
@@ -62,6 +65,9 @@ function mcqChoiceList(q: any): { text: string; figUrl: string }[] {
   return out
 }
 import { BooksTab } from '@/components/student/BooksTab'
+/* التحدي اليومي — شريط النقاط (النافبار) + غرفة المكافآت (التاب) — نظام الجيفاي */
+import { GamifyNavbar } from '@/components/student/gamify/GamifyNavbar'
+import { GamifyHub } from '@/components/student/gamify/GamifyHub'
 /* نظام الترجمة (عربي/إنجليزي) — التابات والواجهة */
 import { useT } from '@/lib/i18n'
 /* (2026-و40-w) ورقة العمل: جداول قابلة للكتابة + رسومات مقصوصة + تجميع صفحات المصدر */
@@ -412,13 +418,13 @@ function StudentPortalInner() {
   if (!dashboardData) return null
 
   const tabs = [
+    { id: 'gamify', label: T('التحدي اليومي', 'Daily Challenge'), icon: Flame },
     { id: 'videos', label: T('الدروس', 'Lessons'), icon: Video },
     { id: 'homework', label: T('الواجبات', 'Homework'), icon: ClipboardList },
     { id: 'exams', label: T('الامتحانات', 'Exams'), icon: FileText },
     /* (2026-و66) ساحة التحدي — جروبات + تحدي المستر + فلاش كاردز (ز13: التسمية إنجليزي بطلب المستر) */
     { id: 'arena', label: 'Arena', icon: Swords },
     /* (2026-ز38) مركز الألعاب — الجيميفيكيشن الكامل بطلب المستر */
-    { id: 'games', label: T('الألعاب', 'Games'), icon: Gamepad2 },
     /* (2026-ز13) اتدرب أكتر — Practice */
     { id: 'practice', label: 'Practice', icon: Target },
     /* (2026-و40) الكتب والملازم — مكتبة PDF الطالب يفتحها/يحملها */
@@ -450,6 +456,9 @@ function StudentPortalInner() {
         </div>
       </div>
 
+      {/* التحدي اليومي — شريط النقاط والسلسلة (ظاهر فوق في كل التابات، تحت الشريط العلوي) */}
+      <GamifyNavbar studentId={studentId} grade={grade} onOpenHub={() => setActiveTab('gamify')} />
+
       {/* Tab Bar — (2026-و109) تحسين الموبايل: قص بتدرج عند الحافة + سحب ناعم snap + من غير سكرول بار */}
       <div className="border-b px-4 flex gap-1 overflow-x-auto snap-x [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [mask-image:linear-gradient(to_right,transparent,black_16px,black_calc(100%_-_32px),transparent)]">
         {tabs.map(tab => (
@@ -472,13 +481,13 @@ function StudentPortalInner() {
 
       {/* Tab Content */}
       <div className="flex-1 overflow-y-auto p-4">
+        {activeTab === 'gamify' && <GamifyHub studentId={studentId} grade={grade} />}
         {activeTab === 'videos' && <VideosTab videos={dashboardData.videos} watchedIds={dashboardData.watchedIds} approvedVideoIds={dashboardData.approvedVideoIds} studentId={studentId} grade={grade} videoProgress={dashboardData.videoProgress} studentStatus={currentStudent?.status} isPaidAccess={currentStudent?.isPaidAccess} studentName={currentStudent?.name || ''} studentPhone={currentStudent?.phone || ''} />}
         {activeTab === 'homework' && <HomeworkTab homework={dashboardData.homework} studentId={studentId} completedHwIds={completedHwIds} onHwSubmitted={(id) => setCompletedHwIds(prev => new Set([...prev, id]))} />}
         {activeTab === 'exams' && <ExamsTab exams={dashboardData.exams} results={dashboardData.examResults} completedExamIds={completedExamIds} onExamSubmitted={(id) => setCompletedExamIds(prev => new Set([...prev, id]))} studentId={studentId} resultsLoaded={examResultsLoaded} onGoHome={() => setActiveTab('videos')} />}
         {/* (2026-و66) ساحة التحدي — جروبات + تحدي المستر + فلاش كاردز */}
         {activeTab === 'arena' && <BattleArena studentId={studentId} studentName={currentStudent?.name || ''} grade={grade} />}
         {/* (2026-ز38) مركز الألعاب — الجيميفيكيشن الكامل */}
-        {activeTab === 'games' && <GameCenter />}
         {activeTab === 'practice' && <PracticeGenerator grade={grade} />}
         {activeTab === 'books' && <BooksTab grade={grade} />}
         {activeTab === 'announcements' && <AnnouncementsTab announcements={dashboardData.announcements} />}

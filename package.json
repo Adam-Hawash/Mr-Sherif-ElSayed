@@ -9,6 +9,7 @@
     "postinstall": "prisma generate"
   },
   "dependencies": {
+    "@libsql/client": "^0.18.0",
     "@prisma/adapter-libsql": "^6.19.3",
     "@prisma/client": "^6.19.3",
     "@radix-ui/react-alert-dialog": "^1.1.23",

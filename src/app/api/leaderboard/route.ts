@@ -26,6 +26,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { ensureLedgerTable, syncLedger } from '@/lib/points-ledger'
+import { getLastLeaderboardReset } from '@/lib/gamify'
 
 // كاش داخلي بسيط (60 ثانية) — الصفحة الرئيسية بتتفتح كتير ومفيش داعي نضرب
 // الداتابيز بكل زيارة. نفس نمط الكاش المحلي في باقي المنصة.
@@ -33,11 +34,13 @@ import { ensureLedgerTable, syncLedger } from '@/lib/points-ledger'
 var CACHE_TTL_MS = 60000
 var cachedAt = 0
 var cachedRows: any[] | null = null
+var cachedResetAt: string | null = null
 
 export async function GET() {
-  // رد الكاش لو لسه صالح
+  // رد الكاش لو لسه صالح — بشرط ما يكونش حصل تصفير جديد للوحة (غ1)
   try {
-    if (cachedRows && Date.now() - cachedAt < CACHE_TTL_MS) {
+    var lastReset = await getLastLeaderboardReset()
+    if (cachedRows && lastReset === cachedResetAt && Date.now() - cachedAt < CACHE_TTL_MS) {
       return NextResponse.json({ leaderboard: cachedRows })
     }
   } catch (e) {}
@@ -49,7 +52,7 @@ export async function GET() {
       'SELECT s.id, s.name, s.grade, COALESCE(SUM(pl.points), 0) AS totalPoints ' +
       'FROM PointsLedger pl ' +
       'INNER JOIN Student s ON s.id = pl.studentId ' +
-      "WHERE s.status IN ('approved', 'paid') " +
+      "WHERE s.status IN ('approved', 'paid') AND COALESCE(pl.preReset, 0) = 0 " +
       'GROUP BY s.id, s.name, s.grade ' +
       'HAVING totalPoints > 0 ' +
       'ORDER BY totalPoints DESC, s.name ASC ' +
@@ -72,6 +75,7 @@ export async function GET() {
 
     cachedRows = leaderboard
     cachedAt = Date.now()
+    try { cachedResetAt = await getLastLeaderboardReset() } catch (e) { cachedResetAt = null }
 
     return NextResponse.json({ leaderboard: leaderboard })
   } catch (error) {
