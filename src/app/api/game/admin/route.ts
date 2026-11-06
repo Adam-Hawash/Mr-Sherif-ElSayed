@@ -28,6 +28,14 @@ export async function GET(request: NextRequest) {
 
     await ensureGameTables()
 
+    // تنظيف أشباح الطلاب الممسوحين — نفس نمط points-ledger — عشان الإحصائيات تفضل صادقة
+    try { await db.$executeRawUnsafe('DELETE FROM StreakState WHERE studentId NOT IN (SELECT id FROM Student)') } catch (e) {}
+    try { await db.$executeRawUnsafe('DELETE FROM XpLedger WHERE studentId NOT IN (SELECT id FROM Student)') } catch (e) {}
+    try { await db.$executeRawUnsafe('DELETE FROM DailySolve WHERE studentId NOT IN (SELECT id FROM Student)') } catch (e) {}
+    try { await db.$executeRawUnsafe('DELETE FROM StudentBadge WHERE studentId NOT IN (SELECT id FROM Student)') } catch (e) {}
+    try { await db.$executeRawUnsafe('DELETE FROM MysteryBoxOpen WHERE studentId NOT IN (SELECT id FROM Student)') } catch (e) {}
+    try { await db.$executeRawUnsafe('DELETE FROM XpBet WHERE studentId NOT IN (SELECT id FROM Student)') } catch (e) {}
+
     var cfgRows: any = await db.$queryRawUnsafe('SELECT * FROM GameConfig ORDER BY grade ASC') || []
     var configs = (cfgRows || []).map(function (r: any) {
       return {
