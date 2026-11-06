@@ -24,7 +24,7 @@ import {
   PlayCircle, Pause, Film, Search, FileDown, PictureInPicture2, Save, Sparkles, Wallet,
   Video as VideoIcon, LinkIcon,
   ChevronLeft, CheckCircle2, Smartphone, RotateCcw, ShieldCheck, Monitor, Tablet, Flag, GraduationCap, UsersRound, PieChart, BookOpen, ChevronDown,
-  MessageCircle, MonitorPlay, Brain, Swords, EyeOff, Zap
+  MessageCircle, MonitorPlay, Brain, Swords, EyeOff, Zap, Gamepad2
 } from 'lucide-react'
 import { AdminComplaints } from './AdminComplaints'
 import { CMSPanel } from './CMSPanel'
@@ -59,6 +59,8 @@ import { WhatsAppParentDialog } from './WhatsAppParentDialog'
 /* (2026-و66) استوديو الخرائط الذهنية + إدارة تحدي المستر — منقول من Maths-Genius (و106) */
 import { MindMapStudio } from './MindMapStudio'
 import { TeacherChallengePanel } from './TeacherChallengePanel'
+/* (2026-ز38) مركز الألعاب — لوحة الجيميفيكيشن (دورة التحدي لكل صف + باني الأسئلة + الشارات) */
+import { GameZonePanel } from './GameZonePanel'
 /* (2026-و106) تثبيت المنصة كتطبيق على الموبايل — PWA */
 import { InstallPwaButton } from '@/components/InstallPwaButton'
 import { useState, useEffect, useRef, useMemo, Fragment } from 'react'
@@ -409,6 +411,8 @@ export function AdminDashboard() {
             <TabsTrigger value="mindmaps" className="text-xs sm:text-sm gap-1 text-violet-600 dark:text-violet-400"><Brain className="h-4 w-4" /><span className="hidden sm:inline">{T('الخرائط الذهنية', 'Mind Maps')}</span></TabsTrigger>
             {/* (2026-و66) تحدي المستر — نزّل تحدي وادخل بنفسك */}
             <TabsTrigger value="teacher-challenge" className="text-xs sm:text-sm gap-1 text-amber-600 dark:text-amber-400"><Swords className="h-4 w-4" /><span className="hidden sm:inline">{T('تحدي المستر', 'Challenge')}</span></TabsTrigger>
+            {/* (2026-ز38) مركز الألعاب — الجيميفيكيشن الكامل بطلب المستر */}
+            <TabsTrigger value="game-zone" className="text-xs sm:text-sm gap-1 text-fuchsia-600 dark:text-fuchsia-400"><Gamepad2 className="h-4 w-4" /><span className="hidden sm:inline">{T('مركز الألعاب', 'Game Zone')}</span></TabsTrigger>
             <TabsTrigger value="announcements" className="text-xs sm:text-sm gap-1"><Megaphone className="h-4 w-4" /><span className="hidden sm:inline">{T('الإعلانات', 'Announcements')}</span></TabsTrigger>
             <TabsTrigger value="community" className="text-xs sm:text-sm gap-1"><MessageSquare className="h-4 w-4" /><span className="hidden sm:inline">{T('المجتمعات', 'Communities')}</span>{newCommunityCount > 0 && <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-emerald-500 text-white text-[10px] font-bold">{newCommunityCount > 99 ? '99+' : newCommunityCount}</span>}</TabsTrigger>
             <TabsTrigger value="activity" className="text-xs sm:text-sm gap-1"><Activity className="h-4 w-4" /><span className="hidden sm:inline">{T('المتابعة', 'Activity')}</span></TabsTrigger>
@@ -443,6 +447,8 @@ export function AdminDashboard() {
           <TabsContent value="mindmaps"><MindMapStudio /></TabsContent>
           {/* (2026-و66) تحدي المستر — سؤال صعب أسبوعي + لوحة ترتيب + دخول المستر بنفسه */}
           <TabsContent value="teacher-challenge"><TeacherChallengePanel /></TabsContent>
+          {/* (2026-ز38) مركز الألعاب — الجيميفيكيشن الكامل */}
+          <TabsContent value="game-zone"><GameZonePanel adminId={(currentAdmin && currentAdmin.id) || ''} /></TabsContent>
           <TabsContent value="announcements">
             <ContentManager<Announcement> title="إدارة الإعلانات | Announcements" apiPath="/api/announcements" itemName="announcements"
               fields={{ title: { label: 'عنوان | Title', type: 'text' }, content: { label: 'المحتوى | Content', type: 'textarea' } }}

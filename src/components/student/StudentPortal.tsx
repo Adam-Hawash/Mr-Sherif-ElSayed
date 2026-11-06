@@ -12,7 +12,7 @@ import {
   BookOpen, Target, TrendingUp, GraduationCap, ChevronLeft, ExternalLink,
   User, Phone, Award, Lock, X, ListTodo, Search,
   HelpCircle, ArrowLeft, Rocket, Flag, XCircle, Timer,
-  Brain, MonitorPlay, Swords,
+  Brain, MonitorPlay, Swords, Gamepad2,
 } from 'lucide-react'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import Image from 'next/image'
@@ -28,6 +28,8 @@ import { InstallPwaButton } from '@/components/InstallPwaButton'
 import { useAntiCheat, AntiCheatModal, AntiCheatBadge } from '@/components/student/useAntiCheat'
 /* (2026-و66) الميزات الجديدة — ساحة التحدي + الخرائط الذهنية — منقولة من Maths-Genius (و106) */
 import { BattleArena } from '@/components/student/BattleArena'
+/* (2026-ز38) مركز الألعاب — الجيميفيكيشن الكامل (تحدي يومي + ستريك + صناديق + مراهنات + شارات + ترتيب XP) */
+import { GameCenter } from '@/components/student/GameCenter'
 /* (2026-ز13) اتدرب أكتر — مولد التدريب الذكي (إنجليزي بطلب المستر) */
 import { PracticeGenerator } from '@/components/student/PracticeGenerator'
 import { MindMapView } from '@/components/student/MindMapView'
@@ -415,6 +417,8 @@ function StudentPortalInner() {
     { id: 'exams', label: T('الامتحانات', 'Exams'), icon: FileText },
     /* (2026-و66) ساحة التحدي — جروبات + تحدي المستر + فلاش كاردز (ز13: التسمية إنجليزي بطلب المستر) */
     { id: 'arena', label: 'Arena', icon: Swords },
+    /* (2026-ز38) مركز الألعاب — الجيميفيكيشن الكامل بطلب المستر */
+    { id: 'games', label: T('الألعاب', 'Games'), icon: Gamepad2 },
     /* (2026-ز13) اتدرب أكتر — Practice */
     { id: 'practice', label: 'Practice', icon: Target },
     /* (2026-و40) الكتب والملازم — مكتبة PDF الطالب يفتحها/يحملها */
@@ -473,6 +477,8 @@ function StudentPortalInner() {
         {activeTab === 'exams' && <ExamsTab exams={dashboardData.exams} results={dashboardData.examResults} completedExamIds={completedExamIds} onExamSubmitted={(id) => setCompletedExamIds(prev => new Set([...prev, id]))} studentId={studentId} resultsLoaded={examResultsLoaded} onGoHome={() => setActiveTab('videos')} />}
         {/* (2026-و66) ساحة التحدي — جروبات + تحدي المستر + فلاش كاردز */}
         {activeTab === 'arena' && <BattleArena studentId={studentId} studentName={currentStudent?.name || ''} grade={grade} />}
+        {/* (2026-ز38) مركز الألعاب — الجيميفيكيشن الكامل */}
+        {activeTab === 'games' && <GameCenter />}
         {activeTab === 'practice' && <PracticeGenerator grade={grade} />}
         {activeTab === 'books' && <BooksTab grade={grade} />}
         {activeTab === 'announcements' && <AnnouncementsTab announcements={dashboardData.announcements} />}

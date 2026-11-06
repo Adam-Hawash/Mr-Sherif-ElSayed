@@ -443,3 +443,76 @@ img {
   border-top: 1.4px solid currentColor;
   padding: 1px 2px 0;
 }
+
+/* ============================================================
+   (2026-ز38) مركز الألعاب — Gaming Vibe: نيون متوهج + ذهبي لامع
+   + صندوق أسرار متحرك + تنبيه إنذار نابض — كله CSS نقي
+   ============================================================ */
+
+@keyframes game-urgent-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.55); border-color: rgba(244, 63, 94, 0.8); }
+  50% { box-shadow: 0 0 24px 6px rgba(244, 63, 94, 0.4); border-color: rgba(244, 63, 94, 1); }
+}
+.game-urgent {
+  animation: game-urgent-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes game-chest-glow {
+  0%, 100% { filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.55)); transform: scale(1); }
+  50% { filter: drop-shadow(0 0 22px rgba(251, 191, 36, 0.95)); transform: scale(1.06); }
+}
+.game-chest-ready { animation: game-chest-glow 1.8s ease-in-out infinite; }
+
+@keyframes game-chest-shake {
+  0%, 100% { transform: rotate(0deg); }
+  20% { transform: rotate(-6deg); }
+  40% { transform: rotate(6deg); }
+  60% { transform: rotate(-4deg); }
+  80% { transform: rotate(4deg); }
+}
+.game-chest-opening { animation: game-chest-shake 0.5s ease-in-out infinite; }
+
+@keyframes game-xp-pop {
+  0% { transform: translateY(0) scale(1); opacity: 1; }
+  100% { transform: translateY(-42px) scale(1.35); opacity: 0; }
+}
+.game-xp-pop { animation: game-xp-pop 1.1s ease-out forwards; }
+
+@keyframes game-reward-pop {
+  0% { transform: scale(0.6); opacity: 0; }
+  60% { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.game-reward-pop { animation: game-reward-pop 0.45s cubic-bezier(0.22, 1.2, 0.36, 1) forwards; }
+
+@keyframes game-streak-flame {
+  0%, 100% { transform: scale(1) rotate(-2deg); }
+  50% { transform: scale(1.15) rotate(2deg); }
+}
+.game-flame { animation: game-streak-flame 1.2s ease-in-out infinite; }
+
+/* عداد XP الذهبي — لمعة شيني جيمنج */
+.game-xp-gold {
+  background: linear-gradient(120deg, #FDE68A 0%, #F59E0B 45%, #FBBF24 60%, #D97706 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: shine-sweep 3s linear infinite;
+}
+
+/* بطاقات الجيمنج — خلفية داكنة للوضعين مع توهج نيون حسب الندرة */
+.game-card {
+  position: relative;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: linear-gradient(160deg, rgba(248, 250, 252, 0.9), rgba(241, 245, 249, 0.95));
+  overflow: hidden;
+}
+.dark .game-card {
+  background: linear-gradient(160deg, rgba(24, 24, 38, 0.92), rgba(14, 14, 30, 0.96));
+  border-color: rgba(99, 102, 241, 0.25);
+}
+.game-card-common { border-color: rgba(148, 163, 184, 0.5); }
+.game-card-rare { border-color: rgba(167, 139, 250, 0.7); box-shadow: 0 0 14px rgba(167, 139, 250, 0.25); }
+.game-card-legendary { border-color: rgba(251, 191, 36, 0.8); box-shadow: 0 0 18px rgba(251, 191, 36, 0.35); }
+.game-locked { filter: grayscale(1); opacity: 0.45; }
