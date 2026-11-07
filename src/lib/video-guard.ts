@@ -179,14 +179,30 @@ export async function computePlayback(videoId: string, studentId: string | null 
 }
 
 // ============================================================
-// التسلسل في المشاهدة (طلب المستر): لو فيه أكتر من فيديو على المنصة،
-// الفيديو اللي بعده ميقعش يتفتح غير لما الفيديو اللي قبله يتشاف كامل
-// — نسبة المشاهدة توصل 100% (أو 99% هامش أمان للتفاوت في مدة اليوتيوب).
-// الترتيب: من الأقدم للأحدث (ترتيب نزول الدروس نفسه).
-// الفيديوهات اللي مينفعش نتتبع نسبتها (لينك خارجي بس) بتتخطى عشان
-// التسلسل ميقلعش على فيديو مش قابل للقياس.
+// التسلسل في المشاهدة (طلب المستر): الفيديو ميفتحش غير لما اللي قبله
+// يتشاف كامل — والحاكم هو **قايمة الطالب نفسها بالحرف** (إصلاح 2026-ص3):
+//   1) نفس ترتيب العرض عند الطالب: الترتيب اليدوي (sortIndex) ثم الأحدث
+//      فوق (createdAt تنازلي) — زي orderedVideos في البوابة بالحرف.
+//   2) نفس تجميع الدروس: أجزاء الدرس (groupKey) بترتيب orderIndex ومكانها
+//      عند أول جزء ظاهر — زي lessons في البوابة بالحرف.
+//   3) **الفيديو المخفي عن الطالب مش بيدخل السلسلة أصلًا** — إصلاح مشكلة
+//      المستر: «الفيديو اللي خفيته يتلغي من عند الطالب يبقى أول فيديو
+//      ليه اللي هو الفيديو الموجود عنده». الإخفاء بكل أنواعه:
+//      أ) إخفاء فيديو واحد عن طالب (VideoSchedule.hiddenStudentIds)
+//      ب) إخفاء درس كامل عن طلاب (LessonHide — ز13)
+//      ج) فيديو مجموعات مش موجّه لمجموعته أو ميعاده مجاي (VideoGroupSchedule)
+//      ⇒ أول فيديو شايفه الطالب في قايمته = أول فيديو في السلسلة = مفتوح دايمًا،
+//        ومفيش رسالة «شوف اللي قبله» على فيديو أصلاً مش موجود عنده.
+//   4) اللي الطالب شافه أو بدأه قبل كده (أي نسبة > 0) عمره ما يتقفل تاني
+//      — حتى لو المستر نزل فيديو جديد فوقه أو أعاد الترتيب.
+//   5) الفيديو اللي بفلوس والطالب مالوش وصول له = اختياري صامت (ز22)
+//      — مش بيحجب اللي بعده ومش بيعدّ «اللي قبله».
+//   6) الحكم على «خلص» بنفس حساب البوابة بالحرف: 97%+ بتتحسب 100%
+//      (نفس تسنية /api/video-progress) — فالسيرفر والبوابة نفس الحكم،
+//      ومفيش «النسبة معروضة 100 والفيديو مقفول» ولا العكس.
+// الفيديوهات اللي مينفعش نتتبع نسبتها (لينك خارجي بس) بتتخطى.
 // ============================================================
-export const SEQ_UNLOCK_RATIO = 0.99
+export const SEQ_UNLOCK_RATIO = 0.97
 
 export async function checkSequentialUnlock(
   videoId: string,
@@ -197,76 +213,170 @@ export async function checkSequentialUnlock(
   try {
     const video = await db.video.findUnique({ where: { id: videoId } })
     if (!video) return { ok: true }
-    var gradeVideos = await db.video.findMany({
+    // نفس استعلام قايمة البوابة بالحرف (نفس الترتيب اللي الطالب شايفه)
+    var rows: any[] = await db.video.findMany({
       where: { grade: video.grade },
-      orderBy: { createdAt: 'asc' },
-      select: { id: true, groupKey: true, url: true, filePath: true, fileType: true, price: true },
+      orderBy: [{ sortIndex: 'asc' }, { createdAt: 'desc' }],
+      select: {
+        id: true, title: true, url: true, filePath: true, fileType: true,
+        price: true, groupKey: true, orderIndex: true,
+      },
     })
-    /* (ز28 — طلب المستر): الإخفاء = مش موجود. الفيديو المخفي عن الطالب
-       (VideoSchedule.hiddenStudentIds) أو الدرس المخفي كامل عنه (LessonHide)
-       ما بيدخلش في سلسلة التسلسل خالص — عشان فيديو الطالب مش شايفه
-       عمره ما يحجب اللي بعده. نفس القايمة اللي الطالب شايفها بالظبط. */
-    var hidBySchedule: Record<string, boolean> = {}
-    var hidGroups: Record<string, boolean> = {}
+    var gkOf = function (v: any): string { return String((v && v.groupKey) || '') }
+
+    /* ===== (1) كل أنواع الإخفاء عن الطالب ده — نفس مصادر البوابة بالحرف ===== */
+    // أ) إخفاء فيديو واحد (VideoSchedule.hiddenStudentIds)
+    var hiddenVideoIds: Record<string, boolean> = {}
     try {
-      var hSchRows: any[] = await db.$queryRawUnsafe('SELECT videoId, hiddenStudentIds FROM VideoSchedule')
-      for (var hsi = 0; hsi < (hSchRows || []).length; hsi++) {
-        var hSchIds: string[] = []
-        try { hSchIds = JSON.parse(String(hSchRows[hsi].hiddenStudentIds || '[]')) } catch (eHS) {}
-        if (Array.isArray(hSchIds) && hSchIds.indexOf(String(studentId)) !== -1) hidBySchedule[String(hSchRows[hsi].videoId || '')] = true
+      var vsRows: any[] = await db.$queryRawUnsafe('SELECT videoId, hiddenStudentIds FROM VideoSchedule')
+      for (var vi = 0; vi < (vsRows || []).length; vi++) {
+        var vRow = vsRows[vi]
+        var hiddenIds: string[] = []
+        try { hiddenIds = JSON.parse(String(vRow.hiddenStudentIds || '[]')) } catch (e) {}
+        if (hiddenIds.indexOf(String(studentId)) !== -1) hiddenVideoIds[String(vRow.videoId || '')] = true
       }
-    } catch (eHS2) { /* جدول ناقص — من غير إخفاء فيديوهات */ }
+    } catch (e) { /* جدول ناقص — من غير جدولة قديمة */ }
+    // ب) إخفاء درس كامل (LessonHide — ز13)
+    var hiddenGroupKeys: Record<string, boolean> = {}
     try {
-      var hLhRows: any[] = await db.$queryRawUnsafe('SELECT groupKey, studentIds FROM LessonHide')
-      for (var hli = 0; hli < (hLhRows || []).length; hli++) {
-        var hLhIds: string[] = []
-        try { hLhIds = JSON.parse(String(hLhRows[hli].studentIds || '[]')) } catch (eHL) {}
-        if (Array.isArray(hLhIds) && hLhIds.indexOf(String(studentId)) !== -1) hidGroups[String(hLhRows[hli].groupKey || '')] = true
+      var lhRows: any[] = await db.$queryRawUnsafe('SELECT groupKey, studentIds FROM LessonHide')
+      for (var li = 0; li < (lhRows || []).length; li++) {
+        var lRow = lhRows[li]
+        var lIds: string[] = []
+        try { lIds = JSON.parse(String(lRow.studentIds || '[]')) } catch (e) {}
+        if (lIds.indexOf(String(studentId)) !== -1) hiddenGroupKeys[String(lRow.groupKey || '')] = true
       }
-    } catch (eHL2) { /* جدول ناقص — من غير إخفاء دروس */ }
-    gradeVideos = gradeVideos.filter(function (hv: any) {
-      if (hidBySchedule[String(hv.id)]) return false
-      var hgk = String((hv as any).groupKey || '')
-      if (hgk && hidGroups[hgk]) return false
-      return true
+    } catch (e) { /* جدول ناقص — من غير إخفاء دروس */ }
+    // ج) جدولة المجموعات (VideoGroupSchedule) — نفس فلاتر /api/videos بالحرف
+    var plansByVideo: Record<string, { groupId: string; unlockAt: string | null }[]> = {}
+    var myGroup = ''
+    try {
+      var sgRows: any[] = await db.$queryRawUnsafe('SELECT groupId FROM Student WHERE id = ? LIMIT 1', studentId)
+      if (sgRows && sgRows.length > 0) myGroup = String(sgRows[0].groupId || '')
+    } catch (e) {}
+    try {
+      var schedRows: any[] = await db.$queryRawUnsafe('SELECT videoId, groupId, unlockAt FROM VideoGroupSchedule')
+      for (var ri = 0; ri < (schedRows || []).length; ri++) {
+        var sRow = schedRows[ri]
+        var sVid = String(sRow.videoId || '')
+        if (!plansByVideo[sVid]) plansByVideo[sVid] = []
+        plansByVideo[sVid].push({ groupId: String(sRow.groupId || ''), unlockAt: sRow.unlockAt ? String(sRow.unlockAt) : null })
+      }
+    } catch (e) { /* جدول ناقص — من غير جدولة مجموعات */ }
+    var groupVisible = function (vid: string): boolean {
+      var plans = plansByVideo[vid]
+      if (!plans || plans.length === 0) return true // من غير جدولة مجموعات = للكل
+      if (!myGroup) return false
+      for (var pi = 0; pi < plans.length; pi++) {
+        if (plans[pi].groupId !== myGroup) continue
+        if (!plans[pi].unlockAt) return true // مجموعته من غير ميعاد → ظاهر فورًا
+        var t = new Date(plans[pi].unlockAt as string).getTime()
+        if (isNaN(t)) return true
+        return Date.now() >= t // جه الميعاد → ظاهر، لسه → مخفي
+      }
+      return false // مجموعته مش مستهدفة في الفيديو ده
+    }
+
+    /* الهدف نفسه متخفي صراحةً عن الطالب؟ القايمة بتشيله عنده خالص —
+       أي محاولة تشغيل مباشرة (تاب قديم مثلًا) ترفض برسالة واضحة */
+    var targetRow: any = null
+    for (var ti = 0; ti < rows.length; ti++) { if (rows[ti].id === videoId) { targetRow = rows[ti]; break } }
+    if (targetRow) {
+      if (hiddenVideoIds[videoId]) {
+        return { ok: false, code: 403, reason: 'الفيديو ده مش متاح ليك حالياً — اتحذف من قايمتك' }
+      }
+      var tgk = gkOf(targetRow)
+      if (tgk && hiddenGroupKeys[tgk]) {
+        return { ok: false, code: 403, reason: 'الدرس ده مش متاح ليك حالياً — اتحذف من قايمتك' }
+      }
+    }
+
+    /* ===== نسب المشاهدة — طلبة واحدة + نفس تسنية /api/video-progress ===== */
+    var ratioOf: Record<string, number> = {}
+    try {
+      var progRows = await db.videoProgress.findMany({
+        where: { studentId: String(studentId) },
+        select: { videoId: true, watchedSeconds: true, totalSeconds: true },
+      })
+      for (var pIdx = 0; pIdx < progRows.length; pIdx++) {
+        var pRow = progRows[pIdx]
+        ratioOf[pRow.videoId] = pRow.totalSeconds > 0 ? pRow.watchedSeconds / pRow.totalSeconds : 0
+      }
+    } catch (e) { /* مفيش نسب مسجلة — السلسلة تطلب المشاهدة عادي */ }
+    // نفس حساب البوابة بالحرف: 97%+ بتتعرض 100% (تسنية GET /api/video-progress)
+    var pctOf = function (id: string): number {
+      var r = ratioOf[id] || 0
+      if (r >= SEQ_UNLOCK_RATIO) return 100
+      return Math.min(100, Math.round(r * 100))
+    }
+    /* القاعدة الأهم: اللي الطالب شافه أو بدأه قبل كده عمره ما يتقفل تاني
+       — الحماية المباشرة من «فيديو شفته 16% ومش راضي يفتح» */
+    if ((ratioOf[videoId] || 0) > 0) return { ok: true }
+
+    /* ===== (2) نفس قايمة البوابة بالحرف: lessons (الجروب على مكان أول جزء) =====
+       المخفي عن الطالب مش موجود عنده أصلًا → مش بيدخل السلسلة خالص */
+    var byKey: Record<string, any[]> = {}
+    rows.forEach(function (v) {
+      if (hiddenVideoIds[v.id]) return
+      var k = gkOf(v)
+      if (!k) return
+      if (hiddenGroupKeys[k]) return // الدرس المخفي كامل — أجزاءه ما تتجمعش
+      ;(byKey[k] = byKey[k] || []).push(v)
     })
-    const idx = gradeVideos.findIndex((v) => v.id === videoId)
-    // أول فيديو في الترتيب دايمًا مفتوح
-    if (idx <= 0) return { ok: true }
-    // ندوّر على أقرب فيديو قبله قابل لتتبع النسبة (يوتيوب أو ملف مرفوع)
-    for (let i = idx - 1; i >= 0; i--) {
-      const v = gradeVideos[i]
-      const isYT = Boolean(getYouTubeId(v.url || ''))
-      const isFile = Boolean(v.filePath || v.fileType)
-      if (!isYT && !isFile) continue // لينك خارجي — مش قابل للتتبع، نتخطاه
-      /* (ز22) الفيديو اللي بفلوس والطالب مالوش وصول له — اختياري صامت
-         (طلب المستر: «الفيديو اللي بفلوس ده يكون اختياري عادي بس متكتبش
-         ان هو اختياري — لو الطالب مشافش الفيديو الفيديو اللي بعده يتفتح»):
-         مفيش VideoAccess ولا دفعة معتمدة → نتخطاه، الترتيب ما يقفش بياه */
-      if (v.price && Number(v.price) > 0) {
-        const acc = await db.videoAccess.findUnique({
+    var chain: any[] = []
+    var groupInserted: Record<string, boolean> = {}
+    rows.forEach(function (v) {
+      if (hiddenVideoIds[v.id]) return
+      var k = gkOf(v)
+      if (k && hiddenGroupKeys[k]) return
+      if (!k) { chain.push(v); return }
+      if (groupInserted[k]) return
+      groupInserted[k] = true
+      var parts = (byKey[k] || []).slice().sort(function (a: any, b: any) {
+        return (Number(a.orderIndex) || 0) - (Number(b.orderIndex) || 0)
+      })
+      for (var pi2 = 0; pi2 < parts.length; pi2++) chain.push(parts[pi2])
+    })
+
+    /* ===== (3) مشية البوابة نفسها (lockedMap): أول فيديو قابل للتتبع
+       في قايمته مفتوح دايمًا، وكل اللي بعده محتاج اللي قبله (قابل للتتبع)
+       يكون خلص ≥99% — مفيش قفل دائري ولا رسالة على فيديو مش موجود عنده ===== */
+    var prevTrackable: any = null
+    for (var ci = 0; ci < chain.length; ci++) {
+      var v = chain[ci]
+      if (!groupVisible(v.id)) continue // مخفي بجدولة المجموعات — مش جزء من سلسلة الطالب
+      var isYT = Boolean(getYouTubeId(v.url || ''))
+      var isFile = Boolean(v.filePath || v.fileType)
+      var trackable = isYT || isFile
+      if (v.id === videoId) {
+        // لينك خارجي (مش قابل للتتبع) → مفتوح دايمًا زي البوابة بالحرف
+        if (trackable && prevTrackable) {
+          var prevPct = pctOf(prevTrackable.id)
+          if (prevPct < 99) {
+            return {
+              ok: false,
+              code: 423,
+              reason: 'الفيديو ده هيتفتح أول ما تشوف فيديو «' + (prevTrackable.title || 'اللي قبله') + '» كامل (100%) — الفيديو ده مفتوح عندك دلوقتي، كمّله الأول',
+            }
+          }
+        }
+        return { ok: true }
+      }
+      /* (ز22) المُسعّر من غير وصول = اختياري صامت — مش بيحجب ومش بيعدّ «اللي قبله» */
+      if (trackable && v.price && Number(v.price) > 0) {
+        var acc = await db.videoAccess.findUnique({
           where: { videoId_studentId: { videoId: v.id, studentId: String(studentId) } },
         }).catch(() => null)
         if (!acc) {
-          const pay = await db.payment.findFirst({
+          var pay = await db.payment.findFirst({
             where: { studentId: String(studentId), videoId: v.id, status: 'approved' },
           }).catch(() => null)
           if (!pay) continue
         }
       }
-      const prog = await db.videoProgress.findUnique({
-        where: { studentId_videoId: { studentId, videoId: v.id } },
-      }).catch(() => null)
-      const ratio = prog && prog.totalSeconds > 0 ? prog.watchedSeconds / prog.totalSeconds : 0
-      if (ratio < SEQ_UNLOCK_RATIO) {
-        return {
-          ok: false,
-          code: 423,
-          reason: 'الفيديو ده هيتفتح أول ما تشوف الفيديو اللي قبله كامل (100%) — كمّل مشاهدة الفيديو اللي قبله الأول',
-        }
-      }
-      break // أقرب فيديو قبله قابل للتتبع خلص → الفيديو ده مفتوح
+      if (trackable) prevTrackable = v
     }
+    // الهدف مش في سلسلة الطالب (مخفي بجدولة مجموعات مثلًا) — الوصول بيتحكم فيه computePlayback
     return { ok: true }
   } catch (e) {
     // أي خطأ داخلي → ممنوع نمنع طالب بريء من المشاهدة بسبب عطل تقني

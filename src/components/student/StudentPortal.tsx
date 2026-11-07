@@ -701,7 +701,11 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
         var trackable = k === 'youtube' || k === 'file'
         if (trackable && prevTrackable) {
           var pct = mergedProgress[prevTrackable] || 0
-          map[v.id] = pct < 99
+          /* اللي الطالب شافه أو بدأه قبل كده (أي نسبة > 0) عمره ما يتقفل تاني
+             — حتى لو المستر نزل فيديو جديد فوقه في الترتيب (نفس قاعدة السيرفر
+             بالحرف عشان مفيش «فيديو شفته 16% ومش راضي يفتح») */
+          var myPct = mergedProgress[v.id] || 0
+          map[v.id] = myPct <= 0 && pct < 99
         } else {
           map[v.id] = false
         }
@@ -1113,7 +1117,11 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
               .then(function (d) {
                 var row = (d.progress || [])[0]
                 if (row && row.totalSeconds > 0) {
-                  var pct = Math.min(100, Math.round((row.watchedSeconds / row.totalSeconds) * 100))
+                  /* نفس تسنية GET /api/video-progress بالحرف: 97%+ بتتحسب 100%
+                     — عشان القفل يتحدّث فورًا بنفس حكم السيرفر (مفيش قفل كاذب
+                     بعد قفل المشغل لو الطالب خلص 97%+) */
+                  var ratio = row.watchedSeconds / row.totalSeconds
+                  var pct = ratio >= 0.97 ? 100 : Math.min(100, Math.round(ratio * 100))
                   setProgressOverrides(function (prev) {
                     var n = Object.assign({}, prev)
                     n[vid] = pct
