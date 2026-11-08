@@ -22,7 +22,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  AlertTriangle, CheckCircle2, Crown, FileText, GraduationCap, Loader2,
+  AlertTriangle, CalendarDays, CheckCircle2, Crown, FileText, GraduationCap, Lightbulb, Loader2,
   Medal, Pencil, Plus, RefreshCw, Send, Sparkles, Trash2, Trophy, Upload, Zap,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -36,6 +36,7 @@ import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { DailyInfoAdmin } from './DailyInfoAdmin'
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -68,6 +69,14 @@ const CONDITION_LABELS: Record<string, string> = {
 }
 function condLabel(t: string): string {
   return CONDITION_LABELS[t] || t
+}
+
+/* (ت1) عرض التاريخ بالعربي — «25 أكتوبر 2026» */
+var AR_MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']
+function fmtDayDate(v: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v || ''))
+  if (!m) return String(v || '')
+  return String(parseInt(m[3], 10)) + ' ' + AR_MONTHS[parseInt(m[2], 10) - 1] + ' ' + m[1]
 }
 
 /* ندرة الشارة — لون + اسم */
@@ -103,6 +112,8 @@ interface SeriesItem {
   prize: string
   active: boolean
   createdAt: string
+  /* (ت1) جدولة أيام المستر اليدوية — {"1":"2026-10-25",...} */
+  dayDates?: Record<string, string>
   questionCount: number
   perDay: Record<string, number>
   questions: SeriesQuestion[]
@@ -160,6 +171,8 @@ export function GamifyPanel({ adminId = '' }: { adminId?: string }) {
   const [eGrade, setEGrade] = useState('')
   const [eDays, setEDays] = useState(10)
   const [ePrize, setEPrize] = useState('')
+  /* (ت1) أيام المستر بإيده — التاريخ اللي بيحدده لكل يوم */
+  const [eDayDates, setEDayDates] = useState<Record<number, string>>({})
   const [questions, setQuestions] = useState<SeriesQuestion[]>([])
   const [saving, setSaving] = useState(false)
   const [deleteFor, setDeleteFor] = useState<SeriesItem | null>(null)
@@ -409,6 +422,15 @@ export function GamifyPanel({ adminId = '' }: { adminId?: string }) {
     setEGrade(s.grade || '')
     setEDays(Number(s.totalDays) || 10)
     setEPrize(s.prize || '')
+    /* (ت1) جدولة الأيام المحفوظة بترجع زي ما هي */
+    const dd: Record<number, string> = {}
+    const raw = s.dayDates || {}
+    Object.keys(raw).forEach(function (k) {
+      const n = parseInt(k, 10)
+      const v = String(raw[k] || '')
+      if (isFinite(n) && n >= 1 && /^\d{4}-\d{2}-\d{2}$/.test(v)) dd[n] = v
+    })
+    setEDayDates(dd)
     setQuestions((s.questions || []).map(function (q) {
       return {
         id: q.id,
@@ -428,6 +450,7 @@ export function GamifyPanel({ adminId = '' }: { adminId?: string }) {
     setEditingId('')
     setQuestions([])
     setXpDrafts({})
+    setEDayDates({})
   }
 
   /* حفظ السلسلة + الأسئلة — بنبعت القايمة كاملة والسيرفر بيستبدل
@@ -466,11 +489,13 @@ export function GamifyPanel({ adminId = '' }: { adminId?: string }) {
       const res = await fetch('/api/gamify/admin/series', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adminId: adminId, id: editingId, title: eTitle.trim(), grade: eGrade, totalDays: eDays, prize: ePrize.trim(), questions: clean }),
+        /* (ت1) dayDates — أيام المستر اللي حددها بإيده بتتحفظ مع السلسلة */
+        body: JSON.stringify({ adminId: adminId, id: editingId, title: eTitle.trim(), grade: eGrade, totalDays: eDays, prize: ePrize.trim(), dayDates: eDayDates, questions: clean }),
       })
       const data = await res.json().catch(function () { return null })
       if (res.ok && data && data.ok) {
-        toast.success('اتحفظت ' + clean.length + ' سؤال على ' + eDays + ' أيام ✅')
+        const ddCount = Object.keys(eDayDates).length
+        toast.success('اتحفظت ' + clean.length + ' سؤال على ' + eDays + ' أيام' + (ddCount > 0 ? ' + جدولة ' + ddCount + ' يوم بإيدك ✅' : '') + ' ✅')
         await load()
       } else {
         toast.error(String((data && data.error) || 'فشل الحفظ — جرب تاني'))
@@ -833,6 +858,7 @@ export function GamifyPanel({ adminId = '' }: { adminId?: string }) {
       <Tabs value={tab} onValueChange={setTab} className="space-y-4">
         <TabsList className="flex flex-wrap h-auto gap-1 bg-muted/50 p-1">
           <TabsTrigger value="series" className="text-xs sm:text-sm gap-1 text-amber-600 dark:text-amber-400"><Zap className="h-4 w-4" />التحدي اليومي</TabsTrigger>
+          <TabsTrigger value="daily-info" className="text-xs sm:text-sm gap-1 text-sky-600 dark:text-sky-400"><Lightbulb className="h-4 w-4" />معلومة اليوم</TabsTrigger>
           <TabsTrigger value="badges" className="text-xs sm:text-sm gap-1 text-amber-600 dark:text-amber-400"><Medal className="h-4 w-4" />الشارات</TabsTrigger>
           <TabsTrigger value="board" className="text-xs sm:text-sm gap-1 text-amber-600 dark:text-amber-400"><Trophy className="h-4 w-4" />لوحة الترتيب</TabsTrigger>
         </TabsList>
@@ -927,6 +953,50 @@ export function GamifyPanel({ adminId = '' }: { adminId?: string }) {
                   <div className="sm:col-span-2">
                     <label className="mb-1.5 block text-sm font-medium">نص الجايزة</label>
                     <Textarea rows={2} value={ePrize} onChange={function (e) { setEPrize(e.target.value) }} />
+                  </div>
+                </div>
+
+                {/* ===== (ت1) تحديد أيام التحدي بإيدك — طلب المستر الحرفي:
+                    «عاوز احدد الايام بايدي الايام بتاعتي بايدي» —
+                    كل يوم له تاريخ من اختيارك، واليوم بيفتح لطلاب الصف في تاريخه بالظبط.
+                    أيام من غير تاريخ بتفتح مع أقرب يوم قبلها متحدد التاريخ */}
+                <div className="rounded-xl border border-sky-300/60 bg-sky-50/60 dark:border-sky-700/50 dark:bg-sky-950/20 p-3 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <label className="flex items-center gap-1.5 text-sm font-bold text-sky-700 dark:text-sky-300"><CalendarDays className="h-4 w-4" />تحديد أيام التحدي بإيدك 📅</label>
+                    {Object.keys(eDayDates).length > 0 ? (
+                      <Button type="button" variant="ghost" size="sm" className="h-7 text-[11px] text-red-600 hover:bg-red-500/10" onClick={function () { setEDayDates({}) }}>مسح كل التواريخ</Button>
+                    ) : null}
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-muted-foreground">
+                    اختار تاريخ لكل يوم من أيام السلسلة — اليوم بيفتح للطلاب في تاريخه بالظبط مهما كان تتابع الحل.
+                    لو سبت يوم من غير تاريخ هيفتح مع أقرب يوم قبله متحدد التاريخ، ولو سبت الكل كله بيشتغل تتابع عادي (يوم ورا يوم).
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {dayItems.map(function (d) {
+                      const v = eDayDates[d] || ''
+                      return (
+                        <div key={d} className="flex items-center gap-2 rounded-lg border bg-card px-2 py-1.5">
+                          <Badge className="shrink-0 border-0 bg-sky-600 text-white text-[10px]">يوم {d}</Badge>
+                          <Input
+                            type="date"
+                            dir="ltr"
+                            className="h-8 flex-1 text-xs"
+                            value={v}
+                            onChange={function (e) {
+                              const val = e.target.value || ''
+                              setEDayDates(function (prev) {
+                                const next = Object.assign({}, prev)
+                                if (val) next[d] = val
+                                else delete next[d]
+                                return next
+                              })
+                            }}
+                            aria-label={'تاريخ اليوم ' + d}
+                          />
+                          {v ? <span className="shrink-0 text-[10px] font-bold text-sky-700 dark:text-sky-300">{fmtDayDate(v)}</span> : <span className="shrink-0 text-[10px] text-muted-foreground">تلقائي</span>}
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
 
@@ -1127,9 +1197,17 @@ export function GamifyPanel({ adminId = '' }: { adminId?: string }) {
                           {perDayKeys.length > 0 ? (
                             <div className="flex flex-wrap gap-1">
                               {perDayKeys.map(function (d) {
-                                return <span key={d} className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">يوم {d}: {s.perDay[d]} أسئلة</span>
+                                const dd = (s.dayDates || {})[d]
+                                return <span key={d} className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">يوم {d}: {s.perDay[d]} أسئلة{dd ? ' — ' + fmtDayDate(dd) : ''}</span>
                               })}
                             </div>
+                          ) : null}
+                          {/* (ت1) محطات الجدولة اليدوية — لو المستر حدد تواريخ */}
+                          {s.dayDates && Object.keys(s.dayDates).length > 0 ? (
+                            <p className="flex flex-wrap items-center gap-1 text-[10px] font-bold text-sky-700 dark:text-sky-300">
+                              <CalendarDays className="h-3 w-3" />
+                              جدولة بإيدك: {Object.keys(s.dayDates).sort(function (a, b) { return Number(a) - Number(b) }).slice(0, 5).map(function (d) { return 'يوم ' + d + ' (' + fmtDayDate(String((s.dayDates as Record<string, string>)[d] || '')) + ')' }).join(' • ')}{Object.keys(s.dayDates).length > 5 ? ' …' : ''}
+                            </p>
                           ) : null}
                           {s.prize ? <p className="truncate text-[11px] text-muted-foreground">🎁 {s.prize}</p> : null}
                         </div>
@@ -1162,6 +1240,11 @@ export function GamifyPanel({ adminId = '' }: { adminId?: string }) {
               })}
             </div>
           )}
+        </TabsContent>
+
+        {/* ============ تاب معلومة اليوم (ت4) ============ */}
+        <TabsContent value="daily-info" className="space-y-4">
+          <DailyInfoAdmin adminId={adminId} />
         </TabsContent>
 
         {/* ============ تاب 2: الشارات ============ */}

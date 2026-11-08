@@ -26,6 +26,8 @@ export interface GamifySeries {
   title: string
   totalDays: number
   prize: string
+  /* (ت1) جدولة أيام المستر اليدوية — {"1":"2026-10-25",...} */
+  dayDates?: Record<string, string>
 }
 
 export interface GamifyBadge {
@@ -57,6 +59,12 @@ export interface GamifyState {
   totalQuestions: number
   /* (2026-ج2) الطالب قفل إشعار سؤال اليوم بالـ X لليوم المفتوح ده؟ */
   popupDismissed?: boolean
+  /* (ت1) وضع جدولة أيام المستر — النهاردة يوم تحدي؟ + أول تاريخ جاي */
+  scheduledMode?: boolean
+  isScheduledToday?: boolean
+  nextDayDate?: string | null
+  /* (ت3) تقدم الشارات الحي — streak_days/xp_total/accuracy/challenge_days/homework_speed */
+  badgeProgress?: Record<string, number>
   streakReset: boolean
   boxReady: boolean
   boxCooldownMs: number

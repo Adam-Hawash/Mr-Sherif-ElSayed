@@ -24,6 +24,14 @@ interface GamifyNavbarProps {
   onOpenHub: () => void
 }
 
+/* (ت1) تاريخ بالعربي للشريط */
+var NAV_MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']
+function fmtNavArabicDate(v: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v || ''))
+  if (!m) return String(v || '')
+  return String(parseInt(m[3], 10)) + ' ' + NAV_MONTHS[parseInt(m[2], 10) - 1]
+}
+
 export function GamifyNavbar({ studentId, grade, onOpenHub }: GamifyNavbarProps) {
   const { state, loading } = useGamifyState(studentId, grade)
 
@@ -52,6 +60,10 @@ export function GamifyNavbar({ studentId, grade, onOpenHub }: GamifyNavbarProps)
             {series && (
               <span className="text-[10px] sm:text-xs text-zinc-400">
                 اليوم {unlockedDay} من {totalDays}
+                {/* (ت1) جدولة المستر: النهاردة مش يوم تحدي — التاريخ الجاي */}
+                {state && state.scheduledMode && state.nextDayDate && !state.isScheduledToday
+                  ? ' — التحدي بيرجع يوم ' + fmtNavArabicDate(String(state.nextDayDate))
+                  : ''}
               </span>
             )}
           </span>
@@ -111,7 +123,9 @@ export function GamifyNavbar({ studentId, grade, onOpenHub }: GamifyNavbarProps)
             const dayNum = i + 1
             const done = dayNum < unlockedDay
             const current = dayNum === unlockedDay
-            const title = 'اليوم ' + dayNum + ' من ' + totalDays + ' — ' + (done ? 'خلصت منه ✅' : current ? 'المفتوح دلوقتي ⚡' : 'لسه مقفول 🔒')
+            /* (ت1) تاريخ اليوم من جدولة المستر لو محدد */
+            const dDate = String((series.dayDates || {})[String(dayNum)] || '')
+            const title = 'اليوم ' + dayNum + ' من ' + totalDays + (dDate ? ' — ' + fmtNavArabicDate(dDate) : '') + ' — ' + (done ? 'خلصت منه ✅' : current ? 'المفتوح دلوقتي ⚡' : 'لسه مقفول 🔒')
             return (
               <button
                 key={dayNum}

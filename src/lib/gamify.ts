@@ -1,16 +1,18 @@
 // ============================================================
 // (2026-غ1) نظام التحفيز الكامل — Gamification Ecosystem
 // طلب المستر حرفيًا:
-//  «عايز تحدي يومي + ستريك + صندوق كنز + شارات + مر Wegو + ترتيب XP منفصل»
+//  «عايز تحدي يومي + ستريك + صندوق كنز + شارات + توقع + ترتيب XP منفصل»
 //  • التحدي اليومي: سلسلة أسئلة مقسّمة على أيام (7/10 يوم) لكل صف
-//    — أول يوم بيفتح أول ما الطالب يبدأ، وبعدها يوم ورا يوم
+//    — (ت1) المستر بيقدر يحدد تاريخ كل يوم بإيده (الجدولة اليدوية) —
+//      ولو مفيش تواريخ بيشتغل التتابع القديم (يوم ورا يوم)
 //    — الطالب لو فات يوم كامل من غير ما يحل خلال 24 ساعة → الستريك بيصفّر
 //      ويرجع يبدأ من اليوم الأول تاني (إلا لو معاه درع حماية من صندوق الكنز)
 //  • صندوق الكنز: كل 24 ساعة يفتحه، جوايه XP / درع ستريك / هالات نادرة
 //    — جايزة 60 XP **نادرة** لأن أسئلة المستر مش بتعدّي 60 درجة
 //  • الشارات: الصاروخ / الثابت / ساحر الرياضيات / جامع الكنوز / بطل التحدي
 //    (محذوف نهائيًا: المقامر الشجاع — طلب المستر يشيله)
-//  • الرهان (Prediction Bet): الطالب يراهن XP على عدد الإجابات الصحيحة قبل امتحان
+//  • توقع XP (باسم «توقع واربح» — المراهنة اتنقلت لاسم شريف حلال بطلب المستر):
+//    الطالب يتوقع عدد الإجابات الصحيحة قبل واجب أو امتحان
 //  • لوحة الترتيب: لوحة النقاط الدراسية (PointsLedger) منفصلة تمامًا عن
 //    لوحة XP (GamifyProfile) — وطلب المستر: تصفير لوحة الترتيب **حاليًا**
 //    وبعدها ترجع تشتغل عادي من الصفر
@@ -137,6 +139,9 @@ export async function ensureGamifyTables(): Promise<void> {
   }
   // (ج2) عمود targetType للرهانات القديمة — كلها كانت امتحانات
   try { await db.$executeRawUnsafe("ALTER TABLE XpBet ADD COLUMN targetType TEXT NOT NULL DEFAULT 'exam'") } catch (e) { /* موجود أصلًا */ }
+  // (ت1) أيام المستر اليدوية — المستر بيحدد تاريخ كل يوم بإيده (طلب المستر:
+  //   «عاوز احدد الايام بايدي الايام بتاعتي بايدي») — JSON {"1":"2026-10-25",...}
+  try { await db.$executeRawUnsafe("ALTER TABLE ChallengeSeries ADD COLUMN dayDates TEXT NOT NULL DEFAULT ''") } catch (e) { /* موجود أصلًا */ }
   _tablesReady = true
   try { await seedDefaultBadges() } catch (e) {}
 }
@@ -145,11 +150,11 @@ export async function ensureGamifyTables(): Promise<void> {
 /* المقامر الشجاع **محذوف نهائيًا** بطلب المستر — بدلها بالشارات دي */
 
 var DEFAULT_BADGES = [
-  { id: 'badge_rocket', name: 'الصاروخ 🚀', desc: 'سلّمت واجب بدرجة ممتازة خلال أول 24 ساعة من نزوله — سرعة خارقة!', icon: '🚀', rarity: 'common', conditionType: 'homework_speed', threshold: 24, sort: 1 },
-  { id: 'badge_consistent', name: 'الثابت 🔥', desc: 'حليت تحدي اليوم 7 أيام متتالية من غير ما تفوت يوم — استمرارية من حديد!', icon: '🔥', rarity: 'rare', conditionType: 'streak_days', threshold: 7, sort: 2 },
-  { id: 'badge_wizard', name: 'ساحر الرياضيات 🧙', desc: 'دقتك في تحدي اليوم وصلت 90%+ على 15 محاولة على الأقل — عقل رياضي خرافي!', icon: '🧙', rarity: 'legendary', conditionType: 'accuracy', threshold: 90, sort: 3 },
-  { id: 'badge_collector', name: 'جامع الكنوز 💎', desc: 'جمعت 500 XP من التحدي اليومي والصندوق السري — أرشيف نقاط أسطوري!', icon: '💎', rarity: 'rare', conditionType: 'xp_total', threshold: 500, sort: 4 },
-  { id: 'badge_champion', name: 'بطل التحدي 🏆', desc: 'خلّصت سلسلة تحدي كاملة من أول يوم لآخر يوم — انت الچامبيون!', icon: '🏆', rarity: 'legendary', conditionType: 'challenge_days', threshold: 10, sort: 5 },
+  { id: 'badge_rocket', name: 'الصاروخ 🚀', desc: 'سلّمت واجب بدرجة 70%+ خلال أول 24 ساعة من نزوله — شرطك: تسليم سريع ودرجة عالية في نفس اليوم!', icon: '🚀', rarity: 'common', conditionType: 'homework_speed', threshold: 24, sort: 1 },
+  { id: 'badge_consistent', name: 'الثابت 🔥', desc: 'حلّيت تحدي اليوم 7 أيام ورا بعض من غير ما تفوّت يوم مجدول — شرطك: ستريك 7 أيام كاملة!', icon: '🔥', rarity: 'rare', conditionType: 'streak_days', threshold: 7, sort: 2 },
+  { id: 'badge_wizard', name: 'ساحر الرياضيات 🧙', desc: 'دقتك في تحدي اليوم وصلت 90%+ على 15 محاولة على الأقل — شرطك: 90% دقة أو أكتر، 15 محاولة فأكثر!', icon: '🧙', rarity: 'legendary', conditionType: 'accuracy', threshold: 90, sort: 3 },
+  { id: 'badge_collector', name: 'جامع الكنوز 💎', desc: 'جمعت 500 XP من تحدي اليوم وصندوق الكنز والتوقعات — شرطك: رصيدك يوصل 500 XP!', icon: '💎', rarity: 'rare', conditionType: 'xp_total', threshold: 500, sort: 4 },
+  { id: 'badge_champion', name: 'بطل التحدي 🏆', desc: 'خلّصت 10 أيام تحدي كاملة من أول يوم لآخر يوم — شرطك: تكمّل 10 أيام تحدي (rewarded)!', icon: '🏆', rarity: 'legendary', conditionType: 'challenge_days', threshold: 10, sort: 5 },
 ]
 
 /** زرع الشارات الافتراضية لو مش موجودة + تنظيف المقامر الشجاع لو موجود من قديم */
@@ -160,12 +165,15 @@ export async function seedDefaultBadges(): Promise<void> {
   for (var i = 0; i < DEFAULT_BADGES.length; i++) {
     var b = DEFAULT_BADGES[i]
     try {
-      var exists: any = await db.$queryRawUnsafe('SELECT id FROM Badge WHERE id = ?', b.id)
+      var exists: any = await db.$queryRawUnsafe('SELECT id, desc FROM Badge WHERE id = ?', b.id)
       if (!exists || exists.length === 0) {
         await db.$executeRawUnsafe(
           'INSERT INTO Badge (id, name, desc, icon, rarity, conditionType, threshold, active, sort) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)',
           b.id, b.name, b.desc, b.icon, b.rarity, b.conditionType, b.threshold, b.sort
         )
+      } else if (!String(exists[0].desc || '').trim()) {
+        /* (ت3) شارة موجودة من غير وصف — نكتب لها الشرط الواضح */
+        await db.$executeRawUnsafe('UPDATE Badge SET desc = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?', b.desc, b.id)
       }
     } catch (e) { console.error('[gamify] seed badge fail', b.id, e) }
   }
@@ -249,12 +257,64 @@ export async function computeStudentState(studentId: string, grade: string): Pro
   await ensureGamifyTables()
   var profile: any = await getOrCreateProfile(studentId, grade)
 
-  // 1) فحص فجوة الستريك — لو فات يوم كامل من غير حل → تصفير أو درع
+  // 0) بيانات السلسلة الأول — عشان فحص الستريك يفهم جدولة أيام المستر
   var today = cairoDateKey()
   var yesterday = cairoYesterday()
   var streakReset = false
+
+  /* السلسلة النشطة + تجميع الأسئلة بالأيام + جدولة أيام المستر اليدوية */
+  var series = await getActiveSeries(grade)
+  var byDay: Record<number, any[]> = {}
+  var rewardedQids = new Set<string>()
+  var maxDay = 10
+  var dayDates: Record<number, string> = {}
+  var scheduledMode = false
+  if (series) {
+    var questions0 = await getSeriesQuestions(series.id)
+    for (var q0 of questions0) {
+      var dn0 = Number(q0.dayNumber) || 1
+      if (!byDay[dn0]) byDay[dn0] = []
+      byDay[dn0].push(q0)
+    }
+    try {
+      var attempts0: any = await db.$queryRawUnsafe(
+        'SELECT questionId FROM GamifyAttempt WHERE seriesId = ? AND studentId = ? AND epoch = ? AND rewarded = 1',
+        series.id, studentId, Number(profile.epoch) || 0
+      ) || []
+      for (var a0 of attempts0) rewardedQids.add(String(a0.questionId))
+    } catch (e) {}
+    maxDay = Number(series.totalDays) || 10
+    dayDates = parseDayDates(series.dayDates)
+    for (var k in dayDates) { if (String(dayDates[k] || '').length === 10) { scheduledMode = true; break } }
+  }
+
+  /** تاريخ سريان اليوم d في وضع الجدولة — يوم من غير تاريخ يفتح مع أقرب يوم قبله متحدد التاريخ */
+  var effDayDate = function (d: number): string {
+    var s = String(dayDates[d] || '')
+    if (s.length === 10) return s
+    for (var dd = d - 1; dd >= 1; dd--) {
+      var ps = String(dayDates[dd] || '')
+      if (ps.length === 10) return ps
+    }
+    return ''
+  }
+
+  // 1) فحص فجوة الستريك — لو فات يوم كامل من غير حل → تصفير أو درع
+  //   (ت1) في وضع جدولة أيام المستر: التصفير بس لو يوم مجدول فات وماتحلّش
+  //   — أيام الفاصل اللي مفيهاش تحدي مش بتضرب الستريك خالص
   if (profile.lastActiveDate && profile.lastActiveDate !== today) {
     var gap = daysBetween(profile.lastActiveDate, today)
+    var missedScheduled = false
+    if (gap >= 2 && scheduledMode) {
+      for (var md in byDay) {
+        var mdn = Number(md)
+        var med = effDayDate(mdn)
+        if (!med || med <= profile.lastActiveDate || med >= today) continue
+        var solvedThatDay = (byDay[mdn] || []).some(function (qq: any) { return rewardedQids.has(String(qq.id)) })
+        if (!solvedThatDay) { missedScheduled = true; break }
+      }
+      if (!missedScheduled) gap = 1 // مفيش تحدي مطلوب فات — مفيش عقوبة
+    }
     if (gap >= 2) {
       if (Number(profile.shield) > 0) {
         // درع من صندوق الكنز — الستريك ينجم عنه
@@ -287,45 +347,55 @@ export async function computeStudentState(studentId: string, grade: string): Pro
   // 2) تسوية الرهانات المعلّة (نتيجة الامتحان نزلت → نحسم فورًا)
   try { await settleBets(studentId) } catch (e) {}
 
-  // 3) السلسلة النشطة + اليوم المفتوح
-  var series = await getActiveSeries(grade)
+  // 3) السلسلة + اليوم المفتوح — (ت1) بقى بيفهم جدولة أيام المستر اليدوية:
+  //    لو المستر حدد تواريخ للأيام → التاريخ هو اللي بيفتح اليوم (مش التتابع)
+  //    ولو مفيش تواريخ → نفس التتابع القديم بالظبط (صفر تغيير)
   var unlockedDay = 0
   var dayQuestions: any[] = []
   var todayAnsweredCount = 0
   var todayTotal = 0
   var totalQuestions = 0
+  var isScheduledToday = false
+  var nextDayDate: string | null = null
 
   if (series) {
-    var questions = await getSeriesQuestions(series.id)
-    totalQuestions = questions.length
-    // اليوم المفتوح = أول يوم مش مكتمل في الحقبة الحالية
-    var byDay: Record<number, any[]> = {}
-    for (var q of questions) {
-      var dn = Number(q.dayNumber) || 1
-      if (!byDay[dn]) byDay[dn] = []
-      byDay[dn].push(q)
-    }
-    var attempts: any = []
-    try {
-      attempts = await db.$queryRawUnsafe(
-        'SELECT * FROM GamifyAttempt WHERE seriesId = ? AND studentId = ? AND epoch = ? AND rewarded = 1',
-        series.id, studentId, Number(profile.epoch) || 0
-      ) || []
-    } catch (e) {}
-    var rewardedQids = new Set(attempts.map(function (a: any) { return String(a.questionId) }))
-    var maxDay = Number(series.totalDays) || 10
-    for (var d = 1; d <= maxDay; d++) {
-      var dq = byDay[d] || []
-      if (dq.length === 0) continue // يوم فاضي — نعدّي عليه
-      var allDone = dq.every(function (qq: any) { return rewardedQids.has(String(qq.id)) })
-      if (!allDone) { unlockedDay = d; break }
-      unlockedDay = d
-    }
-    if (unlockedDay < maxDay && unlockedDay >= 1 && (byDay[unlockedDay] || []).length) {
-      // مكتمل؟ اللي بعده هو المفتوح
-      var cur = byDay[unlockedDay] || []
-      var curAllDone = cur.every(function (qq: any) { return rewardedQids.has(String(qq.id)) })
-      if (curAllDone && unlockedDay < maxDay) unlockedDay = unlockedDay + 1
+    totalQuestions = Object.keys(byDay).reduce(function (acc, dk) { return acc + (byDay[Number(dk)] || []).length }, 0)
+    if (scheduledMode) {
+      // وضع الجدولة: آخر يوم تاريخه <= النهاردة وعنده أسئلة هو المفتوح
+      for (var d2 = 1; d2 <= maxDay; d2++) {
+        var dq2 = byDay[d2] || []
+        if (dq2.length === 0) continue
+        var ed = effDayDate(d2)
+        if (!ed) { if (d2 > unlockedDay) unlockedDay = d2; continue } // يوم من غير تاريخ → متاح
+        if (ed <= today) {
+          if (d2 > unlockedDay) unlockedDay = d2
+          if (ed === today) isScheduledToday = true
+        } else {
+          if (!nextDayDate || ed < nextDayDate) nextDayDate = ed
+        }
+      }
+      // لو مفيش اليوم المفتوح لسه (قبل أول تاريخ) → العد التنازلي لأول تاريخ جاي
+      if (unlockedDay === 0 && !nextDayDate) {
+        for (var d3 = 1; d3 <= maxDay; d3++) {
+          var ed3 = String(dayDates[d3] || '')
+          if (ed3.length === 10 && (byDay[d3] || []).length) { if (!nextDayDate || ed3 < nextDayDate) nextDayDate = ed3 }
+        }
+      }
+    } else {
+      // التتابع القديم — أول يوم مش مكتمل في الحقبة الحالية
+      for (var d = 1; d <= maxDay; d++) {
+        var dq = byDay[d] || []
+        if (dq.length === 0) continue // يوم فاضي — نعدّي عليه
+        var allDone = dq.every(function (qq: any) { return rewardedQids.has(String(qq.id)) })
+        if (!allDone) { unlockedDay = d; break }
+        unlockedDay = d
+      }
+      if (unlockedDay < maxDay && unlockedDay >= 1 && (byDay[unlockedDay] || []).length) {
+        // مكتمل؟ اللي بعده هو المفتوح
+        var cur = byDay[unlockedDay] || []
+        var curAllDone = cur.every(function (qq: any) { return rewardedQids.has(String(qq.id)) })
+        if (curAllDone && unlockedDay < maxDay) unlockedDay = unlockedDay + 1
+      }
     }
     dayQuestions = (byDay[unlockedDay] || []).map(function (qq: any) {
       // الأمان: ممنوع نرجّع الإجابة الصح للطالب — نرجّع بس المحتوى
@@ -361,8 +431,9 @@ export async function computeStudentState(studentId: string, grade: string): Pro
   } catch (e) { boxReady = true }
 
   // 5) علامة التحذير — النافذة بتقفل والطالب لسه ما حلّش
+  //   (ت1) في وضع الجدولة: التحذير بس لو النهاردة فعلًا يوم تحدي مجدول
   var clock = cairoClock()
-  var windowUrgent = todayTotal > 0 && todayAnsweredCount < todayTotal && clock.hour >= 18
+  var windowUrgent = todayTotal > 0 && todayAnsweredCount < todayTotal && clock.hour >= 18 && (!scheduledMode || isScheduledToday)
   var hoursLeft = Math.max(0, Math.round(msUntilCairoMidnight() / 3600000))
 
   // 6) تذكير تلقائي مرة واحدة في اليوم (الطالب + ولي الأمر)
@@ -389,6 +460,35 @@ export async function computeStudentState(studentId: string, grade: string): Pro
 
   var badges = await getStudentBadges(studentId)
 
+  // (ت3) تقدم الشارات الحي — عشان حائط الشارات يورّي «الشرط وعندك كام»
+  var badgeProgress: Record<string, number> = {}
+  try {
+    var attP: any = await db.$queryRawUnsafe(
+      'SELECT COUNT(*) AS c, SUM(correct) AS cc FROM GamifyAttempt WHERE studentId = ?', studentId
+    ) || []
+    var totAtt = Number(attP[0] && attP[0].c) || 0
+    var corAtt = Number(attP[0] && attP[0].cc) || 0
+    var daysP: any = await db.$queryRawUnsafe(
+      'SELECT COUNT(DISTINCT dayNumber) AS d FROM GamifyAttempt WHERE studentId = ? AND rewarded = 1', studentId
+    ) || []
+    var hwFast: any = []
+    try {
+      hwFast = await db.$queryRawUnsafe(
+        "SELECT hr.id FROM HomeworkResult hr INNER JOIN Homework h ON h.id = hr.homeworkId " +
+        "WHERE hr.studentId = ? AND hr.submittedAt <= datetime(h.createdAt, '+24 hours') " +
+        "AND COALESCE(hr.score, 0) >= 0.7 * COALESCE(NULLIF(hr.maxScore, 0), 100) LIMIT 1",
+        studentId
+      ) || []
+    } catch (e) {}
+    badgeProgress = {
+      streak_days: Number(profile.streak) || 0,
+      xp_total: Math.round(Number(profile.xp) || 0),
+      accuracy: totAtt > 0 ? Math.round((corAtt / totAtt) * 1000) / 10 : 0,
+      challenge_days: Number(daysP[0] && daysP[0].d) || 0,
+      homework_speed: hwFast.length > 0 ? 1 : 0,
+    }
+  } catch (e) {}
+
   return {
     profile: {
       xp: Number(profile.xp) || 0,
@@ -402,13 +502,33 @@ export async function computeStudentState(studentId: string, grade: string): Pro
       id: String(series.id), title: String(series.title || ''),
       totalDays: Number(series.totalDays) || 10,
       prize: String(series.prize || DEFAULT_PRIZE_TEXT),
+      /* (ت1) تواريخ أيام المستر — محطات التحدي اللي هو حددها بإيده */
+      dayDates: dayDates,
     } : null,
     unlockedDay, dayQuestions, todayAnsweredCount, todayTotal, totalQuestions,
+    /* (ت1) وضع جدولة الأيام — النهاردة يوم تحدي مجدول؟ + أول تاريخ جاي */
+    scheduledMode, isScheduledToday, nextDayDate,
     // (ج2) إشعار السؤال اليومي: الطالب قفله بالـ X من قبل لليوم المفتوح ده؟
     popupDismissed: series ? await isPopupDismissed(studentId, String(series.id), unlockedDay) : false,
     streakReset, boxReady, boxCooldownMs, windowUrgent, hoursLeft,
-    badges, today: today,
+    badges, badgeProgress, today: today,
   }
+}
+
+/** (ت1) قراءة جدولة أيام المستر من العمود dayDates — متسامحة مع أي قيمة قديمة */
+export function parseDayDates(raw: any): Record<number, string> {
+  var out: Record<number, string> = {}
+  try {
+    var obj = typeof raw === 'object' && raw !== null ? raw : safeParse(raw, {})
+    if (obj && typeof obj === 'object') {
+      for (var k in obj) {
+        var n = parseInt(k, 10)
+        var v = String(obj[k] || '')
+        if (isFinite(n) && n >= 1 && /^\d{4}-\d{2}-\d{2}$/.test(v)) out[n] = v
+      }
+    }
+  } catch (e) {}
+  return out
 }
 
 export var DEFAULT_PRIZE_TEXT = '⚠️ الأسئلة دي عليها جوائز مادية قوية من المستر — اللي يجمع أعلى نقاط يكسب الجائزة الكبرى من مستر شريف السيد 💰'
@@ -434,6 +554,26 @@ export async function answerQuestion(opts: {
   var qRows: any = await db.$queryRawUnsafe('SELECT * FROM ChallengeQuestion WHERE id = ? AND seriesId = ?', opts.questionId, opts.seriesId)
   if (!qRows || !qRows.length) return { ok: false, error: 'not_found' }
   var q = qRows[0]
+
+  /* (ت1) حارس الجدولة: لو المستر حدد تاريخ اليوم ده في المستقبل —
+     السؤال لسه ما جه وقته وممنوع يتجاوب من أي حد */
+  try {
+    var sr: any = await db.$queryRawUnsafe('SELECT dayDates FROM ChallengeSeries WHERE id = ?', opts.seriesId) || []
+    if (sr.length) {
+      var dds = parseDayDates(sr[0].dayDates)
+      var hasDates = false
+      for (var dk in dds) { if (String(dds[dk] || '').length === 10) { hasDates = true; break } }
+      if (hasDates) {
+        var qd = Number(q.dayNumber) || 1
+        var eff = String(dds[qd] || '')
+        if (!eff) { for (var bd = qd - 1; bd >= 1; bd--) { if (String(dds[bd] || '').length === 10) { eff = String(dds[bd]); break } } }
+        if (eff && eff > today) {
+          return { ok: false, error: 'السؤال ده يومه ' + eff + ' — استنى يومه وجاهز! ⏳' }
+        }
+      }
+    }
+  } catch (e) {}
+
   var options = safeParse(q.options, [])
   var correct = false
   if (options && options.length > 0) {
@@ -571,10 +711,12 @@ export async function openMysteryBox(studentId: string, grade?: string): Promise
   return { ok: true, reward: { type: picked.type, value: picked.value, label: picked.label, rarity: picked.rarity } }
 }
 
-/* ----------------------------- رهان XP ----------------------------- */
-/* (ج2) الرهان بقى على الواجبات والامتحانات — الاثنين مع بعض بطلب المستر:
+/* ----------------------------- توقع XP ----------------------------- */
+/* (ج2) التوقع بقى على الواجبات والامتحانات — الاثنين مع بعض بطلب المستر:
    «والمراهنات تبقى على الواجبات والامتحانات، تبقى على الاثنين»
-   targetType: 'exam' | 'homework' — القديم كله امتحانات (Default exam) */
+   (ت2) المستر طلب تغيير الاسم — المراهنة حرام: «قسم المراهنات يكون اسمه أي اسم
+   ثاني عشان المراهنة دي حرام» → بقى «توقع واربح XP» — نفس الميكانيزم بالظبط،
+   بس مفيش أي كلمة رهان/مراهنة في الكلام اللي بيوشوفه الطالب */
 
 export async function placeBet(opts: {
   studentId: string; grade: string; examId: string; stake: number; prediction: number; targetType?: string
@@ -584,8 +726,8 @@ export async function placeBet(opts: {
   var stake = Math.floor(Number(opts.stake) || 0)
   var prediction = Math.floor(Number(opts.prediction) || 0)
   var targetType = String(opts.targetType || 'exam') === 'homework' ? 'homework' : 'exam'
-  if (stake < 10) return { ok: false, error: 'أقل رهان 10 XP' }
-  if (Number(profile.xp) < stake) return { ok: false, error: 'مش معاك XP كفاية للرهان ده' }
+  if (stake < 10) return { ok: false, error: 'أقل مشاركة 10 XP' }
+  if (Number(profile.xp) < stake) return { ok: false, error: 'مش معاك XP كفاية للمشاركة دي' }
 
   // الهدف لازم يكون من نفس الصف وماكانش الطالب سلّمه
   var targetTitle = ''
@@ -600,7 +742,7 @@ export async function placeBet(opts: {
     } catch (e) {}
     var hwDone: any = []
     try { hwDone = await db.$queryRawUnsafe('SELECT id FROM HomeworkResult WHERE homeworkId = ? AND studentId = ?', opts.examId, opts.studentId) } catch (e) {}
-    if (hwDone && hwDone.length) return { ok: false, error: 'سلّمت الواجب ده بالفعل — الرهان بقى بعد الحلبة ممنوع!' }
+    if (hwDone && hwDone.length) return { ok: false, error: 'سلّمت الواجب ده بالفعل — التوقع بيقفل بعد التسليم!' }
   } else {
     var examRows: any = await db.$queryRawUnsafe('SELECT id, title, questions FROM Exam WHERE id = ?', opts.examId)
     if (!examRows || !examRows.length) return { ok: false, error: 'الامتحان مش موجود' }
@@ -613,16 +755,16 @@ export async function placeBet(opts: {
     try {
       hasResult = await db.$queryRawUnsafe('SELECT id FROM ExamResult WHERE examId = ? AND studentId = ?', opts.examId, opts.studentId)
     } catch (e) {}
-    if (hasResult && hasResult.length) return { ok: false, error: 'سلّمت الامتحان ده بالفعل — الرهان بقى بعد الحلبة ممنوع!' }
+    if (hasResult && hasResult.length) return { ok: false, error: 'سلّمت الامتحان ده بالفعل — التوقع بيقفل بعد التسليم!' }
   }
   if (prediction < 0 || prediction > totalQ) return { ok: false, error: 'التوقع لازم يكون بين 0 و ' + totalQ }
   var already: any = await db.$queryRawUnsafe(
     "SELECT id FROM XpBet WHERE studentId = ? AND examId = ? AND targetType = ? AND status = 'locked'", opts.studentId, opts.examId, targetType
   )
-  if (already && already.length) return { ok: false, error: targetType === 'homework' ? 'عندك رهان شغال على الواجب ده بالفعل' : 'عندك رهان شغال على الامتحان ده بالفعل' }
+  if (already && already.length) return { ok: false, error: targetType === 'homework' ? 'عندك توقع شغال على الواجب ده بالفعل' : 'عندك توقع شغال على الامتحان ده بالفعل' }
 
-  // خصم الـ XP فورًا (محتجز كرصيد رهان)
-  await awardXp(opts.studentId, 'bet_lock', -stake, 'رهان على ' + targetTitle.slice(0, 60))
+  // حجز الـ XP فورًا (رصيد المشاركة في تحدي التوقع)
+  await awardXp(opts.studentId, 'bet_lock', -stake, 'توقع على ' + targetTitle.slice(0, 60))
   await db.$executeRawUnsafe(
     'INSERT INTO XpBet (id, studentId, examId, examTitle, stake, prediction, totalQuestions, status, targetType) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
     id(), opts.studentId, opts.examId, targetTitle, stake, prediction, totalQ, 'locked', targetType
@@ -630,8 +772,8 @@ export async function placeBet(opts: {
   return { ok: true, totalQuestions: totalQ }
 }
 
-/** تسوية الرهانات — بتتنادى تلقائيًا من computeStudentState
- *  (ج2) بتسوّى رهانات الواجبات والامتحانات حسب targetType */
+/** تسوية التوقعات — بتتنادى تلقائيًا من computeStudentState
+ *  (ج2) بتسوّى توقعات الواجبات والامتحانات حسب targetType */
 export async function settleBets(studentId: string): Promise<void> {
   try {
     var pending: any = await db.$queryRawUnsafe("SELECT * FROM XpBet WHERE studentId = ? AND status = 'locked'", studentId) || []
@@ -653,20 +795,20 @@ export async function settleBets(studentId: string): Promise<void> {
       var actual = Math.round((score / maxScore) * totalQ)
       var payout = 0
       var status = 'lost'
-      if (actual === Number(bet.prediction)) { payout = Number(bet.stake) * 2; status = 'won' } // توقع تام → ضعف الرهان
-      else if (Math.abs(actual - Number(bet.prediction)) === 1) { payout = Number(bet.stake); status = 'push' } // فارق سؤال واحد → رجعت رهانك
-      if (payout > 0) await awardXp(studentId, 'bet_settle', payout, 'تسوية رهان ' + String(bet.examTitle || '').slice(0, 60))
+      if (actual === Number(bet.prediction)) { payout = Number(bet.stake) * 2; status = 'won' } // توقع تام → ضعف النقاط
+      else if (Math.abs(actual - Number(bet.prediction)) === 1) { payout = Number(bet.stake); status = 'push' } // فارق سؤال واحد → رجعت نقاطك
+      if (payout > 0) await awardXp(studentId, 'bet_settle', payout, 'حسم التوقع — ' + String(bet.examTitle || '').slice(0, 60))
       await db.$executeRawUnsafe(
         'UPDATE XpBet SET status = ?, payout = ?, actual = ?, settledAt = CURRENT_TIMESTAMP WHERE id = ?',
         status, payout, actual, String(bet.id)
       )
       var kind = betType === 'homework' ? 'الواجب' : 'الامتحان'
       var msg = status === 'won'
-        ? '🎯 توقعك مظبوط بالحرف في ' + kind + ' «' + String(bet.examTitle || '').slice(0, 40) + '»! كسبت ' + payout + ' XP (ضعف رهانك)'
+        ? '🎯 توقعك مظبوط بالحرف في ' + kind + ' «' + String(bet.examTitle || '').slice(0, 40) + '»! كسبت ' + payout + ' XP (ضعف النقاط)'
         : status === 'push'
-          ? '😅 قربت جدًا — فارق سؤال واحد بس في ' + kind + '. رجعتلك رهانك كامل (' + payout + ' XP)'
-          : '💸 التوقع بعيد في ' + kind + ' — خسرت رهان (' + Number(bet.stake) + ' XP). جرّب تاني وركّز أحسن!'
-      try { await notifyStudent(studentId, 'gamify', status === 'won' ? '🏆 رهانك كسب!' : status === 'push' ? '🤝 رهان انعاد' : '💔 رهان خسر', msg) } catch (e) {}
+          ? '😅 قربت جدًا — فارق سؤال واحد بس في ' + kind + '. رجعتلك نقاطك كاملة (' + payout + ' XP)'
+          : '💸 التوقع بعيد في ' + kind + ' — نقاط المشاركة اتحرقت (' + Number(bet.stake) + ' XP). جرّب تاني وركّز أحسن!'
+      try { await notifyStudent(studentId, 'gamify', status === 'won' ? '🏆 توقعك كسب!' : status === 'push' ? '🤝 قربت جدًا!' : '💔 التوقع مظبطش', msg) } catch (e) {}
     }
   } catch (e) { console.error('[gamify] settleBets fail', e) }
 }

@@ -43,6 +43,8 @@ export function DailyQuestionPopup({ studentId, grade, suppressed }: DailyQuesti
     : []
 
   const dismissed = state ? !!state.popupDismissed : false
+  /* (ت1) في وضع جدولة أيام المستر: الإشعار بيظهر بس لو النهاردة فعلًا يوم تحدي مجدول */
+  const scheduledOk = state ? (!state.scheduledMode || !!state.isScheduledToday) : true
   const show = !!(
     !suppressed &&
     visible &&
@@ -51,7 +53,8 @@ export function DailyQuestionPopup({ studentId, grade, suppressed }: DailyQuesti
     series &&
     day > 0 &&
     pending.length > 0 &&
-    !dismissed
+    !dismissed &&
+    scheduledOk
   )
 
   const current = pending.length > 0 ? pending[0] : null

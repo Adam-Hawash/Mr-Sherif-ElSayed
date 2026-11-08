@@ -10,12 +10,27 @@
 //     correctIndex, correctText, xpReward}] — بنستبدل أسئلة الأيام المرسلة بس
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { ensureGamifyTables, getSeriesQuestions, DEFAULT_PRIZE_TEXT } from '@/lib/gamify'
+import { ensureGamifyTables, getSeriesQuestions, DEFAULT_PRIZE_TEXT, parseDayDates } from '@/lib/gamify'
 import { notifyStudents } from '@/lib/notify'
 import { isAdmin } from '@/lib/video-guard'
 
 function gid(): string {
   return 'csr' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
+}
+
+/* (ت1) تنظيف جدولة أيام المستر — أرقام أيام صحيحة + تواريخ صالحة بس */
+function cleanDayDates(raw: any): string {
+  var out: Record<string, string> = {}
+  try {
+    if (raw && typeof raw === 'object') {
+      for (var k in raw) {
+        var n = parseInt(k, 10)
+        var v = String(raw[k] || '')
+        if (isFinite(n) && n >= 1 && n <= 60 && /^\d{4}-\d{2}-\d{2}$/.test(v)) out[String(n)] = v
+      }
+    }
+  } catch (e) {}
+  return Object.keys(out).length ? JSON.stringify(out) : ''
 }
 
 /* حارس الأدمن — adminId من الـ body أو الكويري (2026-غ2 تأمين) */
@@ -45,6 +60,8 @@ export async function GET(req: NextRequest) {
         id: String(s.id), grade: String(s.grade), title: String(s.title),
         totalDays: Number(s.totalDays) || 7, prize: String(s.prize || ''),
         active: Number(s.active) === 1, createdAt: String(s.createdAt || ''),
+        /* (ت1) جدولة أيام المستر اليدوية — بترجع للوحة الأدمن زي ما هي */
+        dayDates: parseDayDates(s.dayDates),
         questionCount: qs.length, perDay,
         questions: qs.map(function (q: any) {
           return {
@@ -70,9 +87,10 @@ export async function POST(req: NextRequest) {
     await ensureGamifyTables()
     var sid = gid()
     await db.$executeRawUnsafe(
-      'INSERT INTO ChallengeSeries (id, grade, title, totalDays, prize, active) VALUES (?, ?, ?, ?, ?, 0)',
+      'INSERT INTO ChallengeSeries (id, grade, title, totalDays, prize, active, dayDates) VALUES (?, ?, ?, ?, ?, 0, ?)',
       sid, String(body.grade || ''), String(body.title || 'تحدي اليوم').slice(0, 120),
-      Math.max(1, Number(body.totalDays) || 10), String(body.prize || '').slice(0, 400)
+      Math.max(1, Number(body.totalDays) || 10), String(body.prize || '').slice(0, 400),
+      cleanDayDates(body.dayDates)
     )
     return NextResponse.json({ ok: true, id: sid })
   } catch (error) {
@@ -129,9 +147,11 @@ export async function PUT(req: NextRequest) {
 
     // تحديث بيانات السلسلة
     await db.$executeRawUnsafe(
-      'UPDATE ChallengeSeries SET title = ?, grade = ?, totalDays = ?, prize = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
+      'UPDATE ChallengeSeries SET title = ?, grade = ?, totalDays = ?, prize = ?, dayDates = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
       String(body.title || 'تحدي اليوم').slice(0, 120), String(body.grade || ''),
-      Math.max(1, Number(body.totalDays) || 10), String(body.prize || '').slice(0, 400), sid
+      Math.max(1, Number(body.totalDays) || 10), String(body.prize || '').slice(0, 400),
+      /* (ت1) التواريخ بتيجي دايمًا مع الحفظ — لو مش مرسلة نحفظ فاضي (المستر مسحها) */
+      cleanDayDates(body.dayDates), sid
     )
 
     // حفظ الأسئلة (لو مرسلة) — استبدال كامل لأسئلة الأيام المرسلة

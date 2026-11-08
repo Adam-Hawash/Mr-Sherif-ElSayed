@@ -1,9 +1,10 @@
 // @ts-nocheck
 // FILE: src/app/api/gamify/bet/route.ts
-// (2026-غ1) المراهنة على XP — الطالب يتنبأ بعدد الإجابات الصحيحة قبل الامتحان
-// (2026-ج2) «المراهنات تبقى على الواجبات والامتحانات، تبقى على الاثنين»:
-//   • GET  ?studentId= → رهاناته + المتاح (امتحانات + واجبات من نفس الصف وماحلهاش)
-//   • POST → مكان الرهان (توقع تام = ضعف الرهان، فارق سؤال = رجوع الرهان)
+// (2026-غ1) توقع XP — الطالب يتوقع عدد الإجابات الصحيحة قبل الواجب/الامتحان
+// (ت2) الاسم بقى «توقع واربح» بطلب المستر — المراهنة حرام وممنوعة في الكلام
+// (2026-ج2) «التوقعات تبقى على الواجبات والامتحانات، تبقى على الاثنين»:
+//   • GET  ?studentId= → توقعاته + المتاح (امتحانات + واجبات من نفس الصف وماحلهاش)
+//   • POST → تسجيل التوقع (توقع تام = ضعف النقاط، فارق سؤال = رجوع النقاط)
 import { NextRequest, NextResponse } from 'next/server'
 import { placeBet, getStudentBets, getOrCreateProfile } from '@/lib/gamify'
 import { db } from '@/lib/db'
@@ -28,7 +29,7 @@ export async function GET(req: NextRequest) {
     var profile: any = await getOrCreateProfile(studentId, grade)
     var bets = await getStudentBets(studentId)
 
-    // المتاح للرهان: امتحانات + واجبات — نفس الصف + الطالب ما سلّمهاش + مفيش رهان قفل عليها
+    // المتاح للتوقع: امتحانات + واجبات — نفس الصف + الطالب ما سلّمهاش + مفيش توقع مقفول عليها
     var available: any[] = []
     // 📝 الامتحانات
     try {
@@ -71,7 +72,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ bets, available, xp: Number(profile.xp) || 0 })
   } catch (error) {
     console.error('gamify bet GET error:', error)
-    return NextResponse.json({ error: 'خطأ في تحميل الرهانات' }, { status: 500 })
+    return NextResponse.json({ error: 'خطأ في تحميل التوقعات' }, { status: 500 })
   }
 }
 
@@ -90,6 +91,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(result)
   } catch (error) {
     console.error('gamify bet POST error:', error)
-    return NextResponse.json({ error: 'خطأ في تسجيل الرهان' }, { status: 500 })
+    return NextResponse.json({ error: 'خطأ في تسجيل التوقع' }, { status: 500 })
   }
 }

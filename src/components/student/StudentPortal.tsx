@@ -66,6 +66,10 @@ import { GamifyNavbar } from '@/components/student/gamify/GamifyNavbar'
 import { GamifyHub } from '@/components/student/gamify/GamifyHub'
 /* (2026-ج2) سؤال اليوم بيجي زي إشعار أول ما الطالب يدخل صفحته — وتقدمه بيتحفظ */
 import { DailyQuestionPopup } from '@/components/student/gamify/DailyQuestionPopup'
+/* (2026-ت4) معلومة/حكمة اليوم — إشعار كبير ينزلق من الشمال أول ما يفتح المنصة */
+import { DailyInfoToast } from '@/components/student/DailyInfoToast'
+/* (2026-ت5) أزرار تصوير صفحات الواجب/الامتحان — صفحة كاملة بأسئلتها وأجوبتها */
+import { PagePhotoCapture } from '@/components/student/PagePhotoCapture'
 
 
 /* نظام الترجمة (عربي/إنجليزي) — التابات والواجهة */
@@ -75,7 +79,24 @@ import {
   WorksheetQuestionBadge, WorksheetPageChip, WorksheetTableEditable, WorksheetTableReadonly,
   WorksheetFigure, isWorksheetQuestionSet, groupWorksheetPages, emptyTableValues,
   tableValuesAreEmpty, buildAnswerWithTable, parseTableValuesFromText,
+  type WorksheetPageGroup,
 } from '@/components/worksheet/WorksheetParts'
+
+/* ============================================================
+ * (2026-ت5) أزرار تصوير صفحات الواجب/الامتحان — طلب المستر حرفيًا:
+ *  «لو الواجب مثلا ثلاث صفح تجيب له ثلاث زراير — تصوير الصفحة الأولى
+ *   من السؤال كذا للسؤال كذا — والطالب هو اللي يصور»
+ * ============================================================ */
+var PAGE_ORDINALS = ['الأولى', 'الثانية', 'الثالثة', 'الرابعة', 'الخامسة', 'السادسة', 'السابعة', 'الثامنة', 'التاسعة', 'العاشرة', 'الحادية عشرة', 'الثانية عشرة']
+function pageOrdinal(i: number): string { return PAGE_ORDINALS[i] || ('رقم ' + (i + 1)) }
+/** نص زرار صفحة: «تصوير الصفحة الأولى (من السؤال 1 للسؤال 5)» */
+function pageButtonLabel(g: WorksheetPageGroup, gi: number): string {
+  const from = g.items.length ? g.items[0].idx + 1 : 1
+  const to = g.items.length ? g.items[g.items.length - 1].idx + 1 : 1
+  return 'تصوير الصفحة ' + pageOrdinal(gi) + ' (من السؤال ' + from + ' للسؤال ' + to + ')'
+}
+/** هل فيه أكتر من صفحة فعلًا؟ — زرار الصفحات بيظهر بس لما الأسئلة موزعة على صفحات */
+function hasMultiPages(groups: WorksheetPageGroup[]): boolean { return groups.length > 1 }
 
 export function StudentPortal() {
   return <StudentPortalInner />
@@ -279,6 +300,8 @@ function StudentPortalInner() {
         <div className="mx-auto max-w-4xl space-y-5">
           {/* (2026-ج2) إشعار سؤال اليوم — أول حاجة الطالب يشوفها وهو داخل */}
           <DailyQuestionPopup studentId={studentId} grade={grade} />
+          {/* (2026-ت4) معلومة/حكمة اليوم — إشعار كبير من الشمال + X + إغلاق تلقائي 30 ثانية */}
+          <DailyInfoToast studentId={studentId} />
 
 
           {/* Welcome Card + Quick Actions on top */}
@@ -442,6 +465,8 @@ function StudentPortalInner() {
     <div className="flex-1 flex flex-col">
       {/* (2026-ج2) إشعار سؤال اليوم — بيجي زي الإشعارات، وبيختفي خالص بالـ X — مخفي لو الطالب واقف في تاب التحدي نفسه */}
       <DailyQuestionPopup studentId={studentId} grade={grade} suppressed={activeTab === 'gamify'} />
+      {/* (2026-ت4) معلومة/حكمة اليوم — إشعار كبير من الشمال + X + إغلاق تلقائي 30 ثانية */}
+      <DailyInfoToast studentId={studentId} />
 
 
       {/* Top Bar */}
@@ -1274,6 +1299,8 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
   const [hwSubmitting, setHwSubmitting] = useState<string | null>(null)
   /* 2026-و20 — ممنوع تسليم الواجب لحد ما صور ورقة الحل توصل كاملة */
   const [hwPhotoBusy, setHwPhotoBusy] = useState<Record<string, boolean>>({})
+  /* (2026-ت5) صور صفحات ورقة الحل — hwId ← مفتاح الصفحة ← مسار الصورة المرفوعة */
+  const [hwPagePhotos, setHwPagePhotos] = useState<Record<string, Record<string, string>>>({})
   const [hwSubmitted, setHwSubmitted] = useState(false)
   const [submittedHwId, setSubmittedHwId] = useState<string | null>(null)
   const [blockedHwId, setBlockedHwId] = useState<string | null>(null)
@@ -2240,6 +2267,9 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
           hwShuffleMaps.current[hw.id] = shuffleMap
         }
         var hwTableMap = (isWorksheet && hwTableAnswers[hw.id]) || {}
+        /* (2026-ت5) صفحات المصدر — أزرار «تصوير الصفحة كاملة» لما الأسئلة موزعة على أكتر من صفحة */
+        var hwPageGroups = groupWorksheetPages(allQuestions)
+        var hwMultiPage = hasMultiPages(hwPageGroups)
         /* (2026-و40-w2) عدّاد التسليم بيتحسب معاه أسئلة الجداول المعباية حتى لو
            صندوق النص فاضي — الطالب يشوف (2/2) مش (1/2) وهو مالي الجدول */
         var hwAnsweredSet = new Set(Object.keys(myAnswers))
@@ -2326,10 +2356,32 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                   {isWorksheet ? (
                     <div className="space-y-4" dir="rtl">
                       <p className="text-[11px] font-bold text-amber-700 dark:text-amber-400 flex items-center gap-1.5">📝 ورقة عمل — اكتب جوه الجداول وخانات الإجابة تحت كل سؤال</p>
-                      {groupWorksheetPages(allQuestions).map(function(g, gi) {
+                      {hwPageGroups.map(function(g, gi) {
                         return (
                           <div key={g.key || gi} className="rounded-xl border border-amber-200/80 dark:border-amber-800/50 bg-amber-50/60 dark:bg-amber-950/20 p-3 space-y-3">
-                            <WorksheetPageChip srcName={g.srcName} page={g.page} />
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <WorksheetPageChip srcName={g.srcName} page={g.page} />
+                              {/* (2026-ت5) زرار تصوير الصفحة كاملة — طلب المستر: «تصوير الصفحة الأولى من السؤال كذا للسؤال كذا» */}
+                              {hwMultiPage ? (
+                                <div className="w-full sm:w-auto">
+                                  <PagePhotoCapture
+                                    label={pageButtonLabel(g, gi)}
+                                    path={(hwPagePhotos[hw.id] || {})[String(g.key)] || ''}
+                                    onUploaded={function(p: string) {
+                                      setHwPagePhotos(function(prev) {
+                                        const perHw = { ...(prev[hw.id] || {}) }
+                                        if (p) perHw[String(g.key)] = p
+                                        else delete perHw[String(g.key)]
+                                        return { ...prev, [hw.id]: perHw }
+                                      })
+                                    }}
+                                    onBusy={function(b: boolean) {
+                                      setHwPhotoBusy(function(prev) { return { ...prev, [hw.id]: b } })
+                                    }}
+                                  />
+                                </div>
+                              ) : null}
+                            </div>
                             {g.items.map(function(item, ii) {
                               var q = item.q
                               var displayIdx = item.idx
@@ -2415,6 +2467,34 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                       })}
                     </div>
                   ) : (null)}
+                  {/* (2026-ت5) صفحات ورقة الحل — المستر طلّع الأسئلة من صفحات: زرار تصوير لكل صفحة كاملة */}
+                  {!isWorksheet && hwMultiPage && (
+                    <div className="rounded-xl border border-sky-300/60 bg-sky-50/60 dark:border-sky-700/50 dark:bg-sky-950/20 p-3 space-y-2">
+                      <p className="text-[11px] font-bold text-sky-700 dark:text-sky-300">📷 اكتب حلك في كشكولك وصوّر كل صفحة بزرارها — الصورة بتوصل للمستر مع تسليمك</p>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {hwPageGroups.map(function(g, gi) {
+                          return (
+                            <PagePhotoCapture
+                              key={g.key || gi}
+                              label={pageButtonLabel(g, gi)}
+                              path={(hwPagePhotos[hw.id] || {})[String(g.key)] || ''}
+                              onUploaded={function(p: string) {
+                                setHwPagePhotos(function(prev) {
+                                  const perHw = { ...(prev[hw.id] || {}) }
+                                  if (p) perHw[String(g.key)] = p
+                                  else delete perHw[String(g.key)]
+                                  return { ...prev, [hw.id]: perHw }
+                                })
+                              }}
+                              onBusy={function(b: boolean) {
+                                setHwPhotoBusy(function(prev) { return { ...prev, [hw.id]: b } })
+                              }}
+                            />
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
                   {/* MCQ Section */}
                   {!isWorksheet && hasMCQ && (
                     <div className="space-y-4">
@@ -2540,6 +2620,37 @@ function HomeworkTab({ homework, studentId, completedHwIds, onHwSubmitted }: { h
                         if (typeof mappedAnswers[i] === 'number') return
                         mappedAnswers[i] = buildAnswerWithTable(String(mappedAnswers[i] || ''), t, vals)
                       })
+                      /* ===== (2026-ت5) صور الصفحات الكاملة — علامات الصورة بتتحط جوه
+                         إجابات الأسئلة المقالية بتاعة نفس الصفحة (نفس ميكانيزم ورقة
+                         الحل المعتاد — المصحح الذكي وشاشات المراجعة بيفهموها)، ولو
+                         الصفحة مفيهاش مقالي العلامة بتروح لأول مقالي في الواجب.
+                         وكل الصور بتنساب كمان في مفتاح __pagePhotos (زي __tableAnswers)
+                         عشان تتخزن مع النتيجة من غير أي تعديل في الداتابيز ===== */
+                      try {
+                        var hwPpMap = hwPagePhotos[hw.id] || {}
+                        var hwPpEntries: { label: string; path: string }[] = []
+                        var firstWritingOrigIdx = -1
+                        allQuestions.forEach(function(q: any, i: number) { if (firstWritingOrigIdx < 0 && isWritingQuestion(q)) firstWritingOrigIdx = i })
+                        hwPageGroups.forEach(function(g, gi) {
+                          var p = hwPpMap[String(g.key)] || ''
+                          if (!p) return
+                          var rangeLabel = 'الصفحة ' + pageOrdinal(gi) + ' (سؤال ' + (g.items.length ? g.items[0].idx + 1 : 1) + '–' + (g.items.length ? g.items[g.items.length - 1].idx + 1 : 1) + ')'
+                          hwPpEntries.push({ label: rangeLabel, path: p })
+                          var marker = '\n[📷 صورة مرفقة: ' + p + ']\n'
+                          var putIn = -1
+                          g.items.forEach(function(it) { if (putIn < 0 && isWritingQuestion(it.q)) putIn = it.idx })
+                          if (putIn < 0) putIn = firstWritingOrigIdx
+                          if (putIn >= 0 && typeof mappedAnswers[putIn] !== 'number') {
+                            var existing = String(mappedAnswers[putIn] || '')
+                            if (existing.indexOf('[📷 صورة مرفقة: ' + p + ']') < 0) {
+                              mappedAnswers[putIn] = existing + marker
+                            }
+                          }
+                        })
+                        if (hwPpEntries.length > 0) {
+                          ;(mappedAnswers as any)['__pagePhotos'] = hwPpEntries
+                        }
+                      } catch (ePp) {}
                       var res = await fetch('/api/homework/submit', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -2706,6 +2817,8 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
   const [submitting, setSubmitting] = useState(false)
   /* 2026-و20 — ممنوع تسليم الامتحان لحد ما صور ورقة الحل توصل كاملة */
   const [examPhotoBusy, setExamPhotoBusy] = useState(false)
+  /* (2026-ت5) صور صفحات ورقة الحل للامتحان — examId ← مفتاح الصفحة ← مسار الصورة */
+  const [examPagePhotos, setExamPagePhotos] = useState<Record<string, Record<string, string>>>({})
   /* (2026-و92) مرآة متزامنة لحالة رفع الصورة — التسليم التلقائي (انتهاء وقت/
      حد المغادرات) بيستناها تخلص قبل ما يسلّم بدل ما يضيع صامت */
   const examPhotoBusyRef = useRef(false)
@@ -2987,6 +3100,38 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
         if (typeof mappedAnswers[origIdx] === 'number') return
         mappedAnswers[origIdx] = buildAnswerWithTable(String(mappedAnswers[origIdx] || ''), q.table, vals)
       })
+      /* ===== (2026-ت5) صور الصفحات الكاملة للامتحان — نفس ميكانيزم الواجب:
+         العلامة جوه إجابة أول سؤال مقالي في نفس الصفحة + __pagePhotos للتخزين ===== */
+      try {
+        var exPpMap = examPagePhotos[examIdLocal] || {}
+        var exPpEntries: { label: string; path: string }[] = []
+        var exPpGroups = groupWorksheetPages(examQuestions)
+        var firstWritingDisplay = -1
+        examQuestions.forEach(function(q: any, i: number) { if (firstWritingDisplay < 0 && isWritingQuestion(q)) firstWritingDisplay = i })
+        exPpGroups.forEach(function(g, gi) {
+          var p = exPpMap[String(g.key)] || ''
+          if (!p) return
+          var rangeLabel = 'الصفحة ' + pageOrdinal(gi) + ' (سؤال ' + (g.items.length ? g.items[0].idx + 1 : 1) + '–' + (g.items.length ? g.items[g.items.length - 1].idx + 1 : 1) + ')'
+          exPpEntries.push({ label: rangeLabel, path: p })
+          var marker = '\n[📷 صورة مرفقة: ' + p + ']\n'
+          var putIn = -1
+          g.items.forEach(function(it) { if (putIn < 0 && isWritingQuestion(it.q)) putIn = it.idx })
+          if (putIn < 0) putIn = firstWritingDisplay
+          if (putIn >= 0) {
+            var pOrig = examShuffleMap.length > 0 ? examShuffleMap[putIn] : putIn
+            if (pOrig === undefined) pOrig = putIn
+            if (typeof mappedAnswers[pOrig] !== 'number') {
+              var existing = String(mappedAnswers[pOrig] || '')
+              if (existing.indexOf('[📷 صورة مرفقة: ' + p + ']') < 0) {
+                mappedAnswers[pOrig] = existing + marker
+              }
+            }
+          }
+        })
+        if (exPpEntries.length > 0) {
+          ;(mappedAnswers as any)['__pagePhotos'] = exPpEntries
+        }
+      } catch (ePp) {}
       // Add client-side timeout (120s — AI grades the writing questions during submit)
       var submitController = new AbortController()
       var submitTimeout = setTimeout(function() { submitController.abort() }, 120000)
@@ -3498,7 +3643,9 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
     /* (2026-و40-w) ورقة العمل؟ أسئلة فيها جدول/رسمة/صفحة مصدر — بتتعرض مجمعة
        بالصفحات بالترتيب الأصلي (الخلط متقفل في handleStartExam للامتحانات دي) */
     var isWorksheetExam = isWorksheetQuestionSet(examQuestions)
-    var examPageGroups = isWorksheetExam ? groupWorksheetPages(examQuestions) : []
+    /* (2026-ت5) صفحات المصدر — أزرار «تصوير الصفحة كاملة» في وضعي ورقة العمل والعادي */
+    var examPageGroups = groupWorksheetPages(examQuestions)
+    var examMultiPage = hasMultiPages(examPageGroups)
     return (
       <div className="space-y-4" dir="ltr">
         <div className="flex items-center justify-between gap-2">
@@ -3561,7 +3708,28 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
             {examPageGroups.map(function(g, gi) {
               return (
                 <div key={g.key || gi} className="rounded-xl border border-amber-200/80 dark:border-amber-800/50 bg-amber-50/60 dark:bg-amber-950/20 p-3 space-y-3">
-                  <WorksheetPageChip srcName={g.srcName} page={g.page} />
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <WorksheetPageChip srcName={g.srcName} page={g.page} />
+                    {/* (2026-ت5) زرار تصوير الصفحة كاملة — طلب المستر */}
+                    {examMultiPage && takingExam ? (
+                      <div className="w-full sm:w-auto">
+                        <PagePhotoCapture
+                          label={pageButtonLabel(g, gi)}
+                          path={(examPagePhotos[takingExam] || {})[String(g.key)] || ''}
+                          onUploaded={function(p: string) {
+                            setExamPagePhotos(function(prev) {
+                              const perExam = { ...(prev[takingExam as string] || {}) }
+                              if (p) perExam[String(g.key)] = p
+                              else delete perExam[String(g.key)]
+                              return { ...prev, [takingExam as string]: perExam }
+                            })
+                          }}
+                          onBusy={function(b: boolean) { setExamPhotoBusy(b) }}
+                          disabled={examTimeUp}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
                   {g.items.map(function(item, ii) {
                     var q = item.q
                     var displayIdx = item.idx
@@ -3688,6 +3856,33 @@ function ExamsTab({ exams, results, completedExamIds, onExamSubmitted, studentId
         )}
 
         {/* Writing Section */}
+        {/* (2026-ت5) صفحات ورقة الحل في الامتحان العادي — زرار تصوير لكل صفحة كاملة */}
+        {!isWorksheetExam && examMultiPage && takingExam && (
+          <div dir="rtl" className="rounded-xl border border-sky-300/60 bg-sky-50/60 dark:border-sky-700/50 dark:bg-sky-950/20 p-3 space-y-2">
+            <p className="text-[11px] font-bold text-sky-700 dark:text-sky-300">📷 اكتب حلك في كشكولك وصوّر كل صفحة بزرارها — الصورة بتوصل للمستر مع تسليمك</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {examPageGroups.map(function(g, gi) {
+                return (
+                  <PagePhotoCapture
+                    key={g.key || gi}
+                    label={pageButtonLabel(g, gi)}
+                    path={(examPagePhotos[takingExam] || {})[String(g.key)] || ''}
+                    onUploaded={function(p: string) {
+                      setExamPagePhotos(function(prev) {
+                        const perExam = { ...(prev[takingExam as string] || {}) }
+                        if (p) perExam[String(g.key)] = p
+                        else delete perExam[String(g.key)]
+                        return { ...prev, [takingExam as string]: perExam }
+                      })
+                    }}
+                    onBusy={function(b: boolean) { setExamPhotoBusy(b) }}
+                    disabled={examTimeUp}
+                  />
+                )
+              })}
+            </div>
+          </div>
+        )}
         {!isWorksheetExam && writingQs.length > 0 && (
           <div className="space-y-3">
             {/* (2026-و44) رسالة قصيرة فوق الحل — طلب المستر حرفيًا */}

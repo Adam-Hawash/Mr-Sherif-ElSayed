@@ -6,7 +6,8 @@
 //   1) بطاقة سؤال اليوم (اختيارات كبيرة أو إجابة نصية + نتيجة فورية)
 //   2) صندوق الكنز — تفتيح بالأنيميشن + جوايز بالندرة + كولداون 24 ساعة
 //   3) حائط الشارات — مقفولة/مفتوحة بتوهج حسب الندرة
-//   4) المراهنة على XP — سلايدر الرهان + توقع النتيجة + قاعدة الأرباح
+//   4) توقع واربح XP — تحدي التوقعات (الاسم الجديد بطلب المستر — المراهنة حرام)
+//      سلايدر النقاط + توقع النتيجة + قاعدة الأرباح
 //   5) لوحات الترتيب المزدوجة — النقاط الدراسية / XP التحدي (منفصلتين)
 // القواعد: عنبري/ذهبي للـ XP والكنز + زمردي للنجاح + أحمر/برتقالي للتحذير
 //   + بنفسجي للنادر + مفيش أزرق/بنفسجي غامق + الإجابة الصح **عمرها ما بترجع
@@ -37,6 +38,14 @@ import type { GamifyQuestion, GamifyState } from './useGamifyState'
 
 /* حروف الاختيارات A=أ,B=ب,C=ج,D=د — 0-based زي choiceIndex */
 const CHOICE_LETTERS = ['أ', 'ب', 'ج', 'د', 'هـ', 'و']
+
+/* (ت1) عرض تاريخ YYYY-MM-DD بالعربي — «25 أكتوبر» */
+const AR_MONTHS_SHORT = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']
+function fmtArabicDate(v: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v || ''))
+  if (!m) return String(v || '')
+  return String(parseInt(m[3], 10)) + ' ' + AR_MONTHS_SHORT[parseInt(m[2], 10) - 1]
+}
 
 interface GamifyHubProps {
   studentId: string
@@ -97,9 +106,9 @@ export function GamifyHub({ studentId, grade, onNavigate }: GamifyHubProps) {
           <MysteryBoxCard studentId={studentId} state={state} refresh={refresh} />
 
           {/* 3) حائط الشارات */}
-          <BadgeWall badges={Array.isArray(state.badges) ? state.badges : []} />
+          <BadgeWall badges={Array.isArray(state.badges) ? state.badges : []} progress={state.badgeProgress || {}} />
 
-          {/* 4) المراهنة على XP */}
+          {/* 4) توقع واربح XP */}
           <BetSection studentId={studentId} grade={grade} onChanged={function () { refresh(); try { window.dispatchEvent(new Event('gamify-state-updated')) } catch (e) {} }} />
 
           {/* 5) لوحات الترتيب */}
@@ -158,7 +167,11 @@ function HeroSection({ state, studentId, onResult, onNavigate }: {
         <CardContent className="flex flex-col items-center gap-3 px-4">
           <span className="text-5xl">🗓️</span>
           <p className="text-base font-extrabold text-zinc-200">السلسلة لسه فاضية</p>
-          <p className="text-xs text-zinc-400">{series.title} — أول يوم هيتفتح قريب جدًا. جهّز نفسك! ⚡</p>
+          {state.nextDayDate ? (
+            <p className="text-xs text-amber-300 font-bold">التحدي هيبدأ يوم {fmtArabicDate(state.nextDayDate)} — جهّز نفسك! ⚡</p>
+          ) : (
+            <p className="text-xs text-zinc-400">{series.title} — أول يوم هيتفتح قريب جدًا. جهّز نفسك! ⚡</p>
+          )}
         </CardContent>
       </Card>
     )
@@ -186,14 +199,19 @@ function HeroSection({ state, studentId, onResult, onNavigate }: {
   /* اليوم المفتوح — أسئلة النهاردة */
   const pct = state.todayTotal > 0 ? Math.round((state.todayAnsweredCount / state.todayTotal) * 100) : 0
   const questions = Array.isArray(state.dayQuestions) ? state.dayQuestions : []
+  /* (ت1) تاريخ اليوم المفتوح من جدولة المستر اليدوية */
+  const openDayDate = String((series.dayDates || {})[String(state.unlockedDay)] || '')
 
   return (
     <Card className="gap-3 rounded-2xl border-amber-500/25 bg-gradient-to-br from-amber-950/40 via-zinc-900/60 to-zinc-900/80 py-4 text-zinc-100 shadow-[0_10px_30px_rgba(0,0,0,0.35)]">
       <CardHeader className="gap-2 px-4 pb-0">
         <CardTitle className="flex flex-wrap items-center justify-between gap-2 text-base font-extrabold text-amber-200">
-          <span className="flex items-center gap-2">
+          <span className="flex flex-wrap items-center gap-2">
             <Zap className="h-5 w-5 text-amber-400" />
             سؤال اليوم — اليوم {state.unlockedDay} من {series.totalDays}
+            {openDayDate ? (
+              <Badge className="border-sky-500/40 bg-sky-500/15 text-[10px] font-bold text-sky-300">📅 {fmtArabicDate(openDayDate)}</Badge>
+            ) : null}
           </span>
           <Badge className="border-emerald-500/40 bg-emerald-500/15 text-emerald-300">🔥 ستريك {Number(state.profile.streak) || 0}</Badge>
         </CardTitle>
@@ -567,7 +585,16 @@ function rewardClasses(r: BoxReward): string {
  * 3) حائط الشارات
  * ============================================================ */
 
-function BadgeWall({ badges }: { badges: GamifyState['badges'] }) {
+/* (ت3) أسماء الشروط بالعربي — زي ما الطالب يفهم "إيه اللي مطلوب مني بالظبط" */
+const STUDENT_COND_LABELS: Record<string, string> = {
+  streak_days: 'أيام ستريك متتالية',
+  accuracy: 'دقة التحدي %',
+  homework_speed: 'تسليم واجب بدرجة 70%+ خلال أول 24 ساعة',
+  xp_total: 'مجموع XP',
+  challenge_days: 'أيام تحدي مكتملة',
+}
+
+function BadgeWall({ badges, progress }: { badges: GamifyState['badges']; progress: Record<string, number> }) {
   return (
     <Card className="gap-3 rounded-2xl border-zinc-800 bg-gradient-to-br from-zinc-900 via-zinc-900/95 to-zinc-900 py-4 text-zinc-100">
       <CardHeader className="flex-row items-center justify-between px-4 pb-0">
@@ -612,6 +639,24 @@ function BadgeWall({ badges }: { badges: GamifyState['badges'] }) {
                     </span>
                   </div>
                   <p className="mt-1.5 text-[11px] leading-relaxed text-zinc-400">{unlocked ? b.desc : 'هدف: ' + b.desc}</p>
+                  {/* (ت3) شرط الفتح الواضح + تقدم الطالب الحي */}
+                  {unlocked ? (
+                    <p className="mt-1 text-[10px] font-bold text-emerald-400">✅ خلّصت الشرط — مبروك!</p>
+                  ) : b.conditionType === 'homework_speed' ? (
+                    <p className="mt-1 text-[10px] font-bold text-amber-300/90">⚡ الشرط: {STUDENT_COND_LABELS.homework_speed}</p>
+                  ) : (
+                    <div className="mt-1.5 space-y-1">
+                      <p className="text-[10px] font-bold text-amber-300/90">
+                        الشرط: {STUDENT_COND_LABELS[b.conditionType] || b.conditionType} {b.threshold} — عندك {Number(progress[b.conditionType] || 0)}
+                      </p>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-zinc-800">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-l from-amber-400 to-emerald-400 transition-all"
+                          style={{ width: Math.min(100, Math.round(((Number(progress[b.conditionType] || 0) / Math.max(1, b.threshold || 1)) * 100))) + '%' }}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               )
             })}
@@ -638,7 +683,7 @@ function rarityChip(r: string, unlocked: boolean): string {
 }
 
 /* ============================================================
- * 4) المراهنة على XP
+ * 4) توقع واربح XP
  * ============================================================ */
 
 interface BetRow {
@@ -659,7 +704,7 @@ interface AvailableExam {
   id: string
   title: string
   totalQuestions: number
-  /* (ج2) المراهنة على الواجبات والامتحانات — الاثنين مع بعض */
+  /* (ج2) التوقع على الواجبات والامتحانات — الاثنين مع بعض */
   type?: 'exam' | 'homework'
 }
 
@@ -709,12 +754,12 @@ function BetSection({ studentId, grade, onChanged }: {
         body: JSON.stringify({ studentId, grade, targetId: exam.id, targetType: exam.type || 'exam', stake, prediction: Number(predRaw) }),
       })
       const data = await res.json()
-      if (!res.ok || !(data && data.ok)) throw new Error(String((data && data.error) || 'خطأ في تسجيل الرهان'))
-      toast.success('راهنت ' + stake + ' XP على «' + exam.title + '» — بالتوفيق! 🍀')
+      if (!res.ok || !(data && data.ok)) throw new Error(String((data && data.error) || 'خطأ في تسجيل التوقع'))
+      toast.success('ثبّت توقعك ' + stake + ' XP على «' + exam.title + '» — بالتوفيق! 🍀')
       load()
       onChanged()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'خطأ في تسجيل الرهان')
+      toast.error(e instanceof Error ? e.message : 'خطأ في تسجيل التوقع')
     } finally {
       setPlacing(null)
     }
@@ -725,23 +770,23 @@ function BetSection({ studentId, grade, onChanged }: {
       <CardHeader className="px-4 pb-0">
         <CardTitle className="flex items-center gap-2 text-base font-extrabold text-amber-200">
           <Target className="h-5 w-5 text-amber-400" />
-          المراهنة على XP
+          توقع واربح XP 🎯
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 px-4">
-        {/* قواعد الرهان */}
+        {/* قواعد تحدي التوقع */}
         <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-200/90">
-          راهن على واجباتك وامتحاناتك 📚📝 — توقع تام = ضعف الرهان ×2 • فارق سؤال واحد = رجوع الرهان • غلط = الرهان يتحرق 🔥
+          توقع نتيجة واجباتك وامتحاناتك 📚📝 — توقع تام = ضعف النقاط ×2 • فارق سؤال واحد = رجوع نقاطك • توقع بعيد = نقاط المشاركة بتحرق 🔥
         </div>
 
-        {/* المتاح للرهان — واجبات وامتحانات (الاثنين مع بعض بطلب المستر) */}
+        {/* المتاح للتوقع — واجبات وامتحانات (الاثنين مع بعض بطلب المستر) */}
         {loading ? (
           <div className="space-y-2">
             <Skeleton className="h-24 w-full rounded-xl bg-zinc-800" />
             <Skeleton className="h-24 w-full rounded-xl bg-zinc-800" />
           </div>
         ) : available.length === 0 ? (
-          <p className="py-2 text-center text-xs text-zinc-500">مفيش واجبات أو امتحانات متاحة للرهان دلوقتي — أول ما المستر ينزل حاجة هتلاقيها هنا 👀</p>
+          <p className="py-2 text-center text-xs text-zinc-500">مفيش واجبات أو امتحانات متاحة للتوقع دلوقتي — أول ما المستر ينزل حاجة هتلاقيها هنا 👀</p>
         ) : (
           <div className="space-y-3">
             {/* (ج2) مجموعتين واضحتين: واجبات 📚 وامتحانات 📝 — سهلة الفهم */}
@@ -763,11 +808,11 @@ function BetSection({ studentId, grade, onChanged }: {
             })}
           </div>
         )}
-        {/* رهاناتي */}
+        {/* توقعاتي */}
         <div className="space-y-2">
-          <h3 className="text-sm font-extrabold text-zinc-200">رهاناتي</h3>
+          <h3 className="text-sm font-extrabold text-zinc-200">توقعاتي</h3>
           {bets.length === 0 ? (
-            <p className="text-xs text-zinc-500">لسه مفيش رهانات — جرّب أول رهان من فوق 👆</p>
+            <p className="text-xs text-zinc-500">لسه مفيش توقعات — جرّب أول توقع من فوق 👆</p>
           ) : (
             bets.map(function (b) {
               return (
@@ -775,7 +820,7 @@ function BetSection({ studentId, grade, onChanged }: {
                   <div className="min-w-0">
                     <div className="truncate text-xs font-bold text-zinc-100 sm:text-sm">{String(b.targetType || 'exam') === 'homework' ? '📚 ' : '📝 '}{b.examTitle}</div>
                     <div className="text-[11px] text-zinc-400">
-                      راهن {b.stake} XP • توقع {b.prediction} من {b.totalQuestions}
+                      شاركت بـ {b.stake} XP • توقعت {b.prediction} من {b.totalQuestions}
                     </div>
                   </div>
                   <BetStatusChip b={b} />
@@ -789,7 +834,7 @@ function BetSection({ studentId, grade, onChanged }: {
   )
 }
 
-/* كارت هدف الرهان (امتحان أو واجب) — نفس الشكل للاتنين عشان يكون سهل ومألوف */
+/* كارت هدف التوقع (امتحان أو واجب) — نفس الشكل للاتنين عشان يكون سهل ومألوف */
 function BetTargetCard({ ex, xp, placing, stakes, preds, setStakes, setPreds, placeBet }: {
   ex: AvailableExam
   xp: number
@@ -811,10 +856,10 @@ function BetTargetCard({ ex, xp, placing, stakes, preds, setStakes, setPreds, pl
         <div className="text-[11px] text-zinc-400">عدد الأسئلة: {ex.totalQuestions}</div>
       </div>
 
-      {/* سلايدر الرهان */}
+      {/* سلايدر نقاط المشاركة */}
       <div>
         <div className="mb-1.5 flex items-center justify-between text-xs text-zinc-300">
-          <span>قيمة الرهان</span>
+          <span>قيمة المشاركة</span>
           <span className="font-extrabold text-amber-300">{stake} XP</span>
         </div>
         <Slider
@@ -862,10 +907,10 @@ function BetTargetCard({ ex, xp, placing, stakes, preds, setStakes, setPreds, pl
         className="min-h-12 w-full gap-2 border-0 bg-gradient-to-l from-amber-500 to-orange-500 font-bold text-zinc-950 shadow-[0_0_16px_rgba(245,158,11,0.25)] hover:from-amber-400 hover:to-orange-400"
       >
         {placing === ex.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
-        راهن {stake} XP
+        ثبّت توقعك {stake} XP
       </Button>
       {!canBet && (
-        <p className="text-[11px] text-orange-300">محتاج 10 XP على الأقل عشان تراهن — حل سؤال النهاردة الأول ⚡</p>
+        <p className="text-[11px] text-orange-300">محتاج 10 XP على الأقل عشان تشارك في التحدي — حل سؤال النهاردة الأول ⚡</p>
       )}
     </div>
   )
@@ -879,8 +924,8 @@ function safeStake(raw: number | undefined, xp: number): number {
 
 function BetStatusChip({ b }: { b: BetRow }) {
   if (b.status === 'won') return <Badge className="shrink-0 border-emerald-500/50 bg-emerald-500/15 text-emerald-300">كسب {b.payout} XP ✅</Badge>
-  if (b.status === 'lost') return <Badge className="shrink-0 border-red-500/50 bg-red-500/15 text-red-300">خسر 🔥</Badge>
-  if (b.status === 'push') return <Badge className="shrink-0 border-zinc-500/50 bg-zinc-500/15 text-zinc-300">رجع رهانك ↩️</Badge>
+  if (b.status === 'lost') return <Badge className="shrink-0 border-red-500/50 bg-red-500/15 text-red-300">التوقع اتلقى بعيد 🔥</Badge>
+  if (b.status === 'push') return <Badge className="shrink-0 border-zinc-500/50 bg-zinc-500/15 text-zinc-300">رجعت نقاطك ↩️</Badge>
   return (
     <Badge className="shrink-0 border-amber-500/50 bg-amber-500/15 text-amber-300">
       <Clock className="h-3 w-3" />
