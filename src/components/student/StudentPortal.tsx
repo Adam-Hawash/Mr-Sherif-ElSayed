@@ -654,6 +654,45 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
     return { locked: false }
   }
 
+  /* ===== (و117 — منصة وائل و116 بالحرف) إصلاح «القفل المتقطع» للفيديو اللي بفلوس =====
+     حالة التسديد كانت بتتقري مرة واحدة مع فتح الفسحة — لو الأدمن اعتمد الدفع
+     والطالب واقف في المنصة (أو طلب /api/video-access فشل لحظي) كان الفيديو
+     المتسدد بيظهر «ادفع الآن» والطالب يعلق («ساعات بتشتغل وساعات لا» —
+     شكوى المستر الحرفية). دلوقتي: تحديث حي لحالة التسديد أول ما تاب الفيديوهات
+     يفتح + كل مرة المنصة ترجع ظاهرة — ولو القراية فشلت بقى «مش متأكدين»
+     فمنعرضش جدار الدفع خالص ونسيب السيرفر هو اللي يقرر (402 يوديه شاشة الدفع). */
+  const [purchasedLive, setPurchasedLive] = useState<Set<string> | null>(null)
+  const [accessUncertain, setAccessUncertain] = useState(false)
+  useEffect(function () {
+    if (!studentId) return
+    var alive = true
+    var load = function () {
+      Promise.all([
+        fetch('/api/payments?studentId=' + studentId + '&status=approved&pageSize=200').then(function (r) { return r.ok ? r.json() : null }).catch(function () { return null }),
+        fetch('/api/video-access?studentId=' + studentId).then(function (r) { return r.ok ? r.json() : null }).catch(function () { return null }),
+      ]).then(function (res) {
+        if (!alive) return
+        if (!res[0] && !res[1]) { setAccessUncertain(true); return } // فشل الاتنين → مش متأكدين من حالة التسديد
+        var ids = new Set<string>()
+        ;(((res[0] && res[0].payments) || []) as any[]).forEach(function (p) { if (p && p.videoId) ids.add(String(p.videoId)) })
+        ;(((res[1] && res[1].accesses) || []) as any[]).forEach(function (a) { if (a && a.videoId) ids.add(String(a.videoId)) })
+        setAccessUncertain(false)
+        setPurchasedLive(ids)
+      })
+    }
+    load()
+    var onVis = function () { if (!document.hidden) load() }
+    document.addEventListener('visibilitychange', onVis)
+    return function () { alive = false; document.removeEventListener('visibilitychange', onVis) }
+  }, [studentId])
+
+  /* مجموعة «متسدد» الفعلية = بيانات الفسحة + آخر تحديث حي (الأحدث يكسب) */
+  const effectiveApproved = useMemo(function () {
+    var s = new Set<string>(approvedVideoIds)
+    if (purchasedLive) purchasedLive.forEach(function (id) { s.add(id) })
+    return s
+  }, [approvedVideoIds, purchasedLive])
+
   // Only an explicitly approved, non-paid student gets free access. A paid account always pays for priced videos.
   const isFreeStudent = studentStatus === 'approved' && isPaidAccess !== true
   const isPaidStudent = studentStatus === 'paid' || isPaidAccess === true
@@ -738,12 +777,12 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
         } else {
           map[v.id] = false
         }
-        var paidNoAccess = (Number(v.price) || 0) > 0 && !approvedVideoIds.has(v.id)
+        var paidNoAccess = (Number(v.price) || 0) > 0 && !effectiveApproved.has(v.id) && !accessUncertain
         if (trackable && !paidNoAccess) prevTrackable = v.id
       })
     })
     return map
-  }, [lessons, mergedProgress, approvedVideoIds])
+  }, [lessons, mergedProgress, effectiveApproved, accessUncertain])
 
   // الفيديو اللي قبل كل فيديو (عشان نعرض نسبته على كارت المقفول)
   // (2026-و106) واعي بالدروس المتعددة — داخل الدرس: الجزء اللي قبله
@@ -756,12 +795,12 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
         var k = videoKindOf(v)
         var trackable = k === 'youtube' || k === 'file'
         if (trackable && prevTrackable) map[v.id] = prevTrackable
-        var paidNoAccess = (Number(v.price) || 0) > 0 && !approvedVideoIds.has(v.id)
+        var paidNoAccess = (Number(v.price) || 0) > 0 && !effectiveApproved.has(v.id) && !accessUncertain
         if (trackable && !paidNoAccess) prevTrackable = v.id
       })
     })
     return map
-  }, [lessons, approvedVideoIds])
+  }, [lessons, effectiveApproved, accessUncertain])
 
   // فتح أي درس (يوتيوب أو ملف مرفوع): بنطلب تذكرة تشغيل واحدة الاستخدام
   // من /api/video-ticket — مفيش أي YouTube ID أو رابط ملف بيرجع للصفحة.
@@ -779,12 +818,16 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
   const requestTicket = (video: VideoType) => {
     fetch('/api/video-ticket?videoId=' + video.id + '&studentId=' + encodeURIComponent(studentId || ''))
       .then(function (r) {
-        return r.json().then(function (d) { return { ok: r.ok, d: d } })
+        return r.json().then(function (d) { return { status: r.status, ok: r.ok, d: d } })
       })
       .then(function (res) {
         if (res.ok && res.d.ok && res.d.ticket) {
           setActiveLessonGroup(null)
           setActiveLessonVideo({ ...video, playTicket: res.d.ticket } as any)
+        } else if (res.status === 402) {
+          /* (و117) السيرفر قال «محتاج تسديد» → شاشة الدفع على طول — الطالب ما يعلقش أبدًا */
+          setPendingPaymentVideo({ id: video.id, title: video.title, price: (video as any).price || 0, grade: grade })
+          setView('student-payment')
         } else {
           toast.error(res.d.error || 'الفيديو مش متاح — لو دفعت تواصل مع الإدارة', { duration: 6000 })
         }
@@ -832,10 +875,12 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
         const isWatched = localWatched.has(video.id)
         const thumbSrc = video.thumbnail || (video as any).thumb || null
         const hasPrice = (video.price || 0) > 0
-        const hasApprovedPayment = approvedVideoIds.has(video.id)
+        const hasApprovedPayment = effectiveApproved.has(video.id)
         // A paid account is not a purchase grant. Every priced video stays locked
         // until this specific video has an approved payment/access record.
-        const needsPay = hasPrice && !hasApprovedPayment
+        // (و117) لو حالة التسديد مش متأكدة (فشل شبكة) → منعرضش جدار الدفع
+        // والسيرفر هو اللي يفصل: 402 بيودي الطالب لشاشة الدفع تلقائيًا من openPlayModal
+        const needsPay = hasPrice && !hasApprovedPayment && !accessUncertain
         const progress = mergedProgress[video.id] || 0
         // مقفول بالتسلسل؟ الفيديو اللي قبله لسه نسبته أقل من 99%
         const isSeqLocked = lockedMap[video.id] === true
@@ -1017,9 +1062,9 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
     const first = g.parts[0]
     const firstThumb = (first && (first.thumbnail || (first as any).thumb)) || null
     const allWatched = g.parts.every(function (p) { return localWatched.has(p.id) })
-    const anyNeedPay = g.parts.some(function (p) { return (p.price || 0) > 0 && !approvedVideoIds.has(p.id) })
+    const anyNeedPay = g.parts.some(function (p) { return (p.price || 0) > 0 && !effectiveApproved.has(p.id) })
     /* (ز18) سعر الدرس كله — أول تسديد بيفتح كل الأجزاء، والسعر ظاهر لطلاب المجانية */
-    const groupPaidZ18 = g.parts.some(function (p) { return approvedVideoIds.has(p.id) })
+    const groupPaidZ18 = g.parts.some(function (p) { return effectiveApproved.has(p.id) })
     const lessonLockedZ18 = anyNeedPay && !groupPaidZ18
     const pricedPartZ18 = g.parts.find(function (p) { return (p.price || 0) > 0 })
     const avg = Math.round(g.parts.reduce(function (acc, p) { return acc + (mergedProgress[p.id] || 0) }, 0) / Math.max(1, g.parts.length))
@@ -1180,8 +1225,8 @@ function VideosTab({ videos, watchedIds, approvedVideoIds, studentId, grade, vid
                 const pctP = mergedProgress[p.id] || 0
                 const seqLockedP = lockedMap[p.id] === true
                 /* (ز18) الدرس اتسدد جزء منه؟ الكل بيفتح — الدفع بيتم للدرس كله */
-                const groupAnyApprovedZ18 = activeLessonGroup.parts.some(function (pp: any) { return approvedVideoIds.has(pp.id) })
-                const payLockedP = !groupAnyApprovedZ18 && (p.price || 0) > 0 && !approvedVideoIds.has(p.id)
+                const groupAnyApprovedZ18 = activeLessonGroup.parts.some(function (pp: any) { return effectiveApproved.has(pp.id) })
+                const payLockedP = !accessUncertain && !groupAnyApprovedZ18 && (p.price || 0) > 0 && !effectiveApproved.has(p.id)
                 const watchedP = localWatched.has(p.id)
                 const thumbP = p.thumbnail || (p as any).thumb || null
                 const prevIdP = prevVideoMap[p.id]
