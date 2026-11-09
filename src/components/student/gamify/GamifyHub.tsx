@@ -6,7 +6,7 @@
 //   1) بطاقة سؤال اليوم (اختيارات كبيرة أو إجابة نصية + نتيجة فورية)
 //   2) صندوق الكنز — تفتيح بالأنيميشن + جوايز بالندرة + كولداون 24 ساعة
 //   3) حائط الشارات — مقفولة/مفتوحة بتوهج حسب الندرة
-//   4) توقع واربح XP — تحدي التوقعات (الاسم الجديد بطلب المستر — المراهنة حرام)
+//   4) ضاعف نقاطك — تحدي التوقعات (الاسم بطلب المستر: «ما تخليهاش توقع واربح — خليها ضاعف نقاطك» + no risk, no fun. صغيرة جنبه)
 //      سلايدر النقاط + توقع النتيجة + قاعدة الأرباح
 //   5) لوحات الترتيب المزدوجة — النقاط الدراسية / XP التحدي (منفصلتين)
 // القواعد: عنبري/ذهبي للـ XP والكنز + زمردي للنجاح + أحمر/برتقالي للتحذير
@@ -108,7 +108,7 @@ export function GamifyHub({ studentId, grade, onNavigate }: GamifyHubProps) {
           {/* 3) حائط الشارات */}
           <BadgeWall badges={Array.isArray(state.badges) ? state.badges : []} progress={state.badgeProgress || {}} />
 
-          {/* 4) توقع واربح XP */}
+          {/* 4) ضاعف نقاطك (ت7) */}
           <BetSection studentId={studentId} grade={grade} onChanged={function () { refresh(); try { window.dispatchEvent(new Event('gamify-state-updated')) } catch (e) {} }} />
 
           {/* 5) لوحات الترتيب */}
@@ -683,7 +683,7 @@ function rarityChip(r: string, unlocked: boolean): string {
 }
 
 /* ============================================================
- * 4) توقع واربح XP
+ * 4) ضاعف نقاطك (كان «توقع واربح XP» — اتغير بطلب المستر في ت7)
  * ============================================================ */
 
 interface BetRow {
@@ -770,7 +770,9 @@ function BetSection({ studentId, grade, onChanged }: {
       <CardHeader className="px-4 pb-0">
         <CardTitle className="flex items-center gap-2 text-base font-extrabold text-amber-200">
           <Target className="h-5 w-5 text-amber-400" />
-          توقع واربح XP 🎯
+          {/* (ت7) الاسم بقى «ضاعف نقاطك» بطلب المستر — «توقع واربح» ما عجبوش — وجنبه بخط صغير no risk, no fun. */}
+          <span>ضاعف نقاطك</span>
+          <span dir="ltr" className="text-[10px] font-medium text-zinc-500">no risk, no fun.</span>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 px-4">
