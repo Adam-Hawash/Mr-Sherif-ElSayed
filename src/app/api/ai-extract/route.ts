@@ -16,6 +16,8 @@ import { db } from '@/lib/db'
 import { isWritingQuestion } from '@/lib/question-figures'
 /* (ز31) حارس «كل حاجة بالإنجليزي» — طلب المستر الحرفي */
 import { ensureEnglishQuestions, ensureEnglishText } from '@/lib/english-only'
+/* (2026-س1) جوجل درايف — تحميل أي لينك ملف مع تحويل درايف أوتوماتيك */
+import { fetchRemoteFile } from '@/lib/drive-fetch'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -241,11 +243,13 @@ export async function POST(request) {
       qPart = { inlineData: { mimeType: getMimeType(questionFile), data: qBase64 } }
     } else if (fileUrl.trim()) {
       try {
-        var fetchRes = await fetch(fileUrl.trim())
-        if (!fetchRes.ok) throw new Error('Download failed: ' + fetchRes.status)
-        var arrayBuf = await fetchRes.arrayBuffer()
-        var qBase64Url = Buffer.from(new Uint8Array(arrayBuf)).toString('base64')
-        var ct = fetchRes.headers.get('content-type') || ''
+        /* (2026-س1) جوجل درايف — أي صيغة لينك بتتحول لتحميل مباشر + معالجة صفحة التأكيد */
+        var fetchedQ = await fetchRemoteFile(fileUrl.trim())
+        if (!fetchedQ.ok || !fetchedQ.buffer) {
+          return NextResponse.json({ error: 'فشل تحميل ملف الأسئلة: ' + (fetchedQ.error || 'حصلت مشكلة') }, { status: 400 })
+        }
+        var qBase64Url = fetchedQ.buffer.toString('base64')
+        var ct = fetchedQ.mime || ''
         var qMime = ct.includes('pdf') ? 'application/pdf' : ct.includes('png') ? 'image/png' : ct.includes('webp') ? 'image/webp' : ct.includes('image') ? ct : 'image/jpeg'
         qPart = { inlineData: { mimeType: qMime, data: qBase64Url } }
       } catch (err) {
@@ -285,13 +289,14 @@ export async function POST(request) {
       aPart = { inlineData: { mimeType: getMimeType(answerFile), data: aBase64 } }
     } else if (answerUrl.trim()) {
       try {
-        var aFetchRes = await fetch(answerUrl.trim())
-        if (!aFetchRes.ok) throw new Error('Download answer failed: ' + aFetchRes.status)
-        var aBuf = await aFetchRes.arrayBuffer()
-        var aBase64Url = Buffer.from(new Uint8Array(aBuf)).toString('base64')
-        var aCt = aFetchRes.headers.get('content-type') || ''
-        var aMime = aCt.includes('pdf') ? 'application/pdf' : aCt.includes('png') ? 'image/png' : aCt.includes('webp') ? 'image/webp' : aCt.includes('image') ? aCt : 'image/jpeg'
-        aPart = { inlineData: { mimeType: aMime, data: aBase64Url } }
+        /* (2026-س1) جوجل درايف — نفس المعالجة لملف الإجابات */
+        var fetchedA = await fetchRemoteFile(answerUrl.trim())
+        if (fetchedA.ok && fetchedA.buffer) {
+          var aBase64Url = fetchedA.buffer.toString('base64')
+          var aCt = fetchedA.mime || ''
+          var aMime = aCt.includes('pdf') ? 'application/pdf' : aCt.includes('png') ? 'image/png' : aCt.includes('webp') ? 'image/webp' : aCt.includes('image') ? aCt : 'image/jpeg'
+          aPart = { inlineData: { mimeType: aMime, data: aBase64Url } }
+        }
       } catch (err) {
         // ignore answer file download errors, continue with just questions
       }

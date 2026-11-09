@@ -181,6 +181,8 @@ async function gradeWritingDecisive(writing: QItem[], answers: any): Promise<{ v
         modelAnswer: iw.modelAnswer,
         acceptedAnswers: iw.acceptedAnswers,
         maxPoints: iw.points,
+        /* (2026-س1) كل صفحات الحل — أكتر من صورة = الكل يتقرا */
+        allMediaIds: mediaIds2,
       })
     } catch (imErr) {
       console.error('[regrade-core] image grade error:', imErr)

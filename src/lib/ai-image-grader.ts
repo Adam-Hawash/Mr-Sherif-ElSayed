@@ -350,6 +350,10 @@ export async function gradeImageAnswer(params: {
   /* (و44) النص المكتوب اللي جاي مع الصورة (مثلا «الجدول: صف 1: 5، 3») —
      السؤال بخطوتين: جدول على المنصة + رسمة مصورة — الاتنين بيحتسبوا */
   studentText?: string
+  /* (2026-س1) كل صور الحل — طلب المستر: «تصحيح الصفحات يكون دقيق» —
+     الطالب ممكن يصور حل السؤال على أكتر من صفحة/صورة — لازم الكل يتقرا
+     مش أول صورة بس. أول معرف = mediaId الأساسي والباقي صفحات إضافية */
+  allMediaIds?: string[]
 }): Promise<{
   extractedAnswer: string
   finalAnswer?: string
@@ -413,6 +417,38 @@ export async function gradeImageAnswer(params: {
     else mimeType = 'image/jpeg'
   }
 
+  /* (2026-س1) صفحات الحل الإضافية — الطالب بيرفع أكتر من صورة لنفس الإجابة:
+     كل الصور بتتقري قبل بناء البرومبت عشان التصحيح يقرا الحل كله صفحة صفحة
+     (طلب المستر: «تصحيح الصفحات يكون دقيق») */
+  var extraParts: any[] = []
+  var extraCount = 0
+  var extraIds = Array.isArray((params as any).allMediaIds) ? (params as any).allMediaIds : []
+  for (var ei = 0; ei < extraIds.length && extraCount < 4; ei++) {
+    var exId = String(extraIds[ei] || '').trim()
+    if (!exId || exId === mediaId) continue
+    try {
+      var exMedia: any = null
+      try {
+        exMedia = await db.media.findUnique({ where: { id: exId } })
+      } catch (exE) {
+        try {
+          var exRows = await db.$queryRawUnsafe('SELECT id, filename, fileType, data FROM Media WHERE id = ? LIMIT 1', exId)
+          exMedia = exRows && exRows.length > 0 ? exRows[0] : null
+        } catch (exE2) { exMedia = null }
+      }
+      if (exMedia && exMedia.data) {
+        var exMime = exMedia.fileType || 'image/jpeg'
+        if (!exMime.startsWith('image/')) {
+          if ((exMedia.filename || '').endsWith('.png')) exMime = 'image/png'
+          else if ((exMedia.filename || '').endsWith('.webp')) exMime = 'image/webp'
+          else exMime = 'image/jpeg'
+        }
+        extraParts.push({ inlineData: { mimeType: exMime, data: exMedia.data } })
+        extraCount++
+      }
+    } catch (exErr) { /* صفحة فاشلة مش بتحبط التصحيح */ }
+  }
+
   // ---------- STRICT GRADING PROMPT ----------
   var acceptedStr = acceptedAnswers.length > 0
     ? '\nOther accepted final answers: ' + acceptedAnswers.join(' | ')
@@ -432,6 +468,10 @@ export async function gradeImageAnswer(params: {
   }
   prompt += acceptedStr + '\n\n'
   prompt += 'The student attached a PHOTO that is supposed to show THEIR OWN handwritten or typed solution to the question above.\n\n'
+  /* (2026-س1) أكتر من صفحة — الطالب صور حل السؤال على كذا صفحة: لازم الكل يتقرا */
+  if (extraCount > 0) {
+    prompt += 'IMPORTANT: the student attached ' + (extraCount + 1) + ' PHOTOS (pages) — ALL of them together are ONE solution to THIS question (the student photographed multiple pages of their notebook). You MUST read ALL the attached photos page by page before deciding: the final answer may be on the LAST page, and earlier pages contain the steps. Merge the pages mentally into ONE solution, then find the FINAL boxed/last-line answer across ALL pages (usually on the last page). Do NOT judge the answer from the first page only.\n\n'
+  }
   prompt += 'Follow these steps EXACTLY:\n'
   prompt += 'STEP 1 — Look at the photo. Identify the STUDENT\'S OWN work: handwriting/typing produced by the student (solution steps, calculations, a final answer).\n'
   prompt += 'STEP 2 — IGNORE all pre-printed content: the question text itself, choice lists like (A) B) C) D)), headers, logos, other questions on the page. The student did not write those, and they are NOT their answer.\n'
@@ -469,6 +509,8 @@ export async function gradeImageAnswer(params: {
     { text: prompt },
     { inlineData: { mimeType: mimeType, data: media.data } },
   ]
+  /* (2026-س1) صفحات الحل الإضافية بتتنضاف بعد الصورة الأساسية */
+  for (var epi = 0; epi < extraParts.length; epi++) parts.push(extraParts[epi])
 
   var result = await callGrader(parts, 60000)
 

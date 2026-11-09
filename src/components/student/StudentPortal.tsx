@@ -37,6 +37,9 @@ import { FractionText } from '@/components/FractionText'
 import BidiText from '@/components/BidiText'
 /* (2026-و44) جرس الإشعارات + بادج المجتمع — أي حاجة جديدة توصل للطالب */
 import { NotificationsBell } from '@/components/student/NotificationsBell'
+/* (2026-س1) دعم جوجل درايف — عرض ملفات درايف مدموجة جوه المنصة */
+import { DriveViewerDialog } from '@/components/student/DriveViewerDialog'
+import { isDriveUrl } from '@/lib/drive'
 import { normalizeCorrectKey } from '@/lib/correct-key'
 /* (و45) تصنيف موحّد: سؤال له اختيارات صور/رسومات = اختياري مش مقالي */
 import { isWritingQuestion } from '@/lib/question-figures'
@@ -4173,9 +4176,35 @@ function DiscussionsTab({ grade, studentId, studentName }: { grade: string; stud
 /* 2026-و19 — «الورق ما بيحملش كله» — المرفق بقى بيتفتح كامل: صورة الورقة
  * قابلة للضغط بتفتح الصورة الأصلية كاملة (تبويب جديد + زوم المتصفح)
  * والـ PDF زرار واضح 44px — والطالب بيشوف الورقة كاملة مش مصغرة 48px */
+/* (2026-س1) ملفات جوجل درايف — بتتعرض **مدموجة جوه المنصة** في عارض درايف
+ * الداخلي (نافذة كبيرة بتقل الصفحات) + زرار تحميل مباشر — طلب المستر:
+ * «تقبل ملفات جوجل درايف وتعرضها» */
 function FileAttachment({ filePath, fileType }: { filePath: string; fileType: string }) {
   const isImage = fileType?.startsWith('image/')
   const isPdf = fileType === 'application/pdf'
+  /* درايف؟ — عرض مدمج جوه المنصة */
+  const [driveOpen, setDriveOpen] = useState(false)
+  const isDrive = isDriveUrl(filePath || '')
+  if (isDrive) {
+    return (
+      <>
+        <button
+          type="button"
+          onClick={function () { setDriveOpen(true) }}
+          className="inline-flex items-center gap-2 px-3 py-2.5 min-h-[44px] rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20 transition-colors text-xs font-bold shrink-0"
+        >
+          <FileDown className="h-4 w-4" />
+          🟢 عرض الملف من جوجل درايف — هنا في المنصة
+        </button>
+        <DriveViewerDialog
+          url={filePath}
+          title="ورقة الأسئلة من جوجل درايف"
+          open={driveOpen}
+          onClose={function () { setDriveOpen(false) }}
+        />
+      </>
+    )
+  }
   if (isImage) {
     return (
       <a href={filePath} target="_blank" rel="noopener noreferrer" className="inline-block group align-top" title="اضغط لعرض الورقة كاملة">

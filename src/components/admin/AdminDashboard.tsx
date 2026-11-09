@@ -45,6 +45,8 @@ import { StudentTargetPicker, parseTargetStudentIds } from '@/components/admin/S
 import { MathKeyboard } from '@/components/student/MathKeyboard'
 /* (2026-و40) استخراج من صفحات كتاب PDF — تصوير الصفحات على المتصفح بـ pdf.js */
 import { openPdf, renderPageToJpeg } from '@/lib/pdf-pages'
+/* (2026-س1) دعم جوجل درايف — طلب المستر: «تقبل ملفات جوجل درايف وتعرضها» */
+import { isDriveUrl, isDriveFolderUrl, extractDriveFileId } from '@/lib/drive'
 /* (2026-و40-w) ورقة العمل: قص رسومات الأسئلة + عرض الجداول/الرسومات في المراجعة */
 import { ensureFigureUrls, isWritingQuestion } from '@/lib/question-figures'
 import BidiText from '@/components/BidiText'
@@ -3986,6 +3988,11 @@ function ContentManager<T extends { id: string; grade: string; createdAt: string
   const handleFileUpload = async (localPath: { val: string }, localType: { val: string }): Promise<boolean> => {
     // URL fallback: if URL is provided, use it directly instead of uploading
     if (formFileUrl.trim()) {
+      /* (2026-س1) لينكات درايف — المجلد مرفوض، والملف بيتقبل بأي صيغة */
+      if (isDriveUrl(formFileUrl) && (isDriveFolderUrl(formFileUrl) || !extractDriveFileId(formFileUrl))) {
+        toast.error('ده لينك مجلد في درايف — لازم لينك ملف واحد: افتح الملف في درايف → مشاركة → نسخ الرابط', { duration: 9000 })
+        return false
+      }
       localPath.val = formFileUrl.trim()
       localType.val = ''
       setFormFilePath(localPath.val)
@@ -4012,6 +4019,11 @@ function ContentManager<T extends { id: string; grade: string; createdAt: string
   const handleAnswerKeyUpload = async (localPath: { val: string }, localType: { val: string }): Promise<boolean> => {
     // URL fallback
     if (answerKeyUrl.trim()) {
+      /* (2026-س1) لينكات درايف — المجلد مرفوض */
+      if (isDriveUrl(answerKeyUrl) && (isDriveFolderUrl(answerKeyUrl) || !extractDriveFileId(answerKeyUrl))) {
+        toast.error('لينك الإجابات مجلد في درايف — لازم لينك ملف واحد: افتح الملف → مشاركة → نسخ الرابط', { duration: 9000 })
+        return false
+      }
       localPath.val = answerKeyUrl.trim()
       localType.val = ''
       setAnswerKeyPath(localPath.val)
@@ -4230,8 +4242,14 @@ function ContentManager<T extends { id: string; grade: string; createdAt: string
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] text-muted-foreground shrink-0">أو رابط:</span>
-                  <Input placeholder="https://..." value={formFileUrl} onChange={(e) => { setFormFileUrl(e.target.value); if (e.target.value.trim()) { setFormFile(null); setFormFilePath('') } }} dir="ltr" className="h-8 text-xs" />
+                  <Input placeholder="https://drive.google.com/file/d/... أو أي رابط" value={formFileUrl} onChange={(e) => { setFormFileUrl(e.target.value); if (e.target.value.trim()) { setFormFile(null); setFormFilePath('') } }} dir="ltr" className="h-8 text-xs" />
                 </div>
+                {/* (2026-س1) مؤشر درايف الحي — المجلد تحذير، الملف تأكيد */}
+                {formFileUrl.trim() && isDriveUrl(formFileUrl) && (
+                  isDriveFolderUrl(formFileUrl) || !extractDriveFileId(formFileUrl)
+                    ? <p className="text-[10px] text-red-600 dark:text-red-400">⚠ لينك مجلد درايف — لازم لينك ملف واحد (مشاركة → نسخ الرابط)</p>
+                    : <p className="text-[10px] text-emerald-600 dark:text-emerald-400">✓ لينك جوجل درايف — الطلاب هيشوفوا الورقة مدموجة في المنصة</p>
+                )}
               </div>
             )}
             {supportAnswerKey && (
@@ -4244,8 +4262,14 @@ function ContentManager<T extends { id: string; grade: string; createdAt: string
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] text-muted-foreground shrink-0">أو رابط:</span>
-                  <Input placeholder="https://..." value={answerKeyUrl} onChange={(e) => { setAnswerKeyUrl(e.target.value); if (e.target.value.trim()) { setAnswerKeyFile(null); setAnswerKeyPath('') } }} dir="ltr" className="h-8 text-xs" />
+                  <Input placeholder="https://drive.google.com/file/d/... أو أي رابط" value={answerKeyUrl} onChange={(e) => { setAnswerKeyUrl(e.target.value); if (e.target.value.trim()) { setAnswerKeyFile(null); setAnswerKeyPath('') } }} dir="ltr" className="h-8 text-xs" />
                 </div>
+                {/* (2026-س1) مؤشر درايف الحي لملف الإجابات */}
+                {answerKeyUrl.trim() && isDriveUrl(answerKeyUrl) && (
+                  isDriveFolderUrl(answerKeyUrl) || !extractDriveFileId(answerKeyUrl)
+                    ? <p className="text-[10px] text-red-600 dark:text-red-400">⚠ لينك مجلد درايف — لازم لينك ملف واحد (مشاركة → نسخ الرابط)</p>
+                    : <p className="text-[10px] text-emerald-600 dark:text-emerald-400">✓ لينك جوجل درايف — هيُستخدم في التصحيح والاستخراج مباشرة</p>
+                )}
               </div>
             )}
             {supportThumbnail && (
@@ -4542,6 +4566,13 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
   const [bookCount, setBookCount] = useState(10)
   const [bookName, setBookName] = useState('')
   const [bookPdfLoading, setBookPdfLoading] = useState(false)
+  /* (2026-س1) ترقيم الصفحات — سؤال المستر الحرفي: «الملف فيه صفحة غلاف —
+     الكتاب كاتب صفحة 10 لكن في الملف هي 11 — أحسب من الغلاف ولا أسيبه؟»
+     • file = بترقيم الملف (الغلاف = صفحة 1) — زي ما هو بدون تحويل
+     • book = بترقيم الكتاب المطبوع — المستر يكتب عدد صفحات الغلاف/المقدمات
+       والمنصة بتحول أوتوماتيك: صفحة الكتاب N = صفحة الملف N + الغلاف */
+  const [bookNumbering, setBookNumbering] = useState<'file' | 'book'>('file')
+  const [bookCoverPages, setBookCoverPages] = useState(0)
   /* (و45) وضع الكتاب بلينك: «أو ضع رابط PDF» — بيتحمل من خلال /api/books/proxy */
   const [bookUrl, setBookUrl] = useState('')
   const [bookLinkLoading, setBookLinkLoading] = useState(false)
@@ -4679,6 +4710,8 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
     /* (2026-و40) تصفير وضع الكتاب */
     setBookFile(null); setBookNumPages(0); setBookFrom(1); setBookTo(1)
     setBookMode('all'); setBookCount(10); setBookName(''); bookDocRef.current = null
+    /* (2026-س1) تصفير الترقيم */
+    setBookNumbering('file'); setBookCoverPages(0)
     /* (2026-و40-w) تصفير وضع أكتر من ملف */
     setAppendingFile(false); setFileBatchCount(0)
   }
@@ -4812,9 +4845,17 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
   var canExtractYoutube = youtubeUrl.trim().length > 5
   /* (2026-و106) جاهزية وضع «من درس» — درس مختار */
   var canExtractLesson = !!lessonId
-  /* (2026-و40) جاهزية وضع الكتاب: ملف مفتوح + نطاق صالح (≤30 صفحة) */
-  var bookPagesSelected = bookNumPages > 0 ? (bookTo - bookFrom + 1) : 0
-  var canExtractBook = !!bookFile && bookNumPages > 0 && bookFrom >= 1 && bookTo >= bookFrom && bookTo <= bookNumPages && bookPagesSelected <= 30
+  /* (2026-و40) جاهزية وضع الكتاب: ملف مفتوح + نطاق صالح (≤30 صفحة)
+     (2026-س1) الترقيم: بترقيم الملف → الصفحات زي ما هي —
+     بترقيم الكتاب → المستر بيكتب أرقام الكتاب والملف بيحوّل أوتوماتيك:
+     صفحة الكتاب N = صفحة الملف N + عدد صفحات الغلاف/المقدمات */
+  var bookCover = Math.max(0, parseInt(String(bookCoverPages)) || 0)
+  var bookFileFrom = bookNumbering === 'book' ? bookFrom + bookCover : bookFrom
+  var bookFileTo = bookNumbering === 'book' ? bookTo + bookCover : bookTo
+  var bookMaxPage = bookNumbering === 'book' ? Math.max(0, bookNumPages - bookCover) : bookNumPages
+  var bookPagesSelected = bookNumPages > 0 ? (bookFileTo - bookFileFrom + 1) : 0
+  var bookRangeValid = bookNumPages > 0 && bookFrom >= 1 && bookTo >= bookFrom && bookFileTo <= bookNumPages && (bookNumbering !== 'book' || bookFileFrom >= 1)
+  var canExtractBook = !!bookFile && bookRangeValid && bookPagesSelected <= 30
   var canExtract = inputMode === 'youtube' ? canExtractYoutube : inputMode === 'book' ? canExtractBook : inputMode === 'lesson' ? canExtractLesson : canExtractFile
 
   var handleExtract = async function() {
@@ -5395,7 +5436,13 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
     if (!canExtractBook || extracting) return
     var doc = bookDocRef.current
     if (!doc) { toast.error('افتح ملف الكتاب الأول'); return }
-    var from = bookFrom, to = bookTo
+    /* (2026-س1) الترقيم — الحساب بيتم على صفحات **الملف** الحقيقية،
+       والبادجات/الرسايل بتعرض أرقام **الكتاب** اللي المستر شايفها مطبوعة:
+       • بترقيم الملف: الكتاب = الملف (الغلاف محسوب صفحة 1)
+       • بترقيم الكتاب: صفحة الكتاب N → صفحة الملف N + الغلاف (مثال: كتاب 10 = ملف 11) */
+    var useBook = bookNumbering === 'book'
+    var from = bookFileFrom, to = bookFileTo
+    var labelFrom = bookFrom, labelTo = bookTo
     var total = to - from + 1
     var CHUNK = 5
     var chunks = Math.ceil(total / CHUNK)
@@ -5407,11 +5454,17 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
       for (var c = 0; c < chunks; c++) {
         var cFrom = from + c * CHUNK
         var cTo = Math.min(to, cFrom + CHUNK - 1)
-        setStatusMsg('جاري قراءة الصفحات ' + cFrom + '–' + cTo + '… (' + (c + 1) + '/' + chunks + ')')
+        var lFrom = labelFrom + c * CHUNK
+        var lTo = Math.min(labelTo, lFrom + CHUNK - 1)
+        setStatusMsg(useBook
+          ? 'بيقرأ صفحات الكتاب ' + lFrom + '–' + lTo + ' (ملف ' + cFrom + '–' + cTo + ')… (' + (c + 1) + '/' + chunks + ')'
+          : 'جاري قراءة الصفحات ' + cFrom + '–' + cTo + '… (' + (c + 1) + '/' + chunks + ')')
         var pages: any[] = []
         for (var pn = cFrom; pn <= cTo; pn++) {
           var img = await renderPageToJpeg(doc, pn, 1400, 0.72)
-          pages.push({ n: pn, image: img })
+          /* التسمية للـ AI برقم **الكتاب** عشان بادج «صفحة N» في المراجعة
+             يبان برقم الكتاب المطبوع اللي المستر والمدرسين شايفينه */
+          pages.push({ n: useBook ? (pn - bookCover) : pn, image: img })
         }
         var extractedChunk: any = null
         for (var attempt = 0; attempt < 2 && !extractedChunk; attempt++) {
@@ -5468,11 +5521,12 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
         setExtracting(false)
         return
       }
-      if (!title.trim() && !appendingFile) setTitle(bookName.trim() || ('كتاب — صفحات ' + from + '–' + to))
+      if (!title.trim() && !appendingFile) setTitle(bookName.trim() || ('كتاب — صفحات ' + labelFrom + '–' + labelTo))
       setStatusMsg('')
       /* (2026-و40-w) قص الرسومات من مستند الكتاب المفتوح + دمج أكتر من ملف */
       await finishExtraction(collected, { doc: doc })
       var okMsg = (appendingFile ? 'تمت إضافة ' : 'تم استخراج ') + collected.length + (appendingFile ? ' سؤال من الملف الجديد!' : ' سؤال من صفحات الكتاب!')
+      if (useBook) okMsg += ' — صفحات الكتاب ' + labelFrom + '–' + labelTo + ' (ملف ' + from + '–' + to + ')'
       if (skippedChunks > 0) okMsg += ' (فشلت ' + skippedChunks + ' دفعة صفحات — جرب نطاقها تاني)'
       toast.success(okMsg)
     } catch (err: any) {
@@ -5754,21 +5808,58 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
               )}
             </div>
             {bookFile && <p className="text-xs text-muted-foreground text-center">{(bookFile.size / 1024 / 1024).toFixed(1)} MB</p>}
-            {bookNumPages > 0 && <p className="text-xs text-center font-medium text-sky-600 dark:text-sky-400">عدد صفحات الكتاب: {bookNumPages}</p>}
+            {bookNumPages > 0 && <p className="text-xs text-center font-medium text-sky-600 dark:text-sky-400">عدد صفحات الملف: {bookNumPages}</p>}
+            {/* (2026-س1) ترقيم الصفحات — سؤال المستر: الغلاف يتعد ولا يتشال؟
+               الاتنين مدعومين: بترقيم الملف (الغلاف = 1) أو بترقيم الكتاب المطبوع */}
+            {bookNumPages > 0 && (
+              <div className="space-y-2 p-3 rounded-lg border border-sky-300/60 bg-white/70 dark:bg-transparent">
+                <p className="text-xs font-bold text-sky-700 dark:text-sky-300">ترقيم الصفحات — بتعد إزاي؟</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button type="button" onClick={function() { setBookNumbering('file') }} className={"text-right p-2.5 rounded-lg border-2 transition-all " + (bookNumbering === 'file' ? 'border-sky-500 bg-sky-500/10' : 'border-border hover:border-sky-300')}>
+                    <p className="text-xs font-bold">🔢 بترقيم الملف</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">الغلاف هو صفحة 1 — الصفحات زي ما هي في الملف</p>
+                  </button>
+                  <button type="button" onClick={function() { setBookNumbering('book'); if (bookCoverPages === 0) setBookCoverPages(1) }} className={"text-right p-2.5 rounded-lg border-2 transition-all " + (bookNumbering === 'book' ? 'border-emerald-500 bg-emerald-500/10' : 'border-border hover:border-emerald-300')}>
+                    <p className="text-xs font-bold">📖 بترقيم الكتاب المطبوع</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">الصفحة اللي مكتوب عليها 10 في الكتاب = صفحة 10 — حتى لو في الملف مكانها غيّر</p>
+                  </button>
+                </div>
+                {bookNumbering === 'book' && (
+                  <div className="space-y-2 pt-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Label className="text-xs shrink-0">عدد صفحات الغلاف/المقدمات قبل صفحة 1:</Label>
+                      <Input type="number" min={0} max={Math.max(0, bookNumPages - 1)} value={bookCoverPages} onChange={function(e) { setBookCoverPages(Math.max(0, parseInt(e.target.value) || 0)) }} className="h-8 w-20 text-center" />
+                    </div>
+                    <p className="text-[11px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 rounded-md p-2 leading-relaxed">
+                      ✅ المنصة هتحول لوحدها: صفحة الكتاب <b>10</b> = صفحة الملف <b>{10 + bookCover}</b> — اكتب أرقام الكتاب اللي مطبوعة وهتقرا الصفحات الصح بالظبط.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
             {/* (و107) ٣ — تحديد نطاق الصفحات */}
-            <p className="text-xs font-bold text-sky-700 dark:text-sky-300">٣) حدد الصفحات المطلوبة</p>
+            <p className="text-xs font-bold text-sky-700 dark:text-sky-300">٣) حدد الصفحات المطلوبة {bookNumbering === 'book' ? '(بأرقام الكتاب)' : '(بترقيم الملف)'}</p>
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
-                <Label className="text-xs">من صفحة</Label>
-                <Input type="number" min={1} max={bookNumPages || undefined} value={bookFrom} onChange={function(e) { var v = parseInt(e.target.value) || 1; setBookFrom(v); if (bookTo < v) setBookTo(v) }} />
+                <Label className="text-xs">{bookNumbering === 'book' ? 'من صفحة (في الكتاب)' : 'من صفحة'}</Label>
+                <Input type="number" min={1} max={bookMaxPage || undefined} value={bookFrom} onChange={function(e) { var v = parseInt(e.target.value) || 1; setBookFrom(v); if (bookTo < v) setBookTo(v) }} />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">إلى صفحة</Label>
-                <Input type="number" min={1} max={bookNumPages || undefined} value={bookTo} onChange={function(e) { setBookTo(parseInt(e.target.value) || 1) }} />
+                <Label className="text-xs">{bookNumbering === 'book' ? 'إلى صفحة (في الكتاب)' : 'إلى صفحة'}</Label>
+                <Input type="number" min={1} max={bookMaxPage || undefined} value={bookTo} onChange={function(e) { setBookTo(parseInt(e.target.value) || 1) }} />
               </div>
             </div>
-            {bookNumPages > 0 && (bookFrom < 1 || bookTo > bookNumPages || bookTo < bookFrom) && (
-              <p className="text-[11px] text-red-500">النطاق غير صحيح — الصفحات من 1 إلى {bookNumPages}</p>
+            {bookNumPages > 0 && bookNumbering === 'book' && (
+              <p className="text-[11px] text-sky-600 dark:text-sky-400">
+                هتقرا صفحات الملف <b>{Math.min(bookFileFrom, bookFileTo)}</b>–<b>{bookFileTo}</b> (عشان الغلاف {bookCover > 0 ? '(' + bookCover + ' صفحة)' : ''})
+              </p>
+            )}
+            {bookNumPages > 0 && !bookRangeValid && (
+              <p className="text-[11px] text-red-500">
+                {bookNumbering === 'book'
+                  ? 'النطاق غير صحيح — بأرقام الكتاب المسموح من 1 إلى ' + bookMaxPage + ' (بعد الغلاف ' + bookCover + ')'
+                  : 'النطاق غير صحيح — الصفحات من 1 إلى ' + bookNumPages}
+              </p>
             )}
             {bookPagesSelected > 30 && (
               <p className="text-[11px] text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 p-2 rounded-md">اخترت {bookPagesSelected} صفحة — دي كتير. اشتغل على مراحل (مثلاً 1–30 وبعدين 31–60) عشان الذاكرة والوقت.</p>

@@ -13,6 +13,8 @@
 
 import { useAppStore, GRADES } from '@/stores/app-store'
 import { chunkedUpload } from '@/lib/chunked-upload'
+/* (2026-س1) دعم جوجل درايف — طلب المستر: «تقبل ملفات جوجل درايف وتعرضها» */
+import { isDriveUrl, isDriveFolderUrl, extractDriveFileId } from '@/lib/drive'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -73,11 +75,18 @@ export function BooksManager() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adminId])
 
-  /* (و43) حفظ كتاب بلينك خارجي — POST /api/admin/books بـ sourceUrl (من غير ملف) */
+  /* (و43) حفظ كتاب بلينك خارجي — POST /api/admin/books بـ sourceUrl (من غير ملف)
+     (2026-س1) لينكات جوجل درايف بيتقبلها بصيغها كلها — والمجلد بيرفض برسالة واضحة */
   var handleSaveLink = async function () {
     if (!adminId) { toast.error('مفيش جلسة أدمن'); return }
     if (!title.trim()) { toast.error('اكتب عنوان الكتاب الأول'); return }
     if (!sourceUrl.trim()) { toast.error('الصق لينك الكتاب الأول'); return }
+    if (isDriveUrl(sourceUrl)) {
+      if (isDriveFolderUrl(sourceUrl) || !extractDriveFileId(sourceUrl)) {
+        toast.error('ده لينك مجلد في درايف — لازم لينك ملف واحد: افتح الملف في درايف → مشاركة → نسخ الرابط', { duration: 9000 })
+        return
+      }
+    }
 
     setSaving(true)
     try {
@@ -94,7 +103,7 @@ export function BooksManager() {
       })
       var data = await res.json()
       if (res.ok && (data.success || data.book)) {
-        toast.success('تم إضافة الكتاب باللينك الخارجي!')
+        toast.success(isDriveUrl(sourceUrl) ? 'تم إضافة الكتاب من جوجل درايف ✓ — الطلاب هيشوفوه مدموج في المنصة!' : 'تم إضافة الكتاب باللينك الخارجي!')
         setTitle(''); setDescription(''); setGrade(''); setSourceUrl('')
         await loadBooks()
       } else {
@@ -285,10 +294,16 @@ export function BooksManager() {
           <div className="space-y-1.5">
             <Label className="text-xs font-medium">اللينك *</Label>
             <Input value={sourceUrl} onChange={function (e) { setSourceUrl(e.target.value) }} placeholder="https://drive.google.com/file/d/... أو أي لينك تحميل مباشر" dir="ltr" />
+            {/* (2026-س1) مؤشر جوجل درايف الحي */}
+            {sourceUrl.trim() && isDriveUrl(sourceUrl) && (
+              isDriveFolderUrl(sourceUrl) || !extractDriveFileId(sourceUrl)
+                ? <p className="text-[11px] text-red-600 dark:text-red-400">⚠ ده لينك مجلد — لازم لينك ملف واحد (افتح الملف → مشاركة → نسخ الرابط)</p>
+                : <p className="text-[11px] text-emerald-600 dark:text-emerald-400">✓ لينك جوجل درايف — الطلاب هيشوفوا الكتاب مدموج جوه المنصة من غير ما يخرجوا</p>
+            )}
           </div>
           <p className="text-[11px] text-muted-foreground leading-relaxed">
-            💡 الكتاب الكبير (200MB+) مش بيتخزن في قاعدة البيانات خالص — بنحفظ اللينك بس والطلاب بيحملوا منه فورًا.
-            وللاستخراج منه: نزّله على جهازك وافتحه في وضع (كتاب — صفحات محددة).
+            💡 الكتاب الكبير (200MB+) مش بيتخزن في قاعدة البيانات خالص — بنحفظ اللينك بس.
+            لينكات <b>جوجل درايف</b> بتتعرض مباشرة للطلاب جوه المنصة، وللاستخراج منها في وضع (كتاب — صفحات محددة) حط اللينك وهيتفتح أوتوماتيك.
           </p>
           <Button className="w-full" onClick={handleSaveLink} disabled={saving}>
             {saving ? <Loader2 className="h-4 w-4 ml-1 animate-spin" /> : <BookOpen className="h-4 w-4 ml-1" />}
@@ -313,8 +328,10 @@ export function BooksManager() {
         ) : (
           <div className="space-y-2">
             {books.map(function (b: any) {
-              /* (و43) كتب اللينك الخارجي — بادج 🔗 بدل الحجم (sizeBytes = 0) */
+              /* (و43) كتب اللينك الخارجي — بادج 🔗 بدل الحجم (sizeBytes = 0)
+                 (2026-س1) بادج مميز لكتب جوجل درايف */
               var isLinkBook = !!b.sourceUrl
+              var isDriveBook = isLinkBook && isDriveUrl(b.sourceUrl || '')
               return (
                 <div key={b.id} className="flex items-center gap-3 p-3 rounded-lg border bg-card">
                   <div className="h-9 w-9 rounded-lg bg-sky-500/10 flex items-center justify-center shrink-0">
@@ -328,9 +345,11 @@ export function BooksManager() {
                       {(b as any).usage === 'homework' && <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30">واجبات</Badge>}
                       {(b as any).usage === 'questions' && <Badge variant="outline" className="text-[10px] bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-500/30">أسئلة</Badge>}
                       {(!(b as any).usage || (b as any).usage === 'both') && <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30">واجبات + أسئلة</Badge>}
-                      {isLinkBook
-                        ? <Badge variant="outline" className="text-[10px] border-violet-400/60 text-violet-600 dark:text-violet-400" title={b.sourceUrl}>🔗 لينك خارجي</Badge>
-                        : <span>{formatBookSize(b.sizeBytes)}</span>}
+                      {isDriveBook
+                        ? <Badge variant="outline" className="text-[10px] border-emerald-500/50 text-emerald-600 dark:text-emerald-400" title="جوجل درايف">🟢 جوجل درايف</Badge>
+                        : isLinkBook
+                          ? <Badge variant="outline" className="text-[10px] border-violet-400/60 text-violet-600 dark:text-violet-400" title={b.sourceUrl}>🔗 لينك خارجي</Badge>
+                          : <span>{formatBookSize(b.sizeBytes)}</span>}
                       {b.createdAt && <span>{new Date(b.createdAt).toLocaleDateString('ar-EG')}</span>}
                       {b.description && <span className="truncate max-w-[200px] hidden sm:inline">{b.description}</span>}
                     </div>

@@ -594,6 +594,8 @@ export async function POST(request) {
                 /* (و44) النص الكامل للإجابة — عشان «الجدول: …» المكتوب بالكيبورد
                    يتحسب مع الرسمة المصورة في نفس الحكم (المستر: التصحيح من الاثنين) */
                 studentText: iw.studentText || '',
+                /* (2026-س1) كل صفحات الحل — أكتر من صورة = الكل يتقرا */
+                allMediaIds: mediaIds2,
               })
             } catch (imErr) {
               console.error('Exam writing image grade error:', imErr)

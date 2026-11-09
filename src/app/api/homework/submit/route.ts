@@ -459,6 +459,8 @@ export async function POST(request) {
             maxPoints: wa.points,
             /* (و44) النص الكامل — الجدول المكتوب بالكيبورد يتحسب مع الرسمة */
             studentText: answerText,
+            /* (2026-س1) كل صفحات الحل — لو الطالب صور الحل على كذا صورة الكل يتقرا */
+            allMediaIds: mediaIds,
           })
           if (gradeData && !gradeData.needsGrading) {
             return Object.assign({}, wa, {
