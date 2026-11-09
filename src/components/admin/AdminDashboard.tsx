@@ -4621,6 +4621,10 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
      يكون في زرار صغير زي Math Genius أدوس أحفظ في المكتبة» — بيتحفظ
      بملف (رفع) أو بلينك بس (من غير رفع) — وبيفضل ثابت في «الكتب المحفوظة» */
   const [bookSaving, setBookSaving] = useState(false)
+  /* (و120 — زي Math Genius بالحرف) 👁 معاينة الكتاب + 🗑 حذفه من المكتبة
+     — طلب المستر: «ضيف الزرار اللي أنا أقدر أمسح الكتاب وأقدر أشوفه زي مستر وائل» */
+  const [previewBook, setPreviewBook] = useState<any | null>(null)
+  const [bookDeleting, setBookDeleting] = useState('')
   const [bookMode, setBookMode] = useState<'all' | 'top'>('all')
   const [bookCount, setBookCount] = useState(10)
   const [bookName, setBookName] = useState('')
@@ -5445,6 +5449,32 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
     } catch (e) { /* صامت */ }
     setSavedBooksLoading(false)
   }
+  /* (و120) 🗑 حذف الكتاب نهائيًا من المكتبة — بنفس مسار تاب الكتب والملازم
+     (DELETE /api/admin/books بيمسح صف Book وملفه المخزن) */
+  var deleteSavedBook = async function (b: any) {
+    if (!adminId) { toast.error('مفيش جلسة أدمن — سجل دخول تاني'); return }
+    if (!window.confirm('حذف «' + (b.title || '') + '» نهائيًا؟ الطالب مش هيشوفه تاني.')) return
+    setBookDeleting(String(b.id || ''))
+    try {
+      var resD = await fetch('/api/admin/books?adminId=' + encodeURIComponent(adminId) + '&id=' + encodeURIComponent(b.id), { method: 'DELETE' })
+      var dD = await resD.json().catch(function () { return null })
+      if (!resD.ok) throw new Error((dD && dD.error) || 'خطأ في الحذف')
+      toast.success('اتحذف «' + (b.title || 'الكتاب') + '» من المكتبة')
+      if (previewBook && previewBook.id === b.id) setPreviewBook(null)
+      await loadSavedBooks()
+    } catch (e: any) {
+      toast.error(e && e.message ? e.message : 'خطأ في الحذف')
+    }
+    setBookDeleting('')
+  }
+
+  /* (و120) مسار معاينة الكتاب: ملف متخزن → مساره مباشرة، لينك خارجي → من خلال البروكسي */
+  var bookPreviewSrc = function (b: any): string {
+    if (b && b.sourceUrl) return '/api/books/proxy?url=' + encodeURIComponent(b.sourceUrl)
+    if (b && b.filePath) return b.filePath
+    return ''
+  }
+
   var openSavedBook = async function (b: any) {
     if (bookPdfLoading) return
     setBookPdfLoading(true)
@@ -5913,10 +5943,25 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
                   ) : filteredSavedBooks.map(function (b: any) {
                     var srcLabel = b.sourceUrl ? '🔗 لينك خارجي' : (b.filePath ? '📄 ملف محفوظ' : '')
                     return (
-                      <button key={b.id} type="button" onClick={function () { openSavedBook(b) }} className="w-full text-right px-3 py-2 border-b border-border/50 last:border-0 hover:bg-muted/60 transition-colors cursor-pointer">
-                        <p className="text-xs font-bold truncate">📕 {b.title}</p>
-                        <p className="text-[10px] text-muted-foreground">{srcLabel}{b.grade ? ' — ' + b.grade : ''}</p>
-                      </button>
+                      <div key={b.id} className="flex items-center gap-1 border-b border-border/50 last:border-0 hover:bg-muted/60 transition-colors">
+                        {/* الضغط على الكتاب نفسه = فتحه كمصدر للاستخراج */}
+                        <button type="button" onClick={function () { openSavedBook(b) }} className="flex-1 min-w-0 text-right px-3 py-2 cursor-pointer">
+                          <p className="text-xs font-bold truncate">📕 {b.title}</p>
+                          <p className="text-[10px] text-muted-foreground">{srcLabel}{b.grade ? ' — ' + b.grade : ''}</p>
+                        </button>
+                        <div className="flex items-center gap-0.5 pl-1 pr-2 shrink-0">
+                          {/* (و120) 👁 معاينة الكتاب — «أشوفه» من غير ما يتغير مصدر الاستخراج */}
+                          {bookPreviewSrc(b) && (
+                            <button type="button" onClick={function () { setPreviewBook(b) }} title="معاينة الكتاب (اقراه من غير ما تغير المصدر)" className="h-7 w-7 rounded-md flex items-center justify-center text-sky-600 dark:text-sky-400 hover:bg-sky-500/10 transition-colors cursor-pointer" aria-label="معاينة">
+                              👁
+                            </button>
+                          )}
+                          {/* (و120) 🗑 حذف الكتاب نهائيًا من المكتبة */}
+                          <button type="button" onClick={function () { deleteSavedBook(b) }} title="حذف الكتاب نهائيًا" disabled={bookDeleting === String(b.id || '')} className="h-7 w-7 rounded-md flex items-center justify-center text-destructive hover:bg-destructive/10 transition-colors cursor-pointer disabled:opacity-40" aria-label="حذف">
+                            {bookDeleting === String(b.id || '') ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : '🗑'}
+                          </button>
+                        </div>
+                      </div>
                     )
                   })}
                 </div>
@@ -6305,6 +6350,23 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
             onSaved={function (url, bbox, page) { applyFigureCrop(cropEdit, url, bbox, page) }}
             onClose={function () { setCropEdit(null) }}
           />
+        )}
+        {/* (و120) معاينة الكتاب — «أشوفه» من غير ما يتغير مصدر الاستخراج — زي Math Genius */}
+        {previewBook && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-2 sm:p-6" onMouseDown={function (e) { if (e.target === e.currentTarget) setPreviewBook(null) }}>
+            <div className="bg-background rounded-xl border shadow-2xl w-full max-w-4xl h-[92vh] flex flex-col">
+              <div className="flex items-center justify-between gap-2 p-3 border-b shrink-0">
+                <p className="text-sm font-bold truncate">👁 معاينة: {previewBook.title}</p>
+                <div className="flex items-center gap-1 shrink-0">
+                  <a href={bookPreviewSrc(previewBook)} target="_blank" rel="noreferrer" className="text-xs text-sky-600 dark:text-sky-400 hover:underline px-2">فتح في تاب جديد</a>
+                  <Button type="button" variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={function () { setPreviewBook(null) }} aria-label="إغلاق">✕</Button>
+                </div>
+              </div>
+              <div className="flex-1 min-h-0">
+                <iframe src={bookPreviewSrc(previewBook)} title={'معاينة ' + (previewBook.title || 'الكتاب')} className="w-full h-full rounded-b-xl bg-white" />
+              </div>
+            </div>
+          </div>
         )}
       </CardContent>
     </Card>
