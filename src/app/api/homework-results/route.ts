@@ -377,12 +377,23 @@ export async function GET(request: NextRequest) {
     var lastReadErr: any = null
     for (var readAttempt = 0; readAttempt < 2; readAttempt++) {
       try {
-        rows = await withRetry(function() {
-          return db.$queryRawUnsafe(
-            'SELECT id, homeworkId, studentId, score, maxScore FROM HomeworkResult WHERE studentId = ?',
-            studentId
-          )
-        }) as any[]
+        try {
+          rows = await withRetry(function() {
+            return db.$queryRawUnsafe(
+              /* (محاولات 7) + أعمدة المحاولات السبع — رقم المحاولة وخصمها وعلامة التسليم التلقائي */
+              'SELECT id, homeworkId, studentId, score, maxScore, attemptNo, attemptPenalty, autoSubmitted FROM HomeworkResult WHERE studentId = ?',
+              studentId
+            )
+          }) as any[]
+        } catch (eCols) {
+          /* قاعدة قديمة من غير أعمدة المحاولات — نقرأ الأساسيات بس والباقي قيم افتراضية */
+          rows = await withRetry(function() {
+            return db.$queryRawUnsafe(
+              'SELECT id, homeworkId, studentId, score, maxScore FROM HomeworkResult WHERE studentId = ?',
+              studentId
+            )
+          }) as any[]
+        }
         break
       } catch (eR) { lastReadErr = eR }
     }
@@ -391,7 +402,22 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ results: [], error: 'retry' })
     }
 
-    return NextResponse.json({ results: rows || [] })
+    /* (محاولات 7) أعمدة المحاولات السبع — قيم افتراضية آمنة للصفوف القديمة
+       (attemptNo=1، attemptPenalty=0، autoSubmitted=0 لما تكون null/ناقصة) */
+    var mappedRows: any[] = []
+    try {
+      var srcRows: any[] = rows || []
+      for (var mr = 0; mr < srcRows.length; mr++) {
+        var r0 = srcRows[mr]
+        mappedRows.push(Object.assign({}, r0, {
+          attemptNo: (r0.attemptNo === null || r0.attemptNo === undefined) ? 1 : (Number(r0.attemptNo) || 1),
+          attemptPenalty: (r0.attemptPenalty === null || r0.attemptPenalty === undefined) ? 0 : (Number(r0.attemptPenalty) || 0),
+          autoSubmitted: (r0.autoSubmitted === null || r0.autoSubmitted === undefined) ? 0 : (Number(r0.autoSubmitted) || 0),
+        }))
+      }
+    } catch (eM) { mappedRows = rows || [] }
+
+    return NextResponse.json({ results: mappedRows })
   } catch (error) {
     console.error('Homework results error:', error)
     return NextResponse.json({ results: [] })
