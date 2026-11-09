@@ -16,23 +16,58 @@ export const runtime = 'nodejs'
 /* self-heal خفيف (مرة واحدة لكل instance): ضمان وجود جدول Book قبل أي عملية
    — زي نمط defensive ALTERs في /api/homework و /api/exams — عشان أول طلب
    بعد النشر على Turso ما يعتمدش على إن /api/health عدّى قبلها */
+/* self-heal قوي (ز32): ضمان وجود جدول Book بكل أعمدته قبل أي عملية.
+   العلة اللي كانت بتخلي «الكتب مش محفوظة» بلينك الدرايف: قواعد قديمة
+   اتعملت من غير أعمدة sourceUrl/usage — والـ ALTERs القديمة كانت
+   بتتنفذ **مرة واحدة لكل instance** وبيفشلوا بصمت (catch(e){}) —
+   فأول فشل لحظي كان بيسيب القاعدة ناقصة للأبد والحفظ بيرجع 500.
+   بقى: بنقرأ الأعمدة الحقيقية بـ PRAGMA ونضيف الناقص ونتحقق بعدها —
+   وأي فشل بيرجّع _bookTableReady لـ null عشان الطلب اللي بعده يعيد */
 var _bookTableReady: Promise<void> | null = null
+var BOOK_REQUIRED_COLUMNS: Array<[string, string]> = [
+  ['description', "TEXT NOT NULL DEFAULT ''"],
+  ['filePath', "TEXT NOT NULL DEFAULT ''"],
+  ['fileName', "TEXT NOT NULL DEFAULT ''"],
+  ['sourceUrl', "TEXT NOT NULL DEFAULT ''"],
+  ['fileType', "TEXT NOT NULL DEFAULT 'application/pdf'"],
+  ['sizeBytes', 'INTEGER NOT NULL DEFAULT 0'],
+  ['grade', "TEXT NOT NULL DEFAULT ''"],
+  ['usage', "TEXT NOT NULL DEFAULT 'both'"],
+]
 function ensureBookTable() {
-  if (!_bookTableReady) {
-    _bookTableReady = (async function () {
+  var run = (async function () {
+    try {
+      await db.$executeRawUnsafe("CREATE TABLE IF NOT EXISTS Book (id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', filePath TEXT NOT NULL DEFAULT '', fileName TEXT NOT NULL DEFAULT '', sourceUrl TEXT NOT NULL DEFAULT '', fileType TEXT NOT NULL DEFAULT 'application/pdf', sizeBytes INTEGER NOT NULL DEFAULT 0, grade TEXT NOT NULL DEFAULT '', createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL)")
+    } catch (e) {}
+    var cols: any[] = []
+    try {
+      cols = await db.$queryRawUnsafe('PRAGMA table_info(Book)') as any[]
+    } catch (e) { cols = [] }
+    var have: Record<string, boolean> = {}
+    ;(cols || []).forEach(function (c: any) { have[String(c.name)] = true })
+    for (var i = 0; i < BOOK_REQUIRED_COLUMNS.length; i++) {
+      var colName = BOOK_REQUIRED_COLUMNS[i][0]
+      var colDef = BOOK_REQUIRED_COLUMNS[i][1]
+      if (have[colName]) continue
       try {
-        await db.$executeRawUnsafe("CREATE TABLE IF NOT EXISTS Book (id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', filePath TEXT NOT NULL DEFAULT '', fileName TEXT NOT NULL DEFAULT '', sourceUrl TEXT NOT NULL DEFAULT '', fileType TEXT NOT NULL DEFAULT 'application/pdf', sizeBytes INTEGER NOT NULL DEFAULT 0, grade TEXT NOT NULL DEFAULT '', createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updatedAt DATETIME NOT NULL)")
+        await db.$executeRawUnsafe('ALTER TABLE Book ADD COLUMN ' + colName + ' ' + colDef)
       } catch (e) {}
-      /* (و43) قواعد قديمة اتعملت من غير sourceUrl — ALTER متسامح (بيفشل بصمت لو موجود) */
+      /* تحقق بعد الـ ALTER — لو لسه ناقص اعرف فورًا بدل ما الحفظ يفشل برسالة غامضة */
       try {
-        await db.$executeRawUnsafe("ALTER TABLE Book ADD COLUMN sourceUrl TEXT NOT NULL DEFAULT ''")
+        var re = await db.$queryRawUnsafe('PRAGMA table_info(Book)') as any[]
+        have = {}
+        ;(re || []).forEach(function (c: any) { have[String(c.name)] = true })
       } catch (e) {}
-      /* (2026-و79) تصنيف الكتاب: واجب / أسئلة / الاتنين — طلب المستر الحرفي */
-      try {
-        await db.$executeRawUnsafe("ALTER TABLE Book ADD COLUMN usage TEXT NOT NULL DEFAULT 'both'")
-      } catch (e) {}
-    })()
-  }
+      if (!have[colName]) {
+        throw new Error('Book table missing column: ' + colName)
+      }
+    }
+  })()
+  _bookTableReady = run.catch(function (e) {
+    /* فشل الإصلاح الذاتي → الطلب اللي بعده يعيد المحاولة بدل ما يحفظ حالة مكسورة */
+    _bookTableReady = null
+    throw e
+  })
   return _bookTableReady
 }
 
@@ -53,15 +88,14 @@ export async function GET(request: NextRequest) {
   }
 }
 
-/* (و43) تحويل لينكات جوجل درايف للمشاركة إلى تحميل مباشر (direct download):
-   file/d/<id> أو open?id=<id> أو docs document/d/<id> → uc?export=download&id=<id> */
+/* (و43 → ز32) التحقق من لينك الكتاب — اللينك بيتخزن **زي ما هو** (مفيش أي
+   إعادة كتابة): التحويل القديم لـ uc?export=download كان بيبوّظ الملفات
+   الكبيرة (جوجل بترجّع صفحة تأكيد HTML) — القراءة الحقيقية بتحصل دلوقتي
+   من خلال /api/books/proxy (مكتبة src/lib/drive بمرشحين التحميل وفك
+   صفحة التأكيد)، والعرض للطالب جوه المنصة بالعارض المدمج */
 function normalizeBookSourceUrl(raw: string): string | null {
   var url = String(raw || '').trim()
   if (!/^https?:\/\//i.test(url)) return null
-  var m = url.match(/drive\.google\.com\/file\/d\/([\w-]+)/)
-        || url.match(/drive\.google\.com\/open\?id=([\w-]+)/)
-        || url.match(/docs\.google\.com\/document\/d\/([\w-]+)/)
-  if (m && m[1]) return 'https://drive.google.com/uc?export=download&id=' + m[1]
   return url
 }
 
@@ -146,7 +180,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: 'تم إضافة الكتاب', book }, { status: 201 })
   } catch (error: any) {
     console.error('Book create error:', error)
-    return NextResponse.json({ error: 'Server error: ' + (error.message || String(error)) }, { status: 500 })
+    /* (ز32) رسالة واضحة لو العلة من أعمدة القاعدة بدل «Server error» الغامضة */
+    var msg = error && error.message ? String(error.message) : String(error || '')
+    if (msg.indexOf('missing column') !== -1) {
+      return NextResponse.json({ error: 'قاعدة البيانات ناقصة عمود — جرب تاني بعد ثواني (الإصلاح الذاتي شغال)' }, { status: 503 })
+    }
+    return NextResponse.json({ error: 'Server error: ' + msg }, { status: 500 })
   }
 }
 

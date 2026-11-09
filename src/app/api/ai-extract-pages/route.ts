@@ -126,7 +126,7 @@ function buildPagesPrompt(pageNumbers: number[], mode: 'all' | 'top', count: num
   lines.push('')
   lines.push('HARD RULES (follow exactly):')
   lines.push('- Extract ONLY questions that actually exist on the pages. Do NOT invent, add, solve-as-new, or rephrase questions.')
-  lines.push('- MCQ: the page shows answer CHOICES under the question. Options must be the option TEXT ONLY — no letter prefixes (no "A)", no "(1)", no numbering). "correct" = the 0-based index of the correct option. If the correct answer is NOT printed anywhere on these pages set correct: -1 and write the full solution in modelAnswer.')
+  lines.push('- MCQ: the page shows answer CHOICES under the question. Options must be the option TEXT ONLY — no letter prefixes (no "A)", no "(1)", no numbering). "correct" = the 0-based index of the correct option. If the correct answer is NOT printed anywhere on these pages → SOLVE the question yourself (you are an expert math teacher): set "correct" to the 0-based index of YOUR chosen answer among the options and write the full step-by-step solution in modelAnswer. NEVER set correct: -1 — the teacher relies on the platform solving unanswered questions.')
   lines.push('- WRITING: no choices printed under the question. Set type "writing", options [], correct: -1, modelAnswer = complete step-by-step solution, acceptedAnswers = array of acceptable final answers.')
   lines.push('- IGNORE page headers, footers, page numbers, logos, advertisements, and decorations.')
   lines.push('- A question that spans two pages = ONE question; set "sourcePage" to the FIRST page it appears on.')

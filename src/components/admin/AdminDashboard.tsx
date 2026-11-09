@@ -4560,8 +4560,14 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
      بفتح كتاب كبير، أحدد صفحات، يجيب كل الأسئلة أو أهم N سؤال بالترتيب) */
   const [bookFile, setBookFile] = useState<File | null>(null)
   const [bookNumPages, setBookNumPages] = useState(0)
-  const [bookFrom, setBookFrom] = useState(1)
-  const [bookTo, setBookTo] = useState(1)
+  /* (ز31 — طلب المستر الحرفي: «أنا عاوز أنا أكتب الصفحات بإيدي مثلًا صفحة 9
+     صفحة 20 أنا أكتبهم بإيدي») — الصفحات دلوقتي كتابة حرة بإيدي المستر:
+     خانتين نصية من غير أي تصحيح تلقائي ولا قفزات ولا حد أقصى — والتحقق
+     بيحصل بس لما يدوس استخراج */
+  const [bookFromText, setBookFromText] = useState('')
+  const [bookToText, setBookToText] = useState('')
+  var bookFrom = parseInt(bookFromText, 10) || 0
+  var bookTo = parseInt(bookToText, 10) || 0
   const [bookMode, setBookMode] = useState<'all' | 'top'>('all')
   const [bookCount, setBookCount] = useState(10)
   const [bookName, setBookName] = useState('')
@@ -4708,7 +4714,7 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
     setLessonId('')
     setExamShowResult(false); setExamTimeLimit(''); setExamScheduledAt('')
     /* (2026-و40) تصفير وضع الكتاب */
-    setBookFile(null); setBookNumPages(0); setBookFrom(1); setBookTo(1)
+    setBookFile(null); setBookNumPages(0); setBookFromText(''); setBookToText('')
     setBookMode('all'); setBookCount(10); setBookName(''); bookDocRef.current = null
     /* (2026-س1) تصفير الترقيم */
     setBookNumbering('file'); setBookCoverPages(0)
@@ -4835,7 +4841,7 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
   var startAppendFile = function () {
     setAppendingFile(true)
     setFile(null); setFileUrl(''); setAnswerFile(null); setAnswerUrl('')
-    setBookFile(null); setBookNumPages(0); setBookFrom(1); setBookTo(1); bookDocRef.current = null
+    setBookFile(null); setBookNumPages(0); setBookFromText(''); setBookToText('')
     setStatusMsg('اختار الملف التاني وابعت استخراج — أسئلته هتتنزّل تحت الحالية (' + extractedQuestions.length + ' سؤال)')
     setStep(2)
   }
@@ -4855,7 +4861,8 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
   var bookMaxPage = bookNumbering === 'book' ? Math.max(0, bookNumPages - bookCover) : bookNumPages
   var bookPagesSelected = bookNumPages > 0 ? (bookFileTo - bookFileFrom + 1) : 0
   var bookRangeValid = bookNumPages > 0 && bookFrom >= 1 && bookTo >= bookFrom && bookFileTo <= bookNumPages && (bookNumbering !== 'book' || bookFileFrom >= 1)
-  var canExtractBook = !!bookFile && bookRangeValid && bookPagesSelected <= 30
+  /* (ز32) الحد 30 صفحة بقى تحذير بس — المستر حر يكتب أي نطاق بإيده */
+  var canExtractBook = !!bookFile && bookRangeValid
   var canExtract = inputMode === 'youtube' ? canExtractYoutube : inputMode === 'book' ? canExtractBook : inputMode === 'lesson' ? canExtractLesson : canExtractFile
 
   var handleExtract = async function() {
@@ -5264,7 +5271,7 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
 
   /* ===== (2026-و40) وضع الكتاب ===== */
   var handleBookFile = async function(f: File | null) {
-    setBookFile(f); bookDocRef.current = null; setBookNumPages(0); setBookFrom(1); setBookTo(1)
+    setBookFile(f); bookDocRef.current = null; setBookNumPages(0); setBookFromText(''); setBookToText('')
     if (!f) return
     setBookPdfLoading(true)
     try {
@@ -5298,13 +5305,12 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
       var blob = await res.blob()
       if (blob.size === 0) throw new Error('الملف اللي جاي من الرابط فاضي — اتأكد إن الرابط بيوصل للملف مباشرة')
       var file = new File([blob], 'book-' + Date.now() + '.pdf', { type: 'application/pdf' })
-      setBookFile(file); bookDocRef.current = null; setBookNumPages(0); setBookFrom(1); setBookTo(1)
+      setBookFile(file); bookDocRef.current = null; setBookNumPages(0); setBookFromText(''); setBookToText('')
       var opened = await openPdf(file)
       bookDocRef.current = opened.doc
       setBookNumPages(opened.numPages)
       setBookName(''); setTitle(function (t: string) { return t || 'كتاب من رابط' })
-      setBookFrom(1); setBookTo(Math.min(opened.numPages, 30))
-      toast.success('اتفتح الكتاب من الرابط — عدد الصفحات: ' + opened.numPages + ' — حدد الصفحات واضغط استخراج')
+      toast.success('اتفتح الكتاب من الرابط — عدد الصفحات: ' + opened.numPages + ' — اكتب الصفحات بإيدك (من — إلى) واضغط استخراج')
     } catch (e: any) {
       toast.error('الرابط ما اتنفذش: ' + (e && e.message ? e.message : 'حصلت مشكلة'))
     }
@@ -5348,9 +5354,7 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
       var opened = await openPdf(file)
       bookDocRef.current = opened.doc
       setBookNumPages(opened.numPages)
-      setBookFrom(1)
-      setBookTo(Math.min(opened.numPages, 30))
-      toast.success('اتفتح «' + (b.title || 'الكتاب') + '» — ' + opened.numPages + ' صفحة — حدد الصفحات واضغط استخراج من الصفحات')
+      toast.success('اتفتح «' + (b.title || 'الكتاب') + '» — ' + opened.numPages + ' صفحة — اكتب الصفحات بإيدك (من — إلى) واضغط استخراج من الصفحات')
       setShowSavedBooks(false)
     } catch (e: any) {
       toast.error(e && e.message ? e.message : 'حصلت مشكلة في فتح الكتاب')
@@ -5621,12 +5625,15 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
 
         {inputMode === 'file' ? (
           <div className="space-y-4">
-            {/* Questions file */}
+            {/* (ز33 — طلب المستر: «أنا عاوز أسئلة بس عادي سواء بالاجابة أو مش
+               بالاجابة هو بيحل» — ملف واحد بس، من غير ملف إجابات منفصل —
+               نفس أسلوب المنصات الحديثة) */}
             <div className="p-4 rounded-xl border-2 border-dashed border-primary/30 bg-primary/5 space-y-3">
               <div className="text-center">
                 <Upload className="h-8 w-8 text-primary mx-auto mb-2" />
-                <p className="text-sm font-medium">ارفع ملف الأسئلة أو صورة</p>
-                <p className="text-[10px] text-muted-foreground">PDF, صورة, أو أي ملف يحتوي على الأسئلة</p>
+                <p className="text-sm font-bold">ارفع ملف الأسئلة — ملف واحد بس</p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed mt-1">PDF أو صورة أو Word — سواء الإجابات مكتوبة جواه أو لأ:
+                  <span className="font-bold text-primary"> لو مكتوبة الـ AI هيقراها، ولو مش مكتوبة هَيحل كل سؤال بنفسه</span> — مش محتاج ملف إجابات منفصل خالص</p>
               </div>
               <div className="flex items-center gap-2">
                 <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" onChange={function(e) { setFile(e.target.files?.[0] || null); setFileUrl('') }} />
@@ -5635,33 +5642,10 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
               {file && <p className="text-xs text-muted-foreground text-center">{(file.size / 1024 / 1024).toFixed(1)} MB</p>}
               <div className="flex items-center gap-3"><div className="flex-grow h-px bg-border" /><span className="text-[11px] text-muted-foreground">أو</span><div className="flex-grow h-px bg-border" /></div>
               <div className="space-y-1.5">
-                <Label className="text-xs">أو لصق رابط ملف الأسئلة</Label>
-                <Input placeholder="https://example.com/exam.pdf" value={fileUrl} onChange={function(e) { setFileUrl(e.target.value); if (e.target.value.trim()) { setFile(null) } }} dir="ltr" />
+                <Label className="text-xs">أو لصق رابط الملف (جوجل درايف أو أي رابط)</Label>
+                <Input placeholder="https://drive.google.com/file/d/… أو أي رابط مباشر" value={fileUrl} onChange={function(e) { setFileUrl(e.target.value); if (e.target.value.trim()) { setFile(null) } }} dir="ltr" />
+                <p className="text-[10px] text-muted-foreground">لينكات الدرايف بتتفتح لوحدها — بس اتأكد إن مشاركة الملف على «أي شخص لديه الرابط»</p>
               </div>
-            </div>
-
-            {/* Answer key file (optional) */}
-            <div className="p-4 rounded-xl border-2 border-dashed border-amber-400/30 bg-amber-50 dark:bg-amber-950/20 space-y-3">
-              <div className="text-center">
-                <FileDown className="h-7 w-7 text-amber-500 mx-auto mb-2" />
-                <p className="text-sm font-medium">ملف الإجابات (اختياري)</p>
-                <p className="text-[10px] text-muted-foreground">لو رفعت ملف إجابات منفصل، الـ AI هيطابق كل سؤال بإجابته</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <input ref={answerFileRef} type="file" accept=".pdf,.doc,.docx,image/*" className="hidden" onChange={function(e) { setAnswerFile(e.target.files?.[0] || null); setAnswerUrl('') }} />
-                <Button type="button" variant="outline" onClick={function() { answerFileRef.current?.click() }} className="flex-1 border-amber-400/40 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/20"><FileDown className="h-4 w-4 ml-2" />{answerFile ? answerFile.name : 'اختر ملف الإجابات'}</Button>
-              </div>
-              {answerFile && <p className="text-xs text-muted-foreground text-center">{(answerFile.size / 1024 / 1024).toFixed(1)} MB</p>}
-              <div className="flex items-center gap-3"><div className="flex-grow h-px bg-amber-200" /><span className="text-[11px] text-muted-foreground">أو</span><div className="flex-grow h-px bg-amber-200" /></div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">أو لصق رابط ملف الإجابات</Label>
-                <Input placeholder="https://example.com/answers.pdf" value={answerUrl} onChange={function(e) { setAnswerUrl(e.target.value); if (e.target.value.trim()) { setAnswerFile(null) } }} dir="ltr" />
-              </div>
-              {answerFile && (
-                <p className="text-[11px] text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 p-2 rounded-md">
-                  ✓ سيتم استخراج الأسئلة من ملف، والإجابات من الملف ده، ودمجهم مع بعض
-                </p>
-              )}
             </div>
           </div>
         ) : inputMode === 'youtube' ? (
@@ -5839,16 +5823,18 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
             )}
             {/* (و107) ٣ — تحديد نطاق الصفحات */}
             <p className="text-xs font-bold text-sky-700 dark:text-sky-300">٣) حدد الصفحات المطلوبة {bookNumbering === 'book' ? '(بأرقام الكتاب)' : '(بترقيم الملف)'}</p>
+            {/* (ز32 — طلب المستر: «أنا عاوز أنا أكتب الصفحات بإيدي مثلًا صفحة 9 صفحة 20») */}
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
                 <Label className="text-xs">{bookNumbering === 'book' ? 'من صفحة (في الكتاب)' : 'من صفحة'}</Label>
-                <Input type="number" min={1} max={bookMaxPage || undefined} value={bookFrom} onChange={function(e) { var v = parseInt(e.target.value) || 1; setBookFrom(v); if (bookTo < v) setBookTo(v) }} />
+                <Input type="text" inputMode="numeric" placeholder="مثال: 9" value={bookFromText} onChange={function(e) { setBookFromText(e.target.value.replace(/[^0-9]/g, '')) }} dir="ltr" className="text-center" />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">{bookNumbering === 'book' ? 'إلى صفحة (في الكتاب)' : 'إلى صفحة'}</Label>
-                <Input type="number" min={1} max={bookMaxPage || undefined} value={bookTo} onChange={function(e) { setBookTo(parseInt(e.target.value) || 1) }} />
+                <Input type="text" inputMode="numeric" placeholder="مثال: 20" value={bookToText} onChange={function(e) { setBookToText(e.target.value.replace(/[^0-9]/g, '')) }} dir="ltr" className="text-center" />
               </div>
             </div>
+            <p className="text-[10px] text-muted-foreground">اكتب رقم أول صفحة وآخر صفحة بإيدك بالظبط {bookNumbering === 'book' ? 'بأرقام الكتاب المطبوعة' : ''}</p>
             {bookNumPages > 0 && bookNumbering === 'book' && (
               <p className="text-[11px] text-sky-600 dark:text-sky-400">
                 هتقرا صفحات الملف <b>{Math.min(bookFileFrom, bookFileTo)}</b>–<b>{bookFileTo}</b> (عشان الغلاف {bookCover > 0 ? '(' + bookCover + ' صفحة)' : ''})
@@ -5862,7 +5848,7 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
               </p>
             )}
             {bookPagesSelected > 30 && (
-              <p className="text-[11px] text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 p-2 rounded-md">اخترت {bookPagesSelected} صفحة — دي كتير. اشتغل على مراحل (مثلاً 1–30 وبعدين 31–60) عشان الذاكرة والوقت.</p>
+              <p className="text-[11px] text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 p-2 rounded-md">اخترت {bookPagesSelected} صفحة — ممكن ياخد وقت أطول. لو التقيل عليك اشتغل على مراحل (مثلاً 1–30 وبعدين 31–60).</p>
             )}
             <div className="flex gap-2 flex-wrap">
               <label className={"flex items-center gap-1.5 text-sm cursor-pointer p-2 rounded-md border " + (bookMode === 'all' ? 'border-primary bg-primary/5' : 'border-border')}>

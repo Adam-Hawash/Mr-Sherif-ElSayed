@@ -475,6 +475,7 @@ function buildSingleFilePrompt(grade: string, type: string): string {
   lines.push('SMART ANSWER RULE (very important — the teacher relies on this):')
   lines.push('* If the document CONTAINS the answer for a question → extract THAT exact answer as written in the document.')
   lines.push('* If a question has NO answer anywhere in the document → SOLVE it yourself completely: you are an expert math teacher, so produce a correct, clear, step-by-step solution that matches the grade curriculum level (Grade: ' + grade + ').')
+  lines.push('* (ز33 — طلب المستر: «سواء بالاجابة أو مش بالاجابة هو بيحل») For MCQ questions you solved yourself: set correct = the 0-based index of YOUR chosen answer among the options — NEVER -1.')
   lines.push('* NEVER leave modelAnswer empty. EVERY question must end up with a full modelAnswer (extracted from the document OR solved by you).')
   lines.push('* For writing questions you solved yourself, also fill acceptedAnswers with the acceptable final answers.')
   lines.push('- Grade: ' + grade + ' | Type: ' + type)
