@@ -37,10 +37,37 @@ export async function renderPageToJpeg(
   maxDim: number = 1400,
   quality: number = 0.72
 ): Promise<string> {
+  return renderPageToImage(doc, pageNumber, maxDim, 'image/jpeg', quality, 3)
+}
+
+/**
+ * (2026-G-1) رندر صفحة **بدون فقدان** — PNG dataURL.
+ * مخصصة لقص الرسمات: الصفحة تتندر مرة واحدة بدقة عالية وLossless،
+ * والقص النهائي ياخد المنطقة بالدقة الطبيعية من غير أي JPEG وسيط
+ * بيضيّع الجودة (كان سبب «الجودة ضعيفة — عايزها زي ما هي»).
+ * maxDim = أقصى بُعد مطلوب، maxScale = سقف تكبير رندر pdf.js (افتراضي 4x).
+ */
+export async function renderPageToPng(
+  doc: any,
+  pageNumber: number,
+  maxDim: number = 3200,
+  maxScale: number = 4
+): Promise<string> {
+  return renderPageToImage(doc, pageNumber, maxDim, 'image/png', 1, maxScale)
+}
+
+async function renderPageToImage(
+  doc: any,
+  pageNumber: number,
+  maxDim: number,
+  format: 'image/jpeg' | 'image/png',
+  quality: number,
+  maxScale: number
+): Promise<string> {
   var page = await doc.getPage(pageNumber)
   var baseViewport = page.getViewport({ scale: 1 })
   var longest = Math.max(baseViewport.width, baseViewport.height) || maxDim
-  var scale = Math.min(3, maxDim / longest)
+  var scale = Math.min(maxScale, maxDim / longest)
   if (!isFinite(scale) || scale <= 0) scale = 1
   var viewport = page.getViewport({ scale: scale })
   var canvas = document.createElement('canvas')
@@ -53,7 +80,7 @@ export async function renderPageToJpeg(
   ctx.fillRect(0, 0, canvas.width, canvas.height)
   await page.render({ canvasContext: ctx, viewport: viewport }).promise
   page.cleanup()
-  var dataUrl = canvas.toDataURL('image/jpeg', quality)
+  var dataUrl = canvas.toDataURL(format, quality)
   canvas.width = 0; canvas.height = 0
   return dataUrl
 }

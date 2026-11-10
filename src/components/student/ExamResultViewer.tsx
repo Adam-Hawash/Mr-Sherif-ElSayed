@@ -17,6 +17,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { X, Loader2, RefreshCw, BarChart3, CheckCircle2 } from 'lucide-react'
+import { repairCorruptMath } from '@/lib/math-text'
 
 type WritingItem = {
   question: string
@@ -44,7 +45,8 @@ function normWriting(raw: any): WritingItem[] {
       if (!it || typeof it !== 'object') return { question: '', answer: '', isCorrect: null, feedback: '', pending: true }
       var pending = it.gradingStatus === 'pending' || it.needsGrading === true || (it.isCorrect !== true && it.isCorrect !== false && it.isGraded !== true)
       return {
-        question: it.question || it.q || '',
+        /* (ز43) شفاء حرف الـ N وبقايا escapes الاستخراج وقت العرض */
+        question: repairCorruptMath(String(it.question || it.q || '')),
         answer: it.answer || it.studentAnswer || '',
         modelAnswer: it.modelAnswer || '',
         isCorrect: typeof it.isCorrect === 'boolean' ? it.isCorrect : null,

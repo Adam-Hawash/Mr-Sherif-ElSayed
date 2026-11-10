@@ -14,6 +14,8 @@
 
 import { db } from '@/lib/db'
 import { splitMergedRegion } from '@/lib/figure-demerger'
+/* (ز42) حارس الحبر — لصق القص الفاضي على أقرب رسمة حقيقية (نفس منطق المتصفح) */
+import { snapCropFromPx } from '@/lib/figure-locator'
 
 /* تطبيع bbox ذكي — النموذج ساعات بيرجع مقياس 0..1000 (بروتوكول Gemini)
    بدل 0..1 — بنكتشف ده ونحوّله، وإلا بيتقفل في sanitize (قيمة >1) والقص
@@ -213,6 +215,14 @@ export async function cropFiguresServerSide(
     if (!(globalThis as any).DOMMatrix) (globalThis as any).DOMMatrix = DOMMatrix
     if (!(globalThis as any).Path2D) (globalThis as any).Path2D = Path2D
     if (!(globalThis as any).ImageData) (globalThis as any).ImageData = ImageData
+    /* (Z-40e) تسجيل worker الـ pdf.js صراحة — على فيرسل الـ import الداخلي
+       بتاع pdf.worker.mjs مش بيتتبع فالملف بيتبعد عن النشر ويقع «fake worker»
+       (نفس العلة اللي كانت هتقع في /api/page-image) — الاستيراد الصريح بيخلي
+       الباندلر يشمله وبنسجله في globalThis زي ما pdf.js بيفحصه الأول */
+    try {
+      var wmod: any = await import('pdfjs-dist/legacy/build/pdf.worker.mjs')
+      if (wmod && !(globalThis as any).pdfjsWorker) (globalThis as any).pdfjsWorker = wmod
+    } catch (eW) {}
     var pdfjs: any = await import('pdfjs-dist/legacy/build/pdf.mjs')
 
     var pathMod = await import('path')
@@ -318,6 +328,25 @@ async function cropOne(
     }, reg, { x0: bbox.x * pW, y0: bbox.y * pH, x1: (bbox.x + bbox.w) * pW, y1: (bbox.y + bbox.h) * pH })
     sx = regD.x; sy = regD.y; sw = regD.w; sh = regD.h
     if (sw < 8 || sh < 8) return false
+
+    /* (ز42) حارس الحبر على السيرفر — لو منطقة القص شبه فاضية (bbox الـ AI
+       في مكان غلط على الصفحة) بنلصقها على أقرب كتلة محتوى حقيقية مكشوفة
+       من بكسلات الصفحة نفسها — نفس منطق المتصفح بالظبط */
+    try {
+      var { createCanvas: ccA } = await import('@napi-rs/canvas')
+      var longestA = Math.max(pageCanvas.width, pageCanvas.height) || 1
+      var scaleA = Math.min(1, 760 / longestA)
+      var wA = Math.max(8, Math.round(pageCanvas.width * scaleA))
+      var hA = Math.max(8, Math.round(pageCanvas.height * scaleA))
+      var cA = ccA(wA, hA)
+      var ctxA = cA.getContext('2d')
+      ctxA.fillStyle = '#ffffff'
+      ctxA.fillRect(0, 0, wA, hA)
+      ctxA.drawImage(pageCanvas, 0, 0, wA, hA)
+      var imgA = ctxA.getImageData(0, 0, wA, hA)
+      var snapS = snapCropFromPx({ d: imgA.data, w: wA, h: hA }, bbox, { x: sx, y: sy, w: sw, h: sh })
+      if (snapS) { sx = snapS.x; sy = snapS.y; sw = snapS.w; sh = snapS.h }
+    } catch (eInkS) {}
 
     var scale = Math.min(1, 1600 / Math.max(sw, sh))
     var outW = Math.max(8, Math.round(sw * scale))

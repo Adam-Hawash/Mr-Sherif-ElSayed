@@ -13,7 +13,7 @@ import { callGemini as callGeminiCentral, hasGeminiKey } from '@/lib/gemini'
 import { repairModelJson, repairCorruptMath } from '@/lib/math-text'
 import { db } from '@/lib/db'
 /* (و45) تصنيف موحّد اختياري/مقالي — سؤال له اختيارات (حتى لو صور) = اختياري */
-import { isWritingQuestion } from '@/lib/question-figures'
+import { isWritingQuestion, splitEmbeddedOptions } from '@/lib/question-figures'
 /* (ز31) حارس «كل حاجة بالإنجليزي» — طلب المستر الحرفي */
 import { ensureEnglishQuestions, ensureEnglishText } from '@/lib/english-only'
 /* (2026-س1) جوجل درايف — تحميل أي لينك ملف مع تحويل درايف أوتوماتيك */
@@ -140,6 +140,9 @@ function mergeQuestionsAndAnswers(questions: any[], answers: any[]): any[] {
   })
 
   return questions.map(function(q, i) {
+    /* (ز43) العقل الذكي: تفكيك الاختيارات المدموجة جوه نص السؤال
+       «…\na. 2\nb. …\nc. …» → سؤال + اختيارات حقيقية A B C */
+    q = splitEmbeddedOptions(q)
     // Try to find matching answer by index first (explicit index > positional)
     var ans = byIndex[i] || answers[i]
     // If no answer at that index, try fuzzy match by question text
@@ -194,7 +197,8 @@ function mergeQuestionsAndAnswers(questions: any[], answers: any[]): any[] {
     var outQ: any = Object.assign({
       type: 'mcq',
       question: q.question || '',
-      options: (q.options || ['N/A', 'N/A', 'N/A', 'N/A']).slice(0, 4),
+      /* (ز43) سقف 8 اختيارات بدل 4 — كتب بتيجي بـ 5 و7 اختيارات */
+      options: (q.options || ['N/A', 'N/A', 'N/A', 'N/A']).slice(0, 8),
       correct: correctIdx,
       points: q.points || 1,
       modelAnswer: modelAnswer,
@@ -630,6 +634,9 @@ async function finalizeExtracted(extracted: any, type: string, grade: string, tw
   if (!extracted.answerKey) { extracted.answerKey = '' }
 
   extracted.questions = extracted.questions.map(function(q) {
+    /* (ز43) العقل الذكي: تفكيك الاختيارات المدموجة جوه نص السؤال
+       «…\na. 2\nb. …\nc. …» → سؤال + اختيارات حقيقية A B C */
+    q = splitEmbeddedOptions(q)
     /* (و45) سؤال له اختيارات (نص أو صور/رسومات) = اختياري دايمًا — ممنوع يتحول مقالي */
     var qType = isWritingQuestion(q) ? 'writing' : 'mcq'
     /* (2026-و40-w) حقول ورقة العمل — pass-through (المصدر: البحث عن الجداول
@@ -642,6 +649,8 @@ async function finalizeExtracted(extracted: any, type: string, grade: string, tw
     if (q.table && Array.isArray(q.table.rows)) worksheet.table = q.table
     if (q.figure && q.figure.bbox) worksheet.figure = q.figure
     if (Array.isArray(q.optionFigures)) worksheet.optionFigures = q.optionFigures
+    /* (ز43) علامة تقطيع الرسمة العريضة لرسومات اختيارات — بتتصرف في مرحلة القص */
+    if (q._figureSplitPending) worksheet._figureSplitPending = q._figureSplitPending
     var withWs = function (obj: any) { return Object.assign({}, obj, worksheet) }
     if (qType === 'writing') {
       return withWs({
@@ -665,7 +674,8 @@ async function finalizeExtracted(extracted: any, type: string, grade: string, tw
           for (var ofi = 0; ofi < q.optionFigures.length; ofi++) opts.push('')
         }
         if (opts.length === 0) opts = ['N/A', 'N/A', 'N/A', 'N/A']
-        return opts.slice(0, 4).map(function(o: any) { return normalizeMath(String(o)) })
+        /* (ز43) سقف 8 اختيارات بدل 4 — كتب بتيجي بـ 5 و7 اختيارات */
+        return opts.slice(0, 8).map(function(o: any) { return normalizeMath(String(o)) })
       })(),
       correct: typeof q.correct === 'number' ? q.correct : 0,
       points: q.points || 1,

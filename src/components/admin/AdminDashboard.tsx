@@ -4571,6 +4571,31 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
      من غير url — الزرار بيلف على كل الواجبات/الامتحانات (وكل نموذج) بيقص من
      الملف الأصلي المتخزن في Media ويكتب الأسئلة المصلحة في الداتابيز */
   const [backfillBusy, setBackfillBusy] = useState(false)
+  /* (ز43) تنظيف رموز الاستخراج — حرف الـ N وبقايا \n \a \b + تفكيك الاختيارات المدموجة
+     — ضغطة واحدة بتنضف كل الواجبات والامتحانات ونماذجها المتخزنة */
+  const [cleanupBusy, setCleanupBusy] = useState(false)
+  var runCleanupGarbage = async function () {
+    if (cleanupBusy) return
+    if (!adminId) { toast.error('مفيش جلسة أدمن — سجل دخول تاني', { duration: 8000 }); return }
+    setCleanupBusy(true)
+    try {
+      var resC = await fetch('/api/cleanup-extraction', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminId: adminId }),
+      })
+      var dC = await resC.json()
+      if (!resC.ok) { toast.error(dC.error || 'فشل التنظيف — جرب تاني', { duration: 8000 }); return }
+      if (dC.fixed > 0) {
+        toast.success('اتنضفت ' + dC.fixed + ' سجل (اتفحص ' + dC.scanned + ') ✓ — واجبات: ' + dC.homeworks + ' • امتحانات: ' + dC.exams + ' • نماذج: ' + dC.models + ' — حرف الـ N وكل الرموز الغريبة اتشالوا والاختيارات المدموجة اتفككت', { duration: 12000 })
+      } else {
+        toast.success('كل الأسئلة نضيفة أصلًا — مفيش رموز غريبة في ' + dC.scanned + ' سجل ✓', { duration: 8000 })
+      }
+      onRefresh()
+    } catch (e) {
+      toast.error('فشل التنظيف — جرب تاني', { duration: 8000 })
+    }
+    setCleanupBusy(false)
+  }
   var runBackfill = async function () {
     if (backfillBusy) return
     if (!adminId) { toast.error('مفيش جلسة أدمن — سجل دخول تاني', { duration: 8000 }); return }
@@ -5756,6 +5781,17 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
           </button>
         </div>
 
+        {/* (ز43) تنظيف رموز الاستخراج — حرف الـ N وبقايا escapes + تفكيك الاختيارات المدموجة */}
+        <button
+          type="button"
+          onClick={runCleanupGarbage}
+          disabled={cleanupBusy}
+          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border border-rose-300 bg-rose-50 dark:bg-rose-950/30 dark:border-rose-800 text-rose-800 dark:text-rose-200 text-xs font-medium hover:bg-rose-100 dark:hover:bg-rose-900/40 transition-colors disabled:opacity-60"
+        >
+          {cleanupBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <span>🧹</span>}
+          {cleanupBusy ? 'بيينضف…' : '🧹 تنظيف رموز الاستخراج — حرف الـ N والرموز الغريبة + تفكيك الاختيارات المدموجة (ضغطة واحدة على كل الواجبات والامتحانات)'}
+        </button>
+
         {/* (ز29) إصلاح شامل — أسئلة قديمة اتحفظت ورسماتها ناقصة عند الطلاب */}
         <button
           type="button"
@@ -6347,6 +6383,7 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
             target={cropEdit}
             source={{ file: (lastCropSourceRef.current && lastCropSourceRef.current.file) || null, doc: (lastCropSourceRef.current && lastCropSourceRef.current.doc) || null }}
             sourceMediaId={sourceMediaRef.current || ''}
+            adminId={adminId}
             onSaved={function (url, bbox, page) { applyFigureCrop(cropEdit, url, bbox, page) }}
             onClose={function () { setCropEdit(null) }}
           />

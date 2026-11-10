@@ -16,7 +16,17 @@
 // كل استراتيجية معزولة في try/catch — فشل واحدة عمره ما يمنع اللي بعدها.
 // ============================================================
 
-import { repairModelJson } from '@/lib/math-text'
+import { repairModelJson, cleanTextDeep } from '@/lib/math-text'
+
+/* (ز43) تنظيف عميق لكل نصوص النتيجة بعد النجاح — حرف الـ N وبقايا
+   \n \a \b بتموت هنا قبل ما أي حاجة تتخزن — كل الاستخراجات الجديدة
+   بتنزل نضيفة من المصدر */
+function sanitizeParsed(obj: any): any {
+  try {
+    var r = cleanTextDeep(obj)
+    return r.val
+  } catch (e) { return obj }
+}
 
 /* استخراج مرشحين للـ JSON من نص الموديل — الترتيب مهم */
 function collectCandidates(text: string): string[] {
@@ -164,33 +174,33 @@ export function parseAIJsonRobust(text: string): any | null {
 
     // 1) كما هو
     var r = tryParse(cand)
-    if (r !== null) return r
+    if (r !== null) return sanitizeParsed(r)
 
     // 2) بعد تصليح LaTeX
     var repaired = repairModelJson(cand)
     r = tryParse(repaired)
-    if (r !== null) return r
+    if (r !== null) return sanitizeParsed(r)
 
     // 3) حروف التحكم الخام
     var ctrl = escapeControlChars(cand)
     r = tryParse(ctrl)
-    if (r !== null) return r
+    if (r !== null) return sanitizeParsed(r)
     r = tryParse(repairModelJson(ctrl))
-    if (r !== null) return r
+    if (r !== null) return sanitizeParsed(r)
 
     // 4) قممة بعد آخر إغلاق
     for (var i = repaired.length - 1, tries = 0; i > 0 && tries < 200; i--) {
       if (repaired.charAt(i) === '}') {
         tries++
         r = tryParse(repaired.substring(0, i + 1))
-        if (r !== null) return r
+        if (r !== null) return sanitizeParsed(r)
       }
     }
 
     // 5) مفاتيح بلا تنصيص
     var keyed = fixUnquotedKeys(repaired)
     r = tryParse(keyed)
-    if (r !== null) return r
+    if (r !== null) return sanitizeParsed(r)
 
     // 6) إصلاح البتر (على الأصلي وعلى نسخ حروف التحكم)
     var bases = [repaired, ctrl, keyed]
@@ -198,18 +208,18 @@ export function parseAIJsonRobust(text: string): any | null {
       var vs = repairTruncation(bases[bi])
       for (var vi = 0; vi < vs.length; vi++) {
         r = tryParse(vs[vi])
-        if (r !== null) return r
+        if (r !== null) return sanitizeParsed(r)
       }
     }
 
     // 7) تركيبة أخيرة: مفاتيح + بتر + تنصيص أحادي
     var sq = fixSingleQuotes(keyed)
     r = tryParse(sq)
-    if (r !== null) return r
+    if (r !== null) return sanitizeParsed(r)
     var vs2 = repairTruncation(sq)
     for (var vi2 = 0; vi2 < vs2.length; vi2++) {
       r = tryParse(vs2[vi2])
-      if (r !== null) return r
+      if (r !== null) return sanitizeParsed(r)
     }
   }
   return null
@@ -239,42 +249,42 @@ export function parseAIJsonArrayRobust(text: string): any[] | null {
   for (var ci = 0; ci < out.length; ci++) {
     var cand = out[ci]
     var r = tryParse(cand)
-    if (Array.isArray(r)) return r
+    if (Array.isArray(r)) return sanitizeParsed(r)
 
     var repaired = repairModelJson(cand)
     r = tryParse(repaired)
-    if (Array.isArray(r)) return r
+    if (Array.isArray(r)) return sanitizeParsed(r)
 
     var ctrl = escapeControlChars(cand)
     r = tryParse(ctrl)
-    if (Array.isArray(r)) return r
+    if (Array.isArray(r)) return sanitizeParsed(r)
     r = tryParse(repairModelJson(ctrl))
-    if (Array.isArray(r)) return r
+    if (Array.isArray(r)) return sanitizeParsed(r)
 
     for (var i = repaired.length - 1, tries = 0; i > 0 && tries < 200; i--) {
       if (repaired.charAt(i) === ']') {
         tries++
         r = tryParse(repaired.substring(0, i + 1))
-        if (Array.isArray(r)) return r
+        if (Array.isArray(r)) return sanitizeParsed(r)
       }
     }
 
     var keyed = fixUnquotedKeys(repaired)
     r = tryParse(keyed)
-    if (Array.isArray(r)) return r
+    if (Array.isArray(r)) return sanitizeParsed(r)
 
     var bases = [repaired, ctrl, keyed]
     for (var bi = 0; bi < bases.length; bi++) {
       var vs = repairTruncation(bases[bi])
       for (var vi = 0; vi < vs.length; vi++) {
         r = tryParse(vs[vi])
-        if (Array.isArray(r)) return r
+        if (Array.isArray(r)) return sanitizeParsed(r)
       }
     }
 
     var sq = fixSingleQuotes(keyed)
     r = tryParse(sq)
-    if (Array.isArray(r)) return r
+    if (Array.isArray(r)) return sanitizeParsed(r)
   }
   return null
 }
