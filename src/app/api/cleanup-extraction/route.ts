@@ -36,6 +36,17 @@ function cleanQuestionsArr(questions: any[]): { arr: any[]; changed: boolean } {
     var r = cleanTextDeep(q)
     var qq = splitEmbeddedOptions(r.val)
     if (qq && typeof qq === 'object' && qq._figureSplitPending) delete qq._figureSplitPending
+    /* (2026-وN2) إبادة حشو «N/A» في الاختيارات القديمة — حرف الـ N كان بيظهر
+       للطالب في أي حتة؛ الحشو بيرجع نص فاضي (ورسومات الاختيارات لو موجودة بتفضل) */
+    if (qq && typeof qq === 'object' && Array.isArray(qq.options)) {
+      var hadNA = false
+      var optsC = qq.options.map(function (o: any) {
+        var s = String(o == null ? '' : o)
+        if (s === 'N/A') { hadNA = true; return '' }
+        return o
+      })
+      if (hadNA) { qq = Object.assign({}, qq, { options: optsC }); changed = true }
+    }
     if (r.changed || qq !== q) changed = true
     return qq
   })

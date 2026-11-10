@@ -4821,7 +4821,7 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
           بعدين بيقص من ملف السؤال هو (ممنوع رسمة ملف تتقص من ملف تاني)
        b) ترتيب ثابت (stable sort) بـ sourcePage جوه الدفعة — لو الموديل رجّع
           صفحات متلخبطة الأسئلة بترجع بترتيب الورقة الأصلي من غير عكس أو تداخل */
-  var finishExtraction = async function (newQs: any[], cropSource: { file?: File | null; doc?: any | null; mediaId?: string }) {
+  var finishExtraction = async function (newQs: any[], cropSource: { file?: File | null; doc?: any | null; mediaId?: string; pages?: { n: number; base64: string }[] }) {
     cropSource = cropSource || {}
     try {
       /* (ز31) هوية ثابتة لكل سؤال + تسجيل مصدر القص بتاعه */
@@ -4879,11 +4879,40 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
           })
         } catch (eC) { stillMissing = 0 }
         var batchMediaId = String(cropSource.mediaId || '')
-        if (stillMissing > 0 && batchMediaId) {
+        /* (2026-وN3) صفحات متصورة جاهزة من وضع الكتاب/الملف الكبير — بتنفع للقص
+           على السيرفر حتى لو مفيش mediaId، ودي كانت الحالة اللي «الرسومات ما بتتقصش»
+           فيه: المتصفح يفشل ومفيش مصدر للسيرفر فبتفضل من غير قص خالص.
+           بنبعت **الصفحات اللي ناقصة رسماتها بس** — حِمل أقل وسرعة أعلى */
+        var rescuePages: { n: number; base64: string }[] | null = null
+        var batchPages = Array.isArray(cropSource.pages) ? cropSource.pages : null
+        if (batchPages && batchPages.length > 0) {
           try {
+            var missingPages: any = {}
+            newQs.forEach(function (q: any) {
+              if (!q) return
+              if (q.figure && q.figure.bbox && !q.figure.url) {
+                var pgQ = parseInt(String((q.figure && q.figure.page) || q.sourcePage || 0), 10)
+                if (pgQ > 0) missingPages[pgQ] = true
+              }
+              if (Array.isArray(q.optionFigures)) q.optionFigures.forEach(function (of: any) {
+                if (of && of.bbox && !of.url) {
+                  var pgO = parseInt(String((of && of.page) || q.sourcePage || 0), 10)
+                  if (pgO > 0) missingPages[pgO] = true
+                }
+              })
+            })
+            rescuePages = batchPages.filter(function (p: any) { return p && missingPages[Number(p.n)] })
+            if (rescuePages.length === 0) rescuePages = null
+          } catch (ePG) { rescuePages = null }
+        }
+        if (stillMissing > 0 && (batchMediaId || rescuePages)) {
+          try {
+            var rescuePayload: any = { questions: newQs }
+            if (batchMediaId) rescuePayload.sourceMediaId = batchMediaId
+            if (rescuePages) rescuePayload.pages = rescuePages
             var rResc = await fetch('/api/crop-figures', {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ sourceMediaId: batchMediaId, questions: newQs }),
+              body: JSON.stringify(rescuePayload),
             })
             var dResc = await rResc.json()
             if (rResc.ok && dResc.success && Array.isArray(dResc.questions)) {
@@ -5008,6 +5037,9 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
           var totalPages = Math.min(opened.numPages || 0, 60)
           var collected: any[] = []
           var seenKeys: any = {}
+          /* (2026-وN3) صور الصفحات للقص على السيرفر — لو قص المتصفح فشل لأي سبب
+             السيرفر يقص من الصور دي نفسها بدل ما الرسمة تفضل ناقصة خالص */
+          var pdfRescuePages: { n: number; base64: string }[] = []
           var PDF_CHUNK = 5
           var pdfBatches = Math.max(1, Math.ceil(totalPages / PDF_CHUNK))
           var skippedPdfBatches = 0
@@ -5019,6 +5051,7 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
             for (var pn = pFrom; pn <= pTo; pn++) {
               var img = await renderPageToJpeg(doc, pn, 1400, 0.72)
               pages.push({ n: pn, image: img })
+              if (pdfRescuePages.length < 60) pdfRescuePages.push({ n: pn, base64: img })
             }
             var chunkQs: any[] | null = null
             for (var attempt = 0; attempt < 2 && !chunkQs; attempt++) {
@@ -5080,8 +5113,9 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
             setExtracting(false)
             return
           }
-          /* (و43) قص الرسومات من مستند الـ PDF المفتوح + دمج أكتر من ملف عبر النقطة المشتركة */
-          await finishExtraction(collected, { doc: doc })
+          /* (و43) قص الرسومات من مستند الـ PDF المفتوح + دمج أكتر من ملف عبر النقطة المشتركة
+             (2026-وN3) صور الصفحات بتتبعت معاه — القص على السيرفر مضمون حتى لو pdf.js وقع */
+          await finishExtraction(collected, { doc: doc, pages: pdfRescuePages })
           var okMsgPdf = (appendingFile ? 'تمت إضافة ' : 'تم استخراج ') + collected.length + (appendingFile ? ' سؤال من الملف الجديد!' : ' سؤال من الملف!')
           if (skippedPdfBatches > 0) okMsgPdf += ' (فشلت ' + skippedPdfBatches + ' دفعة صفحات)'
           toast.success(okMsgPdf)
@@ -5150,7 +5184,7 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
   }
 
   var deleteQuestion = function(qi: number) { setExtractedQuestions(extractedQuestions.filter(function(_, i) { return i !== qi })) }
-  var addQuestion = function() { setExtractedQuestions([...extractedQuestions, { type: 'mcq', question: '', options: ['N/A','N/A','N/A','N/A'], correct: 0, points: 1 }]) }
+  var addQuestion = function() { setExtractedQuestions([...extractedQuestions, { type: 'mcq', question: '', options: ['','','',''], correct: 0, points: 1 }]) }
   var addWritingQuestion = function() { setExtractedQuestions([...extractedQuestions, { type: 'writing', question: '', options: [], correct: -1, points: 5, modelAnswer: '', acceptedAnswers: [] }]) }
 
   /* ============================================================
@@ -5534,9 +5568,19 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
     setBookPdfLoading(false)
   }
 
-  /* مفتاح منع التكرار: نص السؤال مطبّع (فراغات/ترقيم/طول 120) */
+  /* مفتاح منع التكرار: الصفحة + نص السؤال الكامل + عدد الاختيارات (2026-وN2) */
   var bookQuestionKey = function(q: any) {
-    return String((q && (q.question || q.q)) || '').toLowerCase().replace(/\s+/g, ' ').replace(/[^\u0600-\u06FFa-z0-9]/g, '').substring(0, 120)
+    /* (2026-وN2 — إصلاح «في أسئلة بيمسحها ما بيستخرجهاش»):
+       المفتاح القديم كان بيقتطع أول 120 حرف من نص السؤال بس — فكل الأسئلة
+       اللي ليها نفس البداية («أوجد ناتج:» / «Find the result:» / «الشكل المقابل…»)
+       كانت بتطلع ليها مفتاح واحد وبتتمسح كلها ما عدا الأولى بصمت!
+       دلوقتي المفتاح = الصفحة + نص السؤال **الكامل** + عدد الاختيارات —
+       سؤال مختلف مبيتمسحش أبدًا، والتكرار الحقيقي (نفس السؤال بنفس الصفحة) بس اللي بيتشال. */
+    var txt = String((q && (q.question || q.q)) || '').toLowerCase().replace(/\s+/g, ' ').trim()
+    var optsN = (q && Array.isArray(q.options)) ? q.options.filter(function (o: any) { return String(o == null ? '' : o).trim() !== '' }).length : 0
+    var figN = (q && Array.isArray(q.optionFigures)) ? q.optionFigures.filter(function (o: any) { return !!o }).length : 0
+    var pg = Number(q && q.sourcePage) || 0
+    return 'p' + pg + '|o' + optsN + '|' + figN + '|' + txt.replace(/[^\u0600-\u06FFa-z0-9]/g, '')
   }
 
   /* (و45) دالة isGraphicalLike اتنشلت — كانت بتشغّل تحذير «السؤال ده محتاج رسم»
@@ -5628,6 +5672,9 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
       var collected: any[] = []
       var seenKeys: any = {}
       var skippedChunks = 0
+      /* (2026-وN3) صور الصفحات (برقم **الكتاب** المطبوع — نفس رقم sourcePage
+         اللي الموديل بيرجّعه) للقص على السيرفر لو قص المتصفح فشل */
+      var bookRescuePages: { n: number; base64: string }[] = []
       for (var c = 0; c < chunks; c++) {
         var batch = pagesList.slice(c * CHUNK, c * CHUNK + CHUNK)
         var batchLabels = labelsList.slice(c * CHUNK, c * CHUNK + CHUNK)
@@ -5639,6 +5686,7 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
           /* التسمية للـ AI برقم **الكتاب** عشان بادج «صفحة N» في المراجعة
              يبان برقم الكتاب المطبوع اللي المستر والمدرسين شايفينه */
           pages.push({ n: batchLabels[pi], image: img })
+          if (bookRescuePages.length < 60) bookRescuePages.push({ n: batchLabels[pi], base64: img })
         }
         var extractedChunk: any = null
         for (var attempt = 0; attempt < 2 && !extractedChunk; attempt++) {
@@ -5697,8 +5745,9 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
       }
       if (!title.trim() && !appendingFile) setTitle(bookName.trim() || ('كتاب — صفحات ' + labelsList.join('، ')))
       setStatusMsg('')
-      /* (2026-و40-w) قص الرسومات من مستند الكتاب المفتوح + دمج أكتر من ملف */
-      await finishExtraction(collected, { doc: doc })
+      /* (2026-و40-w) قص الرسومات من مستند الكتاب المفتوح + دمج أكتر من ملف
+         (2026-وN3) صور الصفحات بتتبعت كمان — القص على السيرفر مضمون لو المتصفح فشل */
+      await finishExtraction(collected, { doc: doc, pages: bookRescuePages })
       var okMsg = (appendingFile ? 'تمت إضافة ' : 'تم استخراج ') + collected.length + (appendingFile ? ' سؤال من الملف الجديد!' : (' سؤال من ' + total + ' صفحة من الكتاب!'))
       if (skippedChunks > 0) okMsg += ' (فشلت ' + skippedChunks + ' دفعة صفحات — جرب صفحاتها تاني)'
       toast.success(okMsg)

@@ -126,6 +126,8 @@ function buildPagesPrompt(pageNumbers: number[], mode: 'all' | 'top', count: num
   lines.push('')
   lines.push('HARD RULES (follow exactly):')
   lines.push('- Extract ONLY questions that actually exist on the pages. Do NOT invent, add, solve-as-new, or rephrase questions.')
+  lines.push('- NUMBERING COVERAGE (most important — the teacher loses questions if you skip): if the pages show numbered questions (1., 2., 3., …), your output MUST contain EVERY number that appears — exactly ONE object per number, in the same order. If the pages have 15 numbered questions, return exactly 15 objects. NEVER skip, merge, or drop any question number, even if two questions start with the same words (like "Find the result:" twice — they are DIFFERENT questions).')
+  lines.push('- PICTURE-ONLY QUESTIONS (very common in primary math books): a question that is only a drawing/picture/figure with little or no text (complete-the-picture, count-the-shapes, color-the-…) MUST STILL be extracted — return it with question text "" (empty) plus its "figure" bbox. NEVER drop a question just because it has no text.')
   lines.push('- MCQ: the page shows answer CHOICES under the question. Options must be the option TEXT ONLY — no letter prefixes (no "A)", no "(1)", no numbering). "correct" = the 0-based index of the correct option. If the correct answer is NOT printed anywhere on these pages → SOLVE the question yourself (you are an expert math teacher): set "correct" to the 0-based index of YOUR chosen answer among the options and write the full step-by-step solution in modelAnswer. NEVER set correct: -1 — the teacher relies on the platform solving unanswered questions.')
   lines.push('- WRITING: no choices printed under the question. Set type "writing", options [], correct: -1, modelAnswer = complete step-by-step solution, acceptedAnswers = array of acceptable final answers.')
   lines.push('- IGNORE page headers, footers, page numbers, logos, advertisements, and decorations.')
@@ -324,7 +326,16 @@ function finalizeQuestion(q: any): any | null {
      «…\na. 2\nb. …\nc. …» → سؤال + اختيارات حقيقية A B C */
   q = splitEmbeddedOptions(q)
   var qText = normalizeMath(q.question || q.q || '')
-  if (!qText || !String(qText).trim()) return null
+  /* (2026-وN2 — إصلاح «في أسئلة بيمسحها ما بيستخرجهاش»):
+     سؤال نصه فاضي لكن فيه رسمة/جدول/اختيارات/رسومات اختيارات = سؤال حقيقي
+     (كتير جدًا في كتب الابتدائي: «أكمل» ورسمة بس) — ممنوع مسحه أبدًا.
+     بنرجعه زي ما هو والرسمة هي اللي بتوصفه، والمستر يقدر يضيف له نص من شاشة المراجعة.
+     اللي بيتمسح بس: سؤال مفيهوش أي حاجة أصلًا (نص فاضي + لا رسمة + لا جدول + لا اختيارات). */
+  var hasFig = q.figure && q.figure.bbox
+  var hasTbl = q.table && Array.isArray(q.table.rows) && q.table.rows.length > 0
+  var hasOfArr = Array.isArray(q.optionFigures) && q.optionFigures.some(function (of: any) { return !!of })
+  var hasOpts = Array.isArray(q.options) && q.options.some(function (o: any) { return String(o == null ? '' : o).trim() !== '' })
+  if ((!qText || !String(qText).trim()) && !hasFig && !hasTbl && !hasOfArr && !hasOpts) return null
   var sourcePage = typeof q.sourcePage === 'number' ? q.sourcePage : (parseInt(String(q.sourcePage), 10) || 0)
   /* (2026-و40-w) pass-through حقول ورقة العمل: srcName/table/figure/optionFigures */
   var ws: any = {}
@@ -352,7 +363,10 @@ function finalizeQuestion(q: any): any | null {
      ولو مفيش نص أصلًا بنملأ نص فاضي بنفس عدد رسومات الاختيارات */
   var hasOf = Array.isArray(q.optionFigures) && q.optionFigures.length > 0
   var opts = (q.options || []).map(function (o: any) { return normalizeMath(String(o == null ? '' : o)) })
-  if (!hasOf) { opts = opts.filter(function (o: string) { return o.trim() !== '' }) }
+  /* (2026-وN2) إبادة حشو «N/A» من الموديل — الاختيار الفاضي بيفضل فاضي،
+     وN/A حرفيًا بيتشال دايمًا عشان حرف الـ N ما يوصلش للطالب خالص */
+  if (!hasOf) { opts = opts.filter(function (o: string) { return o.trim() !== '' && o !== 'N/A' }) }
+  else { opts = opts.map(function (o: string) { return o === 'N/A' ? '' : o }) }
   if (opts.length === 0 && hasOf) { for (var oiE = 0; oiE < q.optionFigures.length; oiE++) opts.push('') }
   /* (ز43) سقف 8 اختيارات بدل 4 — كتب بتيجي بـ 5 و7 اختيارات */
   opts = opts.slice(0, 8)

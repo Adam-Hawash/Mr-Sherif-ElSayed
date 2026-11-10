@@ -93,8 +93,9 @@ export async function ensureEnglishQuestions(questions: any[]): Promise<any[]> {
     }
     if (payload.length === 0) return questions
 
-    /* سقف أمان: 60 حقل مترجم في النداء الواحد — الباقي بيفضل زي ما هو */
-    var capped = payload.slice(0, 60)
+    /* سقف أمان: 120 حقل مترجم في النداء الواحد — كان 60 فصفحات الكتب الكبيرة
+       كان باقي الأسئلة بتفضل بالعربي («حرف ال») من غير ترجمة */
+    var capped = payload.slice(0, 120)
 
     var instr: string[] = []
     instr.push('You are a precise English-only translator for a math platform.')
@@ -110,7 +111,7 @@ export async function ensureEnglishQuestions(questions: any[]): Promise<any[]> {
     var body = JSON.stringify(capped.map(function (p) { return { index: p.index, fields: p.fields } }))
     var result = await callGemini({
       parts: [{ text: instr.join('\n') + '\n' + body }],
-      generationConfig: { temperature: 0, maxOutputTokens: 8192 },
+      generationConfig: { temperature: 0, maxOutputTokens: 16384 },
       timeoutMs: 60000,
     })
     if (!result.ok || !result.text) return questions

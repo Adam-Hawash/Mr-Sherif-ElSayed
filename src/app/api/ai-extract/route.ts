@@ -198,7 +198,7 @@ function mergeQuestionsAndAnswers(questions: any[], answers: any[]): any[] {
       type: 'mcq',
       question: q.question || '',
       /* (ز43) سقف 8 اختيارات بدل 4 — كتب بتيجي بـ 5 و7 اختيارات */
-      options: (q.options || ['N/A', 'N/A', 'N/A', 'N/A']).slice(0, 8),
+      options: (q.options || ['', '', '', '']).slice(0, 8),
       correct: correctIdx,
       points: q.points || 1,
       modelAnswer: modelAnswer,
@@ -263,11 +263,13 @@ export async function POST(request) {
 
     /* (ز29) تخزين الملف الأصلي على السيرفر — خط إنقاذ قص الرسومات:
        أي رسمة ناقصة بعد استخراج المتصفح بتتقص من السيرفر من الملف ده
-       (/api/crop-figures و /api/backfill-figures) — والمفتاح بيرجع كـ sourceMediaId */
+       (/api/crop-figures و /api/backfill-figures) — والمفتاح بيرجع كـ sourceMediaId
+       (2026-وN3) السقف 6MB كان بيمنع تخزين كتب الرياضيات (أغلبها أكبر من 6MB!)
+       فالقص على السيرفر كان بيعجز خالص و«الرسومات ما بتتقصش» — بقى 15MB */
     var srcMediaId = ''
     try {
       var srcB64 = qPart && qPart.inlineData ? String(qPart.inlineData.data || '') : ''
-      if (srcB64 && srcB64.length > 0 && srcB64.length < 6 * 1024 * 1024) {
+      if (srcB64 && srcB64.length > 0 && srcB64.length < 15 * 1024 * 1024) {
         var srcName = hasQuestionFile && questionFile ? String((questionFile as any).name || 'source') : (String(fileUrl || '').split('/').pop() || 'source')
         var srcMedia = await db.media.create({
           data: {
@@ -414,6 +416,8 @@ function buildSingleFilePrompt(grade: string, type: string): string {
   lines.push('')
   lines.push('IMPORTANT: Extract ONLY the questions that actually exist in the document. Do NOT invent, create, or add any questions that are not in the document.')
   lines.push('If the document has 5 questions, extract exactly those 5. If it has 20, extract all 20.')
+  lines.push('NUMBERING COVERAGE (most important — the teacher loses questions if you skip): if the document shows numbered questions (1., 2., 3., …), your output MUST contain EVERY number that appears — exactly ONE object per number, in the same order. NEVER skip, merge, or drop any question number, even if two questions start with the same words (they are DIFFERENT questions).')
+  lines.push('PICTURE-ONLY QUESTIONS (very common in primary math books): a question that is only a drawing/picture/figure with little or no text MUST STILL be extracted — return it with question text "" (empty) plus its "figure" bbox. NEVER drop a question just because it has no text.')
   lines.push('')
   lines.push('There are TWO types of questions you should extract:')
   lines.push('1. "mcq" - Multiple Choice Questions: the document shows ANSWER CHOICES under the question (A/B/C/D letters, numbered choices, boxes, or any listed options).')
@@ -496,6 +500,8 @@ function buildQuestionsOnlyPrompt(grade: string, type: string): string {
   lines.push('')
   lines.push('IMPORTANT: Extract ONLY the questions that actually exist in the document. Do NOT invent, create, or add any questions that are not in the document.')
   lines.push('If the document has 5 questions, extract exactly those 5. If it has 20, extract all 20.')
+  lines.push('NUMBERING COVERAGE (most important — the teacher loses questions if you skip): if the document shows numbered questions (1., 2., 3., …), your output MUST contain EVERY number that appears — exactly ONE object per number, in the same order. NEVER skip, merge, or drop any question number, even if two questions start with the same words (they are DIFFERENT questions).')
+  lines.push('PICTURE-ONLY QUESTIONS (very common in primary math books): a question that is only a drawing/picture/figure with little or no text MUST STILL be extracted — return it with question text "" (empty) plus its "figure" bbox. NEVER drop a question just because it has no text.')
   lines.push('')
   lines.push('There are TWO types of questions you should extract:')
   lines.push('1. "mcq" - Multiple Choice Questions: the document shows ANSWER CHOICES under the question (A/B/C/D letters, numbered choices, boxes, or any listed options).')
@@ -673,7 +679,7 @@ async function finalizeExtracted(extracted: any, type: string, grade: string, tw
         if (opts.length === 0 && Array.isArray(q.optionFigures) && q.optionFigures.length > 0) {
           for (var ofi = 0; ofi < q.optionFigures.length; ofi++) opts.push('')
         }
-        if (opts.length === 0) opts = ['N/A', 'N/A', 'N/A', 'N/A']
+        if (opts.length === 0) opts = ['', '', '', '']
         /* (ز43) سقف 8 اختيارات بدل 4 — كتب بتيجي بـ 5 و7 اختيارات */
         return opts.slice(0, 8).map(function(o: any) { return normalizeMath(String(o)) })
       })(),

@@ -86,7 +86,12 @@ export async function POST(request) {
       if (!isWriting && (!q.options || q.options.length === 0) && !hasVisual) isWriting = true
       if (!isWriting) {
         var c = typeof q.correct === 'number' ? q.correct : -99
-        if (c < 0 || c > 3) unanswered.push(i + 1)
+        /* (2026-وN2) سقف الإجابة ديناميكي — كان ثابت 3 فأسئلة الكتب اللي ليها
+           5-8 اختيارات كانت بتترفض كلها «من غير إجابة» والحفظ كله بيتبلوك */
+        var nOptsG = Array.isArray(q.options) ? q.options.length : 0
+        var nVisG = hasVisual && Array.isArray(q.optionFigures) ? q.optionFigures.filter(function (x: any) { return !!x }).length : 0
+        var maxIdxG = Math.max(3, Math.max(nOptsG, nVisG)) - 1
+        if (c < 0 || c > maxIdxG) unanswered.push(i + 1)
       }
     })
     if (unanswered.length > 0) {
@@ -160,7 +165,9 @@ export async function POST(request) {
           acceptedAnswers: Array.isArray(q.acceptedAnswers) ? q.acceptedAnswers : [],
         }, ws)
       }
-      var opts = Array.isArray(q.options) ? q.options.slice(0, 4) : []
+      var opts = Array.isArray(q.options) ? q.options.slice(0, 8) : []
+      /* (2026-وN2) سقف 8 اختيارات بدل 4 — كان بيتقص لـ 4 فاختيارات الكتب
+         الخامسة والسادسة بتضيع والترتيب بيبقى غلط عند الطالب */
       /* (و46) سؤال الرسومات: نملأ الاختيارات بنفس عدد الرسومات على الأقل —
          نص فاضي = الاختيار صورة بس (الطالب يشوف الرسمة الصغيرة ويختارها) */
       var minOpts = hasVisual && Array.isArray(q.optionFigures) ? q.optionFigures.length : 0

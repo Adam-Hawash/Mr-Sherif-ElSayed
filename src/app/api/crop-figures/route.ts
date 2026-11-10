@@ -10,7 +10,9 @@
 //
 // وضعين:
 //  1) JSON:  { sourceMediaId, questions }        — المصدر متخزن من الاستخراج
-//  2) FormData: file + questions (JSON string)   — الملف الأصلي من المستر
+//  2) JSON:  { pages: [{n, image|base64}], questions } — (2026-وN3) صفحات متصورة
+//     جاهزة من وضع الكتاب/الملف الكبير — القص مباشر من الصور دي من غير تخزين
+//  3) FormData: file + questions (JSON string)   — الملف الأصلي من المستر
 //     (زرار إصلاح الرسمات في محرر الأسئلة للاستخراجات القديمة)
 // ============================================================
 import { NextRequest, NextResponse } from 'next/server'
@@ -57,20 +59,36 @@ export async function POST(request: NextRequest) {
         cropSrc = { buffer: buf, name: fname, mime: isPdf ? 'application/pdf' : (ftype || 'image/jpeg') }
       }
     } else {
-      /* وضع المصدر المتخزن (الاستخراج الحديث بيرجّع sourceMediaId) */
+      /* وضع المصدر المتخزن (الاستخراج الحديث بيرجّع sourceMediaId)
+         (2026-وN3) وضع الصفحات الجاهزة: وضع الكتاب/الملف الكبير بيبعت صور الصفحات
+         نفسها — القص من السيرفر يشتغل من غير sourceMediaId ولا ملف مرفوع */
       var body = await request.json().catch(function () { return null })
       if (!body || !Array.isArray(body.questions)) {
         return NextResponse.json({ error: 'questions مطلوبة' }, { status: 400 })
       }
       questions = body.questions
-      var mid = String(body.sourceMediaId || '')
-      if (!mid) return NextResponse.json({ error: 'sourceMediaId مطلوب' }, { status: 400 })
-      var media = await db.media.findUnique({ where: { id: mid } })
-      if (!media || !media.data) {
-        return NextResponse.json({ error: 'الملف الأصلي مش متخزن — استخرج تاني أو ارفع الملف' }, { status: 404 })
+      if (Array.isArray(body.pages) && body.pages.length > 0) {
+        var pagesArr: { n: number; base64: string }[] = []
+        for (var gi = 0; gi < body.pages.length && pagesArr.length < 40; gi++) {
+          var gp: any = body.pages[gi]
+          var gn = parseInt(String(gp && gp.n), 10)
+          var gImg = String((gp && (gp.base64 || gp.image)) || '').replace(/^data:[^;]+;base64,/, '')
+          if (isFinite(gn) && gn > 0 && gImg.length > 512) pagesArr.push({ n: gn, base64: gImg })
+        }
+        if (pagesArr.length === 0) {
+          return NextResponse.json({ error: 'الصفحات المرسلة غير صالحة' }, { status: 400 })
+        }
+        cropSrc = { pages: pagesArr } as any
+      } else {
+        var mid = String(body.sourceMediaId || '')
+        if (!mid) return NextResponse.json({ error: 'sourceMediaId مطلوب' }, { status: 400 })
+        var media = await db.media.findUnique({ where: { id: mid } })
+        if (!media || !media.data) {
+          return NextResponse.json({ error: 'الملف الأصلي مش متخزن — استخرج تاني أو ارفع الملف' }, { status: 404 })
+        }
+        var isPdfM = (media.fileType || '').indexOf('pdf') !== -1 || /\.pdf$/i.test(media.filename || '')
+        cropSrc = { base64: media.data, name: media.filename || 'source', mime: isPdfM ? 'application/pdf' : (media.fileType || 'image/jpeg') }
       }
-      var isPdfM = (media.fileType || '').indexOf('pdf') !== -1 || /\.pdf$/i.test(media.filename || '')
-      cropSrc = { base64: media.data, name: media.filename || 'source', mime: isPdfM ? 'application/pdf' : (media.fileType || 'image/jpeg') }
     }
 
     if (questions.length === 0) return NextResponse.json({ error: 'مفيش أسئلة' }, { status: 400 })
