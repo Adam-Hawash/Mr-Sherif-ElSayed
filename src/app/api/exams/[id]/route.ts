@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db, safeWrite } from '@/lib/db'
 import { isAdmin } from '@/lib/video-guard'
+import { autoCleanExam } from '@/lib/stored-questions-clean'
 
 /* (25-ب1) defensive ALTERs — نفس نمط المشروع: ممنوع db:push */
 /* (2026-و29) كاش على مستوى الموديول: كل ALTER = نداء شبكة لقاعدة البيانات — تنفيذها في كل ريكوست كان بيدفع نداءات ضاية في كل تحميل (من أكبر أسباب بطء المنصة) — دلوقتي مرة واحدة لكل instance */
@@ -51,7 +52,11 @@ export async function GET(
       }
     } catch (e115) {}
 
-    return NextResponse.json({ exam })
+    /* (وN5) تنظيف تلقائي وقت القراءة — حرف الـ N والـ \na. بيموتوا هنا
+       والنسخة النضيفة بتتكتب في القاعدة في الخلفية */
+    var exCleanN5 = autoCleanExam(String(id), exam)
+
+    return NextResponse.json({ exam: exCleanN5 })
   } catch (error) {
     console.error('فشل جلب الامتحان:', error)
     return NextResponse.json({ error: 'حدث خطأ في السيرفر' }, { status: 500 })

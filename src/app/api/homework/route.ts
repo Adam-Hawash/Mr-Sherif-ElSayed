@@ -5,6 +5,7 @@ import { notifyStudents } from '@/lib/notify'
 import { notifyAssignmentPosted } from '@/lib/assignment-notify'
 import { notifyParentsOfNewContent } from '@/lib/parent-notify'
 import { isAdmin } from '@/lib/video-guard'
+import { autoCleanHomework } from '@/lib/stored-questions-clean'
 
 /* (25-ب1) جدولة الظهور للواجبات — defensive ALTER بنفس نمط المشروع
    (ممنوع db:push — كل قاعدة بيانات بتترقّى تلقائيًا هنا) */
@@ -169,7 +170,11 @@ export async function GET(request: NextRequest) {
         })
       : visibleHw
 
-    return NextResponse.json({ homework: outHomework, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
+    /* (وN5) تنظيف تلقائي وقت القراءة — حرف الـ N والـ \na. بيموتوا هنا
+       والنسخة النضيفة بتتكتب في القاعدة في الخلفية — البيانات القديمة بتتنضف لوحدها */
+    var outCleanHwN5 = (outHomework as any[]).map(function (h: any) { return autoCleanHomework(h && h.id, h) })
+
+    return NextResponse.json({ homework: outCleanHwN5, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
   } catch (error: any) {
     console.error('Homework fetch error:', error)
     return NextResponse.json({ error: 'Server error: ' + (error.message || String(error)) }, { status: 500 })

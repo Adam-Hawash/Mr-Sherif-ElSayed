@@ -93,9 +93,17 @@ export async function POST(request: NextRequest) {
 
     var stats = { scanned: 0, fixed: 0, homeworks: 0, exams: 0, models: 0 }
 
-    /* 1) الواجبات */
+    /* 1) الواجبات — (وN5) لف على كل السجلات مش آخر 200 بس */
     try {
-      var hws = await db.homework.findMany({ orderBy: { createdAt: 'desc' }, take: TAKE })
+      var hws: any[] = []
+      var skipHwN5 = 0
+      for (;;) {
+        var batchHw = await db.homework.findMany({ orderBy: { createdAt: 'desc' }, skip: skipHwN5, take: TAKE })
+        if (!batchHw || batchHw.length === 0) break
+        hws = hws.concat(batchHw)
+        if (batchHw.length < TAKE) break
+        skipHwN5 += TAKE
+      }
       for (var i = 0; i < hws.length; i++) {
         var h = hws[i]
         stats.scanned++
@@ -111,9 +119,17 @@ export async function POST(request: NextRequest) {
       }
     } catch (eH) { /* جدول ناقص في منصة — نكمل */ }
 
-    /* 2) الامتحانات (الأسئلة + النماذج) */
+    /* 2) الامتحانات (الأسئلة + النماذج) — (وN5) لف على كل السجلات */
     try {
-      var exs = await db.exam.findMany({ orderBy: { createdAt: 'desc' }, take: TAKE })
+      var exs: any[] = []
+      var skipExN5 = 0
+      for (;;) {
+        var batchEx = await db.exam.findMany({ orderBy: { createdAt: 'desc' }, skip: skipExN5, take: TAKE })
+        if (!batchEx || batchEx.length === 0) break
+        exs = exs.concat(batchEx)
+        if (batchEx.length < TAKE) break
+        skipExN5 += TAKE
+      }
       for (var j = 0; j < exs.length; j++) {
         var e = exs[j]
         stats.scanned++

@@ -5,6 +5,7 @@ import { notifyStudents } from '@/lib/notify'
 import { notifyAssignmentPosted } from '@/lib/assignment-notify'
 import { notifyParentsOfNewContent } from '@/lib/parent-notify'
 import { isAdmin } from '@/lib/video-guard'
+import { autoCleanExam } from '@/lib/stored-questions-clean'
 
 /* (25-ب1) أعمدة الميزات الجديدة (إظهار الإجابات / المؤقت / جدولة الظهور) —
    defensive ALTERs بنفس نمط الكود في المشروع: لو العمود موجود الأصلًا
@@ -234,7 +235,11 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    return NextResponse.json({ exams: outExams, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
+    /* (وN5) تنظيف تلقائي وقت القراءة — حرف الـ N والـ \na. بيموتوا هنا
+       والنسخة النضيفة بتتكتب في القاعدة في الخلفية — البيانات القديمة بتتنضف لوحدها */
+    var outCleanExN5 = (outExams as any[]).map(function (e: any) { return autoCleanExam(e && e.id, e) })
+
+    return NextResponse.json({ exams: outCleanExN5, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
   } catch (error: any) {
     console.error('Exams fetch error:', error)
     return NextResponse.json({ error: 'Server error: ' + (error.message || String(error)) }, { status: 500 })
