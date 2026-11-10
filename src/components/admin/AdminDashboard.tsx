@@ -4920,6 +4920,9 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
               if (dResc.figuresCrop && dResc.figuresCrop.cropped > 0) {
                 toast.success('السيرفر جهز ' + dResc.figuresCrop.cropped + ' رسمة من الملف الأصلي ✓')
               }
+              /* (وN4) أرقام اتصلحت من الرسمة نفسها بعد قص الإنقاذ */
+              var fxR = dResc.figuresFixed
+              if (fxR > 0) toast.success('اتظبطت أرقام ' + fxR + ' رسمة من الرسمة نفسها ✓')
             }
           } catch (eResc) { /* صامت — البلاكس هتفضل ظاهرة وزرار ✂️ موجود */ }
         }
@@ -5067,6 +5070,9 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
                 clearTimeout(tmrP)
                 var dataP = await resP.json()
                 if (resP.ok && dataP.extracted && Array.isArray(dataP.extracted.questions)) chunkQs = dataP.extracted.questions
+                /* (وN4) إشعار المستر — الأرقام اتأكدت من الرسمات نفسها */
+                var fxP = dataP && dataP.extracted && dataP.extracted.stats && dataP.extracted.stats.figuresFixed
+                if (fxP > 0) toast.success('اتأكدت أرقام ' + fxP + ' رسمة من الرسمة نفسها ✓')
               } catch (eP: any) {
                 if (eP && eP.name === 'AbortError') throw eP
               }
@@ -5702,6 +5708,9 @@ function AIExtractionPanel({ onRefresh, adminId }: { onRefresh: () => void; admi
             clearTimeout(tmrB)
             var dataB = await resB.json()
             if (resB.ok && dataB.extracted) extractedChunk = dataB.extracted
+            /* (وN4) إشعار المستر — الأرقام اتأكدت من الرسمات نفسها */
+            var fxB = dataB && dataB.extracted && dataB.extracted.stats && dataB.extracted.stats.figuresFixed
+            if (fxB > 0) toast.success('اتأكدت أرقام ' + fxB + ' رسمة من الرسمة نفسها ✓')
           } catch (eB: any) {
             if (eB && eB.name === 'AbortError') throw eB
           }

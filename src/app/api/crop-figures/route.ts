@@ -18,6 +18,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { cropFiguresServerSide } from '@/lib/server-figures'
+/* (وN4) مطابقة أرقام الرسمة بعد قص الإنقاذ — نفس منطق مسار الصفحات */
+import { syncFigureNumbers } from '@/lib/figure-zoom'
+import { callGemini, hasGeminiKey } from '@/lib/gemini'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120
@@ -99,10 +102,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, questions: questions, figuresCrop: { cropped: 0, failed: 0, total: 0 }, message: 'كل الرسمات ظاهرة بالفعل' })
     }
 
-    var cropRes = await cropFiguresServerSide(cropSrc, questions)
+    var routeStartC = Date.now()
+    var cropRes = await cropFiguresServerSide(cropSrc, questions, { withBuffers: true })
+    /* (وN4) مطابقة أرقام الرسمة بالتكبير — الرسمات اللي اتقصت دلوقتي تتقرا
+       لوحدها والأرقام المتعارضة في نص السؤال بتتصحح (المربع 3 و2 يطلع 3 و2)
+       — بميزانية وقت آمنة (المسار 120 ثانية) */
+    var figuresFixedC = 0
+    if (cropRes.crops && cropRes.crops.length > 0 && hasGeminiKey() && Date.now() - routeStartC < 55000) {
+      try {
+        var callPartsC = async function (parts: any[]) {
+          var rC = await callGemini({ parts: parts, generationConfig: { temperature: 0.1, maxOutputTokens: 8192 }, timeoutMs: 60000 })
+          if (rC.ok) return { ok: true, text: rC.text }
+          return { ok: false, error: rC.error || 'unknown' }
+        }
+        var zoomC = await syncFigureNumbers(cropRes.crops, callPartsC)
+        figuresFixedC = zoomRes.fixed
+      } catch (eZoomC) { /* صامت — الأرقام بتفضل زي ما هي */ }
+    }
     var after = countMissing(questions)
-    console.log('[Crop Figures] before=' + before + ' crop=' + JSON.stringify(cropRes) + ' after=' + after)
-    return NextResponse.json({ success: true, questions: questions, figuresCrop: cropRes, stillMissing: after })
+    console.log('[Crop Figures] before=' + before + ' crop=' + JSON.stringify({ cropped: cropRes.cropped, failed: cropRes.failed, total: cropRes.total }) + ' after=' + after + ' numFixed=' + figuresFixedC)
+    return NextResponse.json({ success: true, questions: questions, figuresCrop: { cropped: cropRes.cropped, failed: cropRes.failed, total: cropRes.total }, stillMissing: after, figuresFixed: figuresFixedC })
   } catch (error: any) {
     console.error('crop-figures error:', error)
     return NextResponse.json({ error: 'Error: ' + (error.message || 'Unknown') }, { status: 500 })

@@ -30,6 +30,10 @@ import { repairModelJson, repairCorruptMath } from '@/lib/math-text'
 import { isWritingQuestion, splitEmbeddedOptions } from '@/lib/question-figures'
 /* (ز31) حارس «كل حاجة بالإنجليزي» — طلب المستر الحرفي */
 import { ensureEnglishQuestions } from '@/lib/english-only'
+/* (وN4) قص الرسمات على السيرفر **جوه المسار نفسه** + مطابقة أرقام الرسمة بالتكبير
+   — طلب المستر: «ما بيقصش الرسومات» + «بيجيب أرقام من دماغه (المربع 3 و2 بيطلع 2 و2)» */
+import { cropFiguresServerSide } from '@/lib/server-figures'
+import { syncFigureNumbers } from '@/lib/figure-zoom'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -319,6 +323,125 @@ async function callGeminiParts(parts: any[]): Promise<{ ok: boolean; text?: stri
   return { ok: false, error: result.error || 'unknown' }
 }
 
+/* ============================================================
+ * (وN4) كشف مناطق الرسمات — نداء واحد لكل دفعة لسد الفراغات اللي النموذج
+ * رجّعها من غير bbox. ده كان السبب الأول إن رسمات كتير بتفضل من غير قص
+ * خالص: مفيش bbox → مفيش قص → المستر شايف «الرسومات ما بتتقصش».
+ * الكشف بيتم على صور الصفحات نفسها وبرجّع bbox كسور من الصفحة (0..1)،
+ * وبنملأ بيه أسئلة مستوى السؤال الناقصة بس (حوار آمن — عمره ما بيغير
+ * bbox موجود، ومش بيضيف رسمة لسؤال مالوش رسمة أصلًا في صفحة تانية).
+ * ============================================================ */
+function buildFigureDetectPrompt(pageNumbers: number[]): string {
+  var lines = []
+  lines.push('These are photographed textbook pages: ' + pageNumbers.join(', ') + ' — each image labeled "Page N".')
+  lines.push('TASK: locate EVERY printed drawing/figure/geometric shape/graph/diagram/picture region on these pages. IGNORE plain text lines, tables of numbers, page headers/footers and decorations.')
+  lines.push('For EACH figure return one object: {"page":N,"bbox":{"x":..,"y":..,"w":..,"h":..}}')
+  lines.push('bbox = tight rectangle around the drawing INCLUDING its dimension labels/numbers and axes, as FRACTIONS of the whole page image (0..1, x/y = top-left corner).')
+  lines.push('Be precise: the rectangle must contain the whole drawing (with its printed numbers) and nothing else.')
+  lines.push('Return ONE single valid JSON array — no text before or after, no markdown fences. If there are no figures at all, return [].')
+  return lines.join('\n')
+}
+
+/* تقاطع مستطيلين (IoU) — لعزل المناطق المكتشفة اللي ليها bbox موجود أصلًا */
+function bboxIou(a: any, b: any): number {
+  var ax2 = a.x + a.w, ay2 = a.y + a.h, bx2 = b.x + b.w, by2 = b.y + b.h
+  var ix = Math.max(0, Math.min(ax2, bx2) - Math.max(a.x, b.x))
+  var iy = Math.max(0, Math.min(ay2, by2) - Math.max(a.y, b.y))
+  var inter = ix * iy
+  var union = a.w * a.h + b.w * b.h - inter
+  return union > 0 ? inter / union : 0
+}
+
+/* تطبيع bbox من رد الكشف — نفس فكرة smartBbox في server-figures (0..1000 → 0..1) */
+function normalizeDetectedBbox(bb: any): { x: number; y: number; w: number; h: number } | null {
+  if (!bb || typeof bb !== 'object') return null
+  var x = Number(bb.x), y = Number(bb.y), w = Number(bb.w), h = Number(bb.h)
+  if (![x, y, w, h].every(function (n) { return isFinite(n) })) return null
+  var maxV = Math.max(x, y, w, h)
+  if (maxV > 1.5) { x /= 1000; y /= 1000; w /= 1000; h /= 1000 }
+  if (w <= 0.004 || h <= 0.004 || w > 1.2 || h > 1.2) return null
+  x = Math.min(1, Math.max(0, x)); y = Math.min(1, Math.max(0, y))
+  if (x + w > 1) w = Math.max(0.01, 1 - x)
+  if (y + h > 1) h = Math.max(0.01, 1 - y)
+  return { x: x, y: y, w: w, h: h }
+}
+
+/* دمج المناطق المكتشفة مع الأسئلة اللي ناقصها رسمة:
+   لكل صفحة — المناطق المكتشفة فوق-تحت × أسئلة الصفحة الناقصة بترتيب الكتاب
+   (ترتيب الاستخراج = ترتيب الكتاب) — إقران 1:1 بالقراءة.
+   المناطق القريبة من bbox موجود أصلًا (IoU > 0.45) بتتستبعد الأول. */
+function fillMissingFigures(dets: any[], questions: any[]): number {
+  var filled = 0
+  try {
+    var byPageD: Record<number, any[]> = {}
+    for (var di = 0; di < (dets || []).length; di++) {
+      var d = dets[di]
+      if (!d || typeof d !== 'object') continue
+      var pg = parseInt(String(d.page), 10)
+      if (!isFinite(pg) || pg <= 0) continue
+      var bb = normalizeDetectedBbox(d.bbox)
+      if (!bb) continue
+      ;(byPageD[pg] = byPageD[pg] || []).push(bb)
+    }
+    var byPageQ: Record<number, any[]> = {}
+    for (var qi = 0; qi < (questions || []).length; qi++) {
+      var q = questions[qi]
+      if (!q || (q.figure && q.figure.bbox)) continue
+      var pgQ = parseInt(String(q.sourcePage || 0), 10)
+      if (!isFinite(pgQ) || pgQ <= 0) continue
+      ;(byPageQ[pgQ] = byPageQ[pgQ] || []).push(q)
+    }
+    var pageKeys = Object.keys(byPageD)
+    for (var pi = 0; pi < pageKeys.length; pi++) {
+      var pageNo = parseInt(pageKeys[pi], 10)
+      var detsP = (byPageD[pageNo] || []).slice().sort(function (a, b) { return (a.y - b.y) || (a.x - b.x) })
+      var qsP = byPageQ[pageNo] || []
+      if (!qsP.length || !detsP.length) continue
+      /* استبعد المناطق اللي هي أصلاً مطابقة لرسومات موجودة في أي سؤال تاني على نفس الصفحة */
+      var claimed: any[] = []
+      for (var qc = 0; qc < questions.length; qc++) {
+        var qC = questions[qc]
+        if (qC && qC.figure && qC.figure.bbox && parseInt(String(qC.figure.page || qC.sourcePage || 0), 10) === pageNo) {
+          var nbb = normalizeDetectedBbox(qC.figure.bbox)
+          if (nbb) claimed.push(nbb)
+        }
+      }
+      var free: any[] = []
+      for (var dj = 0; dj < detsP.length; dj++) {
+        var isClaimed = false
+        for (var cj = 0; cj < claimed.length; cj++) {
+          if (bboxIou(detsP[dj], claimed[cj]) > 0.45) { isClaimed = true; break }
+        }
+        if (!isClaimed) free.push(detsP[dj])
+      }
+      /* إقران 1:1 بترتيب القراءة — المكتشف فوق-تحت × الأسئلة الناقصة بترتيب الكتاب */
+      for (var fq = 0; fq < qsP.length && fq < free.length; fq++) {
+        var qF = qsP[fq]
+        qF.figure = Object.assign({}, qF.figure || {}, { page: pageNo, bbox: free[fq] })
+        filled++
+      }
+    }
+  } catch (eFill) { /* آمن — الرسمات الناقصة بتفضل زي ما هي */ }
+  return filled
+}
+
+async function detectFigureRegions(pages: any[], questions: any[]): Promise<number> {
+  if (!Array.isArray(pages) || pages.length === 0 || !Array.isArray(questions) || questions.length === 0) return 0
+  var pageNumbers = pages.map(function (p) { return p.n })
+  var parts: any[] = [{ text: buildFigureDetectPrompt(pageNumbers) }]
+  for (var i = 0; i < pages.length; i++) {
+    parts.push({ text: 'Page ' + pages[i].n + ':' })
+    parts.push({ inlineData: { mimeType: 'image/jpeg', data: stripDataUrl(pages[i].image) } })
+  }
+  try {
+    var res = await callGeminiParts(parts)
+    if (!res.ok || !res.text) return 0
+    var dets = parseAIJsonArray(res.text)
+    if (!dets || dets.length === 0) return 0
+    return fillMissingFigures(dets, questions)
+  } catch (eDet) { return 0 }
+}
+
 /* توحيد سؤال على شكل المنصة القانوني + الحفاظ على sourcePage + حقول ورقة العمل (و40-w) */
 function finalizeQuestion(q: any): any | null {
   if (!q || typeof q !== 'object') return null
@@ -514,11 +637,19 @@ export async function POST(request: NextRequest) {
     }
 
     var allQuestions: any[] = []
+    /* (وN4) أسئلة كل دفعة مرجعية للكشف/القص/مطابقة الأرقام على دفعتها */
+    var batchQuestions: any[][] = []
+    var routeStart = Date.now()
     var skippedBatches = 0
     for (var bi = 0; bi < batches.length; bi++) {
       var batchRes = await extractBatch(batches[bi], mode, count)
-      if (!batchRes.ok) { skippedBatches++; continue }
-      for (var qj = 0; qj < batchRes.questions.length; qj++) allQuestions.push(batchRes.questions[qj])
+      if (!batchRes.ok) { skippedBatches++; batchQuestions.push([]); continue }
+      var bqArr: any[] = []
+      for (var qj = 0; qj < batchRes.questions.length; qj++) {
+        allQuestions.push(batchRes.questions[qj])
+        bqArr.push(batchRes.questions[qj])
+      }
+      batchQuestions.push(bqArr)
     }
 
     /* mode='top' وكل الأسئلة جاية من دفعات متعددة → نداء نص-only واحد يختار أهم count */
@@ -540,6 +671,52 @@ export async function POST(request: NextRequest) {
         if (safeTop.length > 0) { allQuestions = safeTop; topSelected = true }
       }
       if (!topSelected) allQuestions = allQuestions.slice(0, count) /* فولباك حتمي */
+    }
+
+    /* ============================================================
+     * (وN4) خط أنابيب الرسمات — على السيرفر جوه المسار نفسه:
+     *  1) كشف المناطق اللي النموذج رجّعها من غير bbox (سد الفراغات)
+     *  2) قص كل رسمة من صور الصفحات نفسها → figure.url معباية في نفس الرد
+     *     — مفيش اعتماد على متصفح المستر ولا نداء إنقاذ إضافي
+     *  3) إعادة قراءة كل رسمة مقصوصة «بتكبير» — أرقام الرسمة بتتاخد من
+     *     الرسمة نفسها (المربع 3 و2 يطلع 3 و2 مش 2 و2) ونص السؤال بيتصحح
+     * ده حل «ما بيقصش الرسومات» + «بيجيب أرقام من دماغه» من الجذر.
+     * أي فشل هنا مش بيوقف الاستخراج — الرسمات/الأرقام بتفضل زي ما هي.
+     * ============================================================ */
+    var figuresCrop = { cropped: 0, failed: 0 }
+    var figuresDetected = 0
+    var figuresFixed = 0
+    try {
+      for (var fp = 0; fp < batches.length; fp++) {
+        var fQs = batchQuestions[fp] || []
+        if (fQs.length === 0) continue
+        /* 1) كشف bbox الناقص — بس لو في ناقص وللسه في ميزانية وقت */
+        var needDetect = false
+        for (var nd = 0; nd < fQs.length; nd++) {
+          var qqN = fQs[nd]
+          if (qqN && !(qqN.figure && qqN.figure.bbox)) { needDetect = true; break }
+        }
+        if (needDetect && Date.now() - routeStart < 150000) {
+          try { figuresDetected += await detectFigureRegions(batches[fp], fQs) } catch (eDet) {}
+        }
+        /* 2) القص على السيرفر من صور الدفعة نفسها — مع buffers للإعادة القراءة */
+        var fPages = batches[fp].map(function (p: any) { return { n: p.n, base64: stripDataUrl(p.image) } })
+        var cropRes = await cropFiguresServerSide({ pages: fPages } as any, fQs, { withBuffers: true })
+        figuresCrop.cropped += cropRes.cropped
+        figuresCrop.failed += cropRes.failed
+        /* 3) مطابقة أرقام الرسمة بالتكبير — الميزانية الزمنية محفوظة */
+        if (cropRes.crops && cropRes.crops.length > 0 && Date.now() - routeStart < 215000) {
+          try {
+            var zoomRes = await syncFigureNumbers(cropRes.crops, callGeminiParts)
+            figuresFixed += zoomRes.fixed
+          } catch (eZoom) {}
+        }
+      }
+      if (figuresCrop.cropped > 0 || figuresDetected > 0 || figuresFixed > 0) {
+        console.log('[AI Extract Pages] figures: crop=' + figuresCrop.cropped + '/' + (figuresCrop.cropped + figuresCrop.failed) + ' detected=' + figuresDetected + ' numFixed=' + figuresFixed)
+      }
+    } catch (eFC: any) {
+      console.error('[AI Extract Pages] figure pipeline failed (non-fatal):', (eFC && eFC.message) || eFC)
     }
 
     var mcqCount = allQuestions.filter(function (q) { return q.type === 'mcq' }).length
@@ -565,6 +742,9 @@ export async function POST(request: NextRequest) {
           pages: pages.length,
           skippedBatches: skippedBatches,
           topSelected: topSelected,
+          figuresCrop: figuresCrop,
+          figuresDetected: figuresDetected,
+          figuresFixed: figuresFixed,
         },
       },
     })

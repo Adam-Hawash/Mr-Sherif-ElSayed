@@ -79,7 +79,15 @@ function toBuffer(src: { base64?: string; buffer?: Buffer }): Buffer {
   return Buffer.from(src.base64 || '', 'base64')
 }
 
-export interface ServerCropResult { cropped: number; failed: number; total: number }
+export interface ServerCropResult {
+  cropped: number; failed: number; total: number
+  /* (وN4) رسمات مستوى السؤال المقصوصة مع buffers — بتفضع بس مع withBuffers */
+  crops?: ServerCropCrop[]
+}
+
+/* (وN4) رسمة مقصوصة مع الـ buffer بتاعها — لإعادة قراءة الأرقام بالتكبير
+   (figure-zoom) من غير ما نرجّع للجدول Media تاني — الصفر رخيص وسريع */
+export interface ServerCropCrop { q: any; buf: Buffer }
 
 /* ============================================================
  * (و52) جودة القص — إصلاح «الرسومات متلخبطة وجودتها وحشة ومش كاملة»:
@@ -148,9 +156,13 @@ function refineByContent(canvas: any, sx: number, sy: number, sw: number, sh: nu
  */
 export async function cropFiguresServerSide(
   src: { base64?: string; buffer?: Buffer; name?: string; mime?: string; pages?: { n: number; base64: string }[] },
-  questions: any[]
+  questions: any[],
+  opts?: { withBuffers?: boolean }
 ): Promise<ServerCropResult> {
   var result: ServerCropResult = { cropped: 0, failed: 0, total: 0 }
+  /* (وN4) بتفضع بس مع opts.withBuffers — رسمات مستوى السؤال اللي اتقصت فعلًا */
+  var cropsOut: ServerCropCrop[] = []
+  var wantBuf = !!(opts && opts.withBuffers)
   try {
     var targets = collectTargets(questions)
     result.total = targets.length
@@ -180,9 +192,10 @@ export async function cropFiguresServerSide(
         return canvasByPage[pageNo] || null
       }
       for (var tpi = 0; tpi < targets.length; tpi++) {
-        var okP = await cropOne(targets[tpi], getFromPages)
+        var okP = await cropOne(targets[tpi], getFromPages, wantBuf, cropsOut)
         if (okP) result.cropped++; else result.failed++
       }
+      if (wantBuf && cropsOut.length > 0) result.crops = cropsOut
       return result
     }
 
@@ -200,9 +213,10 @@ export async function cropFiguresServerSide(
       var imgCanvas = await imageToCanvas(buf)
       if (!imgCanvas) { result.failed = targets.length; return result }
       for (var ti = 0; ti < targets.length; ti++) {
-        var ok = await cropOne(targets[ti], async function () { return imgCanvas })
+        var ok = await cropOne(targets[ti], async function () { return imgCanvas }, wantBuf, cropsOut)
         if (ok) result.cropped++; else result.failed++
       }
+      if (wantBuf && cropsOut.length > 0) result.crops = cropsOut
       return result
     }
 
@@ -274,9 +288,10 @@ export async function cropFiguresServerSide(
       }
 
       for (var i = 0; i < targets.length; i++) {
-        var ok2 = await cropOne(targets[i], getPage)
+        var ok2 = await cropOne(targets[i], getPage, wantBuf, cropsOut)
         if (ok2) result.cropped++; else result.failed++
       }
+      if (wantBuf && cropsOut.length > 0) result.crops = cropsOut
     } finally {
       try { doc.destroy() } catch (eD) {}
     }
@@ -288,10 +303,14 @@ export async function cropFiguresServerSide(
   }
 }
 
-/* قص هدف واحد من canvas الصفحة ورفعه — يرجع true لو نجح */
+/* قص هدف واحد من canvas الصفحة ورفعه — يرجع true لو نجح
+   (وN4) wantBuf + cropsOut: جمع buffer الرسمة المقصوصة (مستوى السؤال بس)
+   عشان figure-zoom يقراها بالتكبير من غير DB إضافي */
 async function cropOne(
   tgt: CropTarget,
-  getPageCanvas: (page: number) => Promise<any | null>
+  getPageCanvas: (page: number) => Promise<any | null>,
+  wantBuf?: boolean,
+  cropsOut?: ServerCropCrop[]
 ): Promise<boolean> {
   try {
     var q = tgt.q
@@ -364,6 +383,8 @@ async function cropOne(
     var url = await saveFigure(outBuf)
     if (tgt.kind === 'q') {
       q.figure = Object.assign({}, q.figure, { url: url })
+      /* (وN4) buffer القص يتسجل — إعادة قراءة الأرقام بتستخدمه مباشرة */
+      if (wantBuf && cropsOut) cropsOut.push({ q: q, buf: outBuf })
     } else {
       var ofs = Array.isArray(q.optionFigures) ? q.optionFigures : []
       while (ofs.length <= tgt.oi) ofs.push(null)
