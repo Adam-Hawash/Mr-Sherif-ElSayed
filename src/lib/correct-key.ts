@@ -8,6 +8,29 @@
 //   فأي مفتاح مخزن كنص "2" أو حرف "B" كان بيترجع 0 (يعني A) والطالب اللي حل صح
 //   بيلاقي كارت «إجابتك صحيحة» واريله حرف إجابة غلط — وكده بيبان إن التصحيح غلط
 //   حتى لو الدرجة نفسها محسوبة صح. من دلوقتي الاثنين بيستخدموا نفس الدالة دي بالظبط.
+//
+// (وN6) طلب المستر الحرفي: «مش عايز يكون في فرق ما بين الـ k السمول والكابتن،
+//   الحروف السمول والكابتن تكون هي هي — المصحح يعمل بذكاء»
+//   المطابقة بين نص المفتاح ونص الاختيار بقت بتطبيع كامل: الكابتن = السمول،
+//   المسافات الزيادة = إزالة، الأرقام العربي = إنجليزي، علامات الترقيم الآخرة تتشال.
+//   «K - 18» === «k - 18» === «k-18» — كلها نفس الاختيار.
+
+/*
+ * normalizeKeyText — تطبيع موحّد لأي نص مفتاح/اختيار قبل المقارنة:
+ *   lowercase (الكابتن = السمول) + أرقام عربي → إنجليزي + ضغط المسافات
+ *   + تشال علامات الترقيم في الآخر — عشان المقارنة تبقى بالقيمة مش بالشكل.
+ */
+export function normalizeKeyText(s: any): string {
+  var t = String(s == null ? '' : s).toLowerCase()
+  /* أرقام عربية-هندية وفارسية → إنجليزية */
+  t = t.replace(/[٠-٩]/g, function (d) { return String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)) })
+  t = t.replace(/[۰-۹]/g, function (d) { return String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)) })
+  /* مسافات مكررة → واحدة، وحواف نضيفة */
+  t = t.replace(/\s+/g, ' ').trim()
+  /* علامات ترقيم في آخر النص — ما بتغيرش القيمة */
+  t = t.replace(/[.,؛،]+$/g, '')
+  return t
+}
 
 /*
  * normalizeCorrectKey — يحوّل أي صيغة مفتاح مخزنة لفهرس خيار صحيح:
@@ -27,13 +50,20 @@ export function normalizeCorrectKey(q: any, opts: any[]): number {
       var n = parseInt(cTrim, 10)
       if (n >= 0 && n < options.length) correctIdx = n
       else if (options.length > 0) {
-        var tn = options.indexOf(q.correct)
-        if (tn >= 0) correctIdx = tn
+        /* (وN6) مطابقة نصية بتطبيع — مش indexOf حساسة للحروف */
+        var cn = normalizeKeyText(q.correct)
+        for (var ni = 0; ni < options.length; ni++) {
+          if (normalizeKeyText(options[ni]) === cn) { correctIdx = ni; break }
+        }
       }
     } else if (/^[A-Za-z]$/.test(cTrim)) correctIdx = cTrim.toUpperCase().charCodeAt(0) - 65
     else if (options.length > 0) {
-      var t = options.indexOf(q.correct)
-      if (t >= 0) correctIdx = t
+      /* (وN6) المطابقة النصية بقيت بتطبيع كامل: الكابتن = السمول +
+         المسافات موحّدة + الأرقام العربي = إنجليزي — «K - 18» === «k - 18» */
+      var cn2 = normalizeKeyText(q.correct)
+      for (var oi = 0; oi < options.length; oi++) {
+        if (normalizeKeyText(options[oi]) === cn2) { correctIdx = oi; break }
+      }
     }
   }
   return correctIdx
