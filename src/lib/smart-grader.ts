@@ -39,16 +39,30 @@ export interface GradedAnswer {
 
 /* ---------- normalization for the fast path ---------- */
 
+/* (وN7) تطبيع ذكي شامل للمقارنة السريعة — طلب المستر: «مش حرف الكاف بس، قصدي
+   كل الحروف… والمسافات والكلام ده، خليه يفهم بذكاء»: كل الحروف كابتن = سمول
+   + كل المسافات تتشال نهائيًا + أرقام عربي = إنجليزي + تطبيع عربي
+   (تشكيل/همزات/مقصورة/مربوطة) + رموز رياضية متكافئة */
 export function normalizeForMatch(s: string): string {
-  var t = String(s || '').toLowerCase()
+  var t = String(s || '')
+  try { t = t.normalize('NFKC') } catch (eN) {}
+  t = t.toLowerCase()
+  // invisible/bidi marks stuck from copy-paste — never meaningful
+  t = t.replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, '')
+  // Arabic tashkeel (diacritics) — never meaningful in an answer
+  t = t.replace(/[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]/g, '')
   // unify Arabic-Indic digits ٠-٩ → 0-9 (also Persian ۰-۹)
   t = t.replace(/[٠-٩]/g, function (d) { return String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)) })
   t = t.replace(/[۰-۹]/g, function (d) { return String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)) })
-  t = t.replace(/\s+/g, ' ').trim()
+  // Arabic letters: hamza forms = alef, alef maqsura = ya, ta marbuta = ha
+  t = t.replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/ؤ/g, 'و').replace(/ئ/g, 'ي')
+  // math symbols: × · ✕ ✖ = *, ÷ = /, long dash/minus = -, Arabic decimal = .
+  t = t.replace(/[×·✕✖]/g, '*').replace(/÷/g, '/').replace(/[−–—―]/g, '-').replace(/٫/g, '.')
+  // (وN7) ALL whitespace is removed — spaces NEVER matter: «K - 18» === «k-18»
+  t = t.replace(/\s+/g, '')
   // strip decoration that never changes math value
   t = t.replace(/[\\$]/g, '')
-  t = t.replace(/[.,؛،]$/g, '')
-  // × . * all mean multiplication when between values
+  t = t.replace(/[.,؛،;:!?]+$/g, '')
   return t
 }
 
@@ -132,8 +146,11 @@ function buildAiPrompt(needAI: WritingAnswer[]): string {
      "1/4 = x" === "x = 1/4" — عشان إعادة التصحيح تبقى مطابقة للتسليم الأول */
   lines.push('- REVERSED equation forms are the SAME answer: "1/4 = x" === "x = 1/4" — the variable name and its side/position NEVER matter')
   /* (2026-وN6) طلب المستر الحرفي: «مش عايز يكون في فرق ما بين الـ k السمول والكابتن —
-     الحروف السمول والكابتن تكون هي هي، المصحح يعمل بذكاء» */
-  lines.push('- LETTER CASE NEVER MATTERS: "K - 18" === "k - 18", "X = 5" === "x = 5" — capital and small letters are THE SAME in math variables/units/answers. A difference ONLY in letter case (K vs k) is NEVER a wrong answer — full points')
+     الحروف السمول والكابتن تكون هي هي، المصحح يعمل بذكاء»
+     (2026-وN7) واضافته: «مش حرف الكاف بس، قصدي كل الحروف… والمسافات والكلام ده» */
+  lines.push('- LETTER CASE NEVER MATTERS for ALL letters: "K - 18" === "k - 18", "X = 5" === "x = 5", "2K + 3" === "2k + 3", "ABC" === "abc" — capital and small letters are THE SAME in math variables/units/answers. A difference ONLY in letter case (K vs k) is NEVER a wrong answer — full points')
+  lines.push('- SPACES NEVER MATTER (وN7): "K - 18" === "k-18" === "K  -  18" === "K- 18" — missing, extra or doubled spaces NEVER change the answer')
+  lines.push('- ARABIC FORMS NEVER MATTER (وN7): "مُستطيل" === "مستطيل" (tashkeel ignored), "أب" === "اب" === "إب" === "آب" (hamza forms = alef), "علي" === "على", "مربعه" === "مربعة" — Arabic diacritics and letter variants NEVER change the answer')
   lines.push('- Different notation: a^7 = aaaaaaa (a multiplied 7 times), 2^10 = 1024, 1/2 = 0.5 = ½ = 50%, x^(1/2) = √x, √50 = 5√2, 2^{n+2} = 2^n·4, 3:4 = 3/4, 3,5 = 3.5')
   lines.push('- Arabic digits ٤٢ = 42; units and labels are IGNORED (12 سم = 12 cm = 12; x = 5 = 5); with or without × * · spaces units or steps')
   lines.push('- The final value may be CONTAINED in the model answer (the model shows full steps, the student wrote only the final result) → still CORRECT')

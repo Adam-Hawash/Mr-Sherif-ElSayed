@@ -82,10 +82,19 @@ function parseAIJson(text: string): any | null {
  * but "25" ≠ "2^5" (we keep the ^ marker — no blind character strip).
  * ------------------------------------------------------------------ */
 export function normalizeFinalAnswer(s: string): string {
-  var out = String(s || '').toLowerCase()
+  var out = String(s || '')
+  /* (وN7) شكل موحّد للحروف والمحارف + كل الحروف كابتن = سمول */
+  try { out = out.normalize('NFKC') } catch (eN) {}
+  out = out.toLowerCase()
+  // (وN7) محارف خفية واتجاهات بتتلصق من النسخ واللصق — مالهاش حكم
+  out = out.replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, '')
+  // (وN7) التشكيل العربي مالوش قيمة: «مُستطيل» === «مستطيل»
+  out = out.replace(/[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]/g, '')
   // Arabic-Indic digits → Western (٤٢ = 42)
   out = out.replace(/[٠-٩]/g, function (d) { return String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)) })
   out = out.replace(/[۰-۹]/g, function (d) { return String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)) })
+  // (وN7) حروف عربية متكافئة: الهمزات = ألف، الألف المقصورة = ياء، التاء المربوطة = هاء
+  out = out.replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/ؤ/g, 'و').replace(/ئ/g, 'ي')
   // Arabic decimal separator ٫ → .  , and "3,5" → "3.5" (decimal comma)
   out = out.replace(/٫/g, '.')
   out = out.replace(/(\d)\s*,\s*(\d)/g, '$1.$2')
@@ -101,8 +110,10 @@ export function normalizeFinalAnswer(s: string): string {
     out = out.replace(/\\frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g, '$1/$2')
   }
   // unify operators & strip noise characters
-  out = out.replace(/[×·]/g, '*')
+  // (وN7) × · ✕ ✖ = *  و ÷ = /  و السالب الطويل/الشرطات الطويلة − – — ― = -
+  out = out.replace(/[×·✕✖]/g, '*')
   out = out.replace(/÷/g, '/')
+  out = out.replace(/[−–—―]/g, '-')
   out = out.replace(/[\s{}$]/g, '')
   out = out.replace(/\\left|\\right/g, '')
   out = out.replace(/\\/g, '')
@@ -235,7 +246,7 @@ export async function verifyFinalAnswerEqual(params: {
   if (sVals.length === 0 || mVals.length === 0) return false
 
   var prompt = 'You are checking ONE thing only: are the student final value(s) and the correct final value(s) the SAME mathematical VALUE?\n\n'
-  prompt += 'Compare ONLY the final numeric/algebraic values — variable names, sides of the equation, notation, order, units, LETTER CASE (K = k) and formatting NEVER matter.\n'
+  prompt += 'Compare ONLY the final numeric/algebraic values — variable names, sides of the equation, notation, order, units, LETTER CASE (K = k, ALL letters), SPACES ("K - 18" = "k-18") and ARABIC forms (أ = ا, ة = ه, tashkeel ignored) NEVER matter.\n'
   prompt += 'All of these are the SAME value: 2^5 = 32, 1/2 = 0.5 = ½ = 50%, x^6y^4 = y^4x^6, "1/4 = x" === "x = 1/4", √50 = 5√2, 3:4 = 3/4, 3,5 = 3.5, ٤٢ = 42.\n\n'
   if (params.question) {
     prompt += 'Question (context only): ' + String(params.question).substring(0, 300) + '\n'
@@ -481,7 +492,7 @@ export async function gradeImageAnswer(params: {
   prompt += '   (b) If there is no box → the final answer is the LAST line they wrote (the value after the LAST "=").\n'
   prompt += '   CRITICAL: every intermediate step, every middle result, every scratched-out attempt is NOT the answer. Do NOT grade an intermediate value. Many students write wrong-looking middle steps and still end with the CORRECT boxed final answer — that is CORRECT, full marks. If you compare a middle step against the model answer instead of the boxed/last value, you FAIL.\n'
   prompt += '   Set answerSource = "boxed" if found in a box, "last-line" if from the last line, "unclear" if you truly cannot read any final value.\n'
-  prompt += 'STEP 5 — Compare the student\'s final answer VALUE with the model final answer and accepted answers. You are comparing MATHEMATICAL VALUES, not strings. LETTER CASE NEVER MATTERS: "K - 18" and "k - 18" are THE SAME answer (capital = small). The model answer may list MULTIPLE acceptable final answers separated by "أو" / "او" / "or" (like "x = 2 أو x = 1/4") — the student\'s final answer is CORRECT if it matches ANY ONE of those alternatives. All of these are the SAME answer: 2^7 = 128, 1/2 = 0.5 = ½ = 50%, n=6 = n = 6 = 6, x^4y^3 = y^3x^4, √50 = 5√2, 2^{n+2} = 2^n·4, 3:4 = 3/4, 3,5 = 3.5, ٤٢ = 42. Units and labels NEVER matter (12 سم = 12 cm = 12). "1/4 = x" and "x = 1/4" are the SAME answer — the variable name and its side/position NEVER matter; grade ONLY the final VALUE the student ended with (the LAST thing written). Simplify BOTH sides mentally before deciding.\n'
+  prompt += 'STEP 5 — Compare the student\'s final answer VALUE with the model final answer and accepted answers. You are comparing MATHEMATICAL VALUES, not strings. LETTER CASE NEVER MATTERS for ALL letters (وN6): "K - 18" and "k - 18" are THE SAME answer (capital = small). SPACES NEVER MATTER (وN7): "K - 18" === "k-18" === "K  -  18". ARABIC FORMS NEVER MATTER (وN7): "مُستطيل" === "مستطيل", "أب" === "اب" === "إب" === "آب", "مربعه" === "مربعة". The model answer may list MULTIPLE acceptable final answers separated by "أو" / "او" / "or" (like "x = 2 أو x = 1/4") — the student\'s final answer is CORRECT if it matches ANY ONE of those alternatives. All of these are the SAME answer: 2^7 = 128, 1/2 = 0.5 = ½ = 50%, n=6 = n = 6 = 6, x^4y^3 = y^3x^4, √50 = 5√2, 2^{n+2} = 2^n·4, 3:4 = 3/4, 3,5 = 3.5, ٤٢ = 42. Units and labels NEVER matter (12 سم = 12 cm = 12). "1/4 = x" and "x = 1/4" are the SAME answer — the variable name and its side/position NEVER matter; grade ONLY the final VALUE the student ended with (the LAST thing written). Simplify BOTH sides mentally before deciding.\n'
   prompt += 'STEP 6 — A correct final answer with wrong/missing/unreadable steps is still CORRECT (full points). A genuinely DIFFERENT final value is WRONG even if the steps look nice. Never mark an answer wrong just because the handwriting is hard to read or the steps are messy — judge the final value.\n'
   prompt += 'STEP 6.5 — UNDERSTAND the solution like a human teacher (as if the student is explaining it to you), NEVER literal matching: a small SLIP in a MIDDLE step (sign slip like writing "-4x = 1" instead of "-4x = -1", a small arithmetic slip, a crossed-out attempt, a step the student self-corrected right after) does NOT make the work wrong when the student ENDED at the correct final answer. Students stumble mid-way and fix themselves — judge where they ENDED. Only the FINAL value decides correct/wrong.\n'
   prompt += 'STEP 6.6 — READ HANDWRITING CAREFULLY (the worst failure is grading a CORRECT answer as wrong because you misread a digit): read every handwritten digit with FULL attention (4 vs 9, 1 vs 7, 5 vs 3, 0 vs 6, 2 vs 7). Re-read the final answer TWICE before deciding. If the final value you read equals the model value → it is CORRECT, full stop.\n'
@@ -774,7 +785,9 @@ export async function gradeTextAnswer(params: {
   prompt += '- The model answer may list MULTIPLE acceptable final answers separated by "أو" / "او" / "or" (like "x = 2 أو x = 1/4") — the student answer is CORRECT if it matches ANY ONE of those alternatives\n'
   prompt += '- Different order: y^4x^6 = x^6y^4\n'
   prompt += '- REVERSED equation forms are the SAME answer: "1/4 = x" === "x = 1/4" — the variable name and its side/position NEVER matter\n'
-  prompt += '- LETTER CASE NEVER MATTERS (وN6): "K - 18" === "k - 18", "X = 5" === "x = 5" — capital and small letters are THE SAME value in math; a difference ONLY in letter case (K vs k) is NEVER a wrong answer\n'
+  prompt += '- LETTER CASE NEVER MATTERS for ALL letters (وN6): "K - 18" === "k - 18", "X = 5" === "x = 5", "2K + 3" === "2k + 3" — capital and small letters are THE SAME value in math; a difference ONLY in letter case (K vs k) is NEVER a wrong answer\n'
+  prompt += '- SPACES NEVER MATTER (وN7): "K - 18" === "k-18" === "K  -  18" === "K- 18" — missing, extra or doubled spaces NEVER change the answer\n'
+  prompt += '- ARABIC FORMS NEVER MATTER (وN7): "مُستطيل" === "مستطيل" (tashkeel ignored), "أب" === "اب" === "إب" === "آب" (hamza forms = alef), "مربعه" === "مربعة" — Arabic diacritics and letter variants NEVER change the answer\n'
   prompt += '- Different notation: a^7 = aaaaaaa (a multiplied 7 times), 2^10 = 1024, 1/2 = 0.5 = ½ = 50%, x^(1/2) = √x, √50 = 5√2, 3:4 = 3/4, 3,5 = 3.5\n'
   prompt += '- Arabic digits ٤٢ = 42; units and labels are IGNORED (12 سم = 12 cm = 12, x = 5 = 5); with or without × * · spaces or steps\n'
   prompt += '- The final value may be CONTAINED in the model solution (model shows steps, student wrote only the final result) → still CORRECT\n'
