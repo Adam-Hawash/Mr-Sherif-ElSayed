@@ -68,7 +68,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'الواجب غير موجود' }, { status: 404 })
     }
 
-    if (body.scheduledAt === undefined && body.targetStudentIds === undefined && body.targetGroupIds === undefined && body.grade === undefined) {
+    if (body.scheduledAt === undefined && body.targetStudentIds === undefined && body.targetGroupIds === undefined && body.grade === undefined && body.title === undefined) {
       return NextResponse.json({ error: 'لا توجد حقول للتعديل' }, { status: 400 })
     }
 
