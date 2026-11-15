@@ -3953,6 +3953,10 @@ function ContentManager<T extends { id: string; grade: string; createdAt: string
   const [schedEditId, setSchedEditId] = useState<string | null>(null)
   const [schedEditVal, setSchedEditVal] = useState('')
   const [schedSaving, setSchedSaving] = useState(false)
+  /* (ر1 — طلب المستر) تغيير صف الواجب بعد النشر: سادسة → رابعة بأي وقت */
+  const [gradeEditId, setGradeEditId] = useState<string | null>(null)
+  const [gradeEditVal, setGradeEditVal] = useState('')
+  const [gradeSaving, setGradeSaving] = useState(false)
   /* (2026-و26) استهداف الطلاب للواجب — زي الفيديوهات بالظبط */
   const [targetEditId, setTargetEditId] = useState<string | null>(null)
   /* (ز37) جدولة المجموعات للواجب — نفس نظام الفيديوهات بالظبط (ميعاد لكل مجموعة)
@@ -4185,6 +4189,29 @@ function ContentManager<T extends { id: string; grade: string; createdAt: string
     setSchedSaving(false)
   }
 
+  /* (ر1 — طلب المستر) PATCH تغيير صف الواجب — نفس تحقق الأدمن بتاع الموعد */
+  const patchHwGrade = async function (id: string, grade: string) {
+    if (!currentAdminId) { toast.error('مفيش جلسة أدمن — سجل دخول تاني', { duration: 8000 }); return }
+    setGradeSaving(true)
+    try {
+      var res = await fetch(`${apiPath}/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminId: currentAdminId, grade }),
+      })
+      if (res.ok) {
+        toast.success('تم تغيير صف الواجب إلى «' + grade + '» — ظاهر دلوقتي لطلاب الصف الجديد')
+        setGradeEditId(null); setGradeEditVal('')
+        loadItems(false); if (onRefresh) onRefresh()
+      } else {
+        var dG: any = {}
+        try { dG = await res.json() } catch (e) {}
+        toast.error(dG.error || 'خطأ في تغيير الصف', { duration: 8000 })
+      }
+    } catch { toast.error('خطأ في الاتصال', { duration: 8000 }) }
+    setGradeSaving(false)
+  }
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -4396,6 +4423,18 @@ function ContentManager<T extends { id: string; grade: string; createdAt: string
                       📅
                     </Button>
                   )}
+                  {/* (ر1 — طلب المستر) زرار تغيير صف الواجب — ينقل الواجب من صف لصف تاني */}
+                  {isHomeworkManager && (
+                    <Button size="icon" variant="ghost"
+                      className={'h-8 w-8 shrink-0 ' + (gradeEditId === item.id ? 'text-emerald-600' : 'text-muted-foreground')}
+                      title="تغيير صف الواجب — مثال: من سادسة لرابعة"
+                      onClick={function () {
+                        if (gradeEditId === item.id) { setGradeEditId(null); setGradeEditVal('') }
+                        else { setGradeEditId(item.id); setGradeEditVal(item.grade) }
+                      }}>
+                      🎓
+                    </Button>
+                  )}
                   {/* (2026-و26) زرار استهداف الطلاب — مين يشوف الواجب (زي الفيديوهات) */}
                   {isHomeworkManager && (
                     <Button size="icon" variant="ghost"
@@ -4462,6 +4501,27 @@ function ContentManager<T extends { id: string; grade: string; createdAt: string
                       إلغاء الجدولة
                     </Button>
                     )}
+                  </div>
+                )}
+                {/* (ر1 — طلب المستر) محرر تغيير الصف المضغوط — الواجب بيتنقل من صف لصف */}
+                {isHomeworkManager && gradeEditId === item.id && (
+                  <div className="flex items-center gap-1.5 flex-wrap p-2 rounded-lg border border-dashed border-emerald-500/40 bg-emerald-500/5">
+                    <span className="text-[10px] font-medium shrink-0">الصف الحالي: {item.grade} — الصف الجديد:</span>
+                    <select value={gradeEditVal} onChange={function (e) { setGradeEditVal(e.target.value) }}
+                      className="h-7 rounded-md border border-input bg-transparent px-2 text-[11px]">
+                      <option value="">اختار الصف…</option>
+                      {gradesList.map(function (g) { return <option key={g.ar} value={g.ar}>{(g.emoji ? g.emoji + ' ' : '') + g.ar}</option> })}
+                    </select>
+                    <Button type="button" variant="outline" size="sm" className="h-7 text-[10px] px-2"
+                      disabled={gradeSaving || !gradeEditVal || gradeEditVal === item.grade}
+                      onClick={function () { patchHwGrade(item.id, gradeEditVal) }}>
+                      حفظ الصف
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" className="h-7 text-[10px] px-2"
+                      disabled={gradeSaving}
+                      onClick={function () { setGradeEditId(null); setGradeEditVal('') }}>
+                      إلغاء
+                    </Button>
                   </div>
                 )}
               </div>
