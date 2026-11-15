@@ -12,7 +12,7 @@ import {
   BookOpen, Target, TrendingUp, GraduationCap, ChevronLeft, ExternalLink,
   User, Phone, Award, Lock, X, ListTodo, Search,
   HelpCircle, ArrowLeft, Rocket, Flag, XCircle, Timer,
-  Brain, MonitorPlay, Swords, Flame,
+  Brain, MonitorPlay, Swords, Flame, BrainCircuit,
 } from 'lucide-react'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import Image from 'next/image'
@@ -44,6 +44,8 @@ import { isDriveUrl } from '@/lib/drive'
 import { normalizeCorrectKey } from '@/lib/correct-key'
 /* (و45) تصنيف موحّد: سؤال له اختيارات صور/رسومات = اختياري مش مقالي */
 import { isWritingQuestion } from '@/lib/question-figures'
+/* (2026-وN9) قسم «اسأل الـ AI» — الطالب يرفع السؤال والـ AI يحله ويشرحه */
+import { AskAISolver } from '@/components/student/AskAISolver'
 /* ============================================================
  * (و46) قايمة اختيارات موحّدة للعرض — طلب المستر:
  *   «عايز الرسمة تكون شكلها صغير عشان الطالب يقدر يختار — هي مش موجودة أصلًا»
@@ -453,6 +455,8 @@ function StudentPortalInner() {
     { id: 'videos', label: T('الدروس', 'Lessons'), icon: Video },
     { id: 'homework', label: T('الواجبات', 'Homework'), icon: ClipboardList },
     { id: 'exams', label: T('الامتحانات', 'Exams'), icon: FileText },
+    /* (2026-وN9) قسم «اسأل الـ AI» — الطالب بيرفع سؤال مش عارف يحله والـ AI يحله ويفهمه ويشرحه له */
+    { id: 'ask-ai', label: T('اسأل الـ AI', 'Ask AI'), icon: BrainCircuit },
     /* (2026-و66) ساحة التحدي — جروبات + تحدي المستر + فلاش كاردز (ز13: التسمية إنجليزي بطلب المستر) */
     { id: 'arena', label: 'Arena', icon: Swords },
     /* (2026-ز38) مركز الألعاب — الجيميفيكيشن الكامل بطلب المستر */
@@ -522,6 +526,8 @@ function StudentPortalInner() {
         {activeTab === 'videos' && <VideosTab videos={dashboardData.videos} watchedIds={dashboardData.watchedIds} approvedVideoIds={dashboardData.approvedVideoIds} studentId={studentId} grade={grade} videoProgress={dashboardData.videoProgress} studentStatus={currentStudent?.status} isPaidAccess={currentStudent?.isPaidAccess} studentName={currentStudent?.name || ''} studentPhone={currentStudent?.phone || ''} />}
         {activeTab === 'homework' && <HomeworkTab homework={dashboardData.homework} studentId={studentId} completedHwIds={completedHwIds} onHwSubmitted={(id) => setCompletedHwIds(prev => new Set([...prev, id]))} />}
         {activeTab === 'exams' && <ExamsTab exams={dashboardData.exams} results={dashboardData.examResults} completedExamIds={completedExamIds} onExamSubmitted={(id) => setCompletedExamIds(prev => new Set([...prev, id]))} studentId={studentId} resultsLoaded={examResultsLoaded} onGoHome={() => setActiveTab('videos')} />}
+        {/* (2026-وN9) قسم «اسأل الـ AI» — حل وشرح فوري لأي سؤال بالصورة أو النص */}
+        {activeTab === 'ask-ai' && <AskAISolver studentId={studentId} grade={grade} />}
         {/* (2026-و66) ساحة التحدي — جروبات + تحدي المستر + فلاش كاردز */}
         {activeTab === 'arena' && <BattleArena studentId={studentId} studentName={currentStudent?.name || ''} grade={grade} />}
         {/* (2026-ز38) مركز الألعاب — الجيميفيكيشن الكامل */}

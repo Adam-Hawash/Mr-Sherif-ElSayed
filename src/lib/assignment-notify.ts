@@ -200,7 +200,7 @@ async function studentColumns(): Promise<string[]> {
     var c: any = await db.$queryRawUnsafe('PRAGMA table_info(Student)')
     _studentCols = (c || []).map(function (x: any) { return String(x && x.name || '') })
   } catch (e) { _studentCols = [] }
-  return _studentCols
+  return _studentCols || []
 }
 
 async function assignmentAudience(kind: string, item: any): Promise<{ id: string; name: string; parentPhone: string }[]> {

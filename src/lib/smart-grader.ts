@@ -10,7 +10,11 @@
 //   model answer's final value, it is CORRECT even when written differently
 //   (different order, different notation, Arabic digits, no steps …).
 
-import { callGemini as callGeminiCentral, hasGeminiKey } from '@/lib/gemini'
+import { callGemini as callGeminiCentral, GEMINI_MODELS, GEMINI_GRADING_MODELS } from '@/lib/gemini'
+/* (2026-وN8) طلب المستر: «فيا ريت في نموذج أعلى من كده يفهم الماث» —
+   محرك ZAI (GLM) بتفكير عميق مفعّل = استدلال رياضي حقيقي قبل أي حكم —
+   مجاني بلا مفاتيح وبلا حصص، بيتقدّم كمحرك أول للتصحيح */
+import { zaiGradeText } from './zai-grader'
 import { repairModelJson, repairCorruptMath } from '@/lib/math-text'
 /* (2026-و33) طلب المستر: التصحيح يوصف بذكاء وببرموز المنصة (كسور رأسية وأُس) —
    قواعد الرموز بتتحط في البرومبت والرد بيتنقّى من أي $ أو ** خام */
@@ -298,25 +302,32 @@ export async function gradeWritingSmart(writingAnswers: WritingAnswer[]): Promis
     return { graded: graded, aiUsed: false }
   }
 
-  if (!hasGeminiKey()) {
-    // No AI key at all → fallback heuristic so nothing stays pending
-    for (var hk = 0; hk < needAIIdx.length; hk++) {
-      var hIdx = needAIIdx[hk]
-      graded[hIdx] = heuristicFallback(graded[hIdx], needAI[hk])
-    }
-    return { graded: graded, aiUsed: false }
+  /* (2026-وN8) كان القفل هنا على مفتاح Gemini — دلوقتي المحرك الأول (ZAI)
+     بيفهم الماث بتفكير عميق ومش محتاج مفتاح أصلًا، فبنكمل دايمًا والفولباك
+     الحتمي (heuristic) تحت شغال لو كل المحركات وقعت */
+  var promptN8 = buildAiPrompt(needAI)
+
+  /* (2026-وN8) طلب المستر الحرفي: «فيا ريت في نموذج أعلى من كده يفهم الماث»
+     المحرك 1: ZAI بتفكير عميق (Chain-of-Thought رياضي حقيقي — مجاني وبلا حصص)
+     المحرك 2: Gemini Pro (أعلى موديل متاح عند المفتاح)
+     المحرك 3: Gemini Flash (محاولة إعادة زي ما كانت) */
+  var result = await zaiGradeText(promptN8, { timeoutMs: 90000, thinking: true })
+
+  if (!result.ok || !result.text) {
+    result = await callGeminiCentral({
+      parts: [{ text: promptN8 }],
+      /* (2026-وN8) سلسلة التصحيح: Pro أولاً وبعده Flash */
+      models: GEMINI_GRADING_MODELS.concat(GEMINI_MODELS),
+      generationConfig: { temperature: 0.1, maxOutputTokens: 8192 },
+      timeoutMs: 90000,
+    })
   }
 
-  var result = await callGeminiCentral({
-    parts: [{ text: buildAiPrompt(needAI) }],
-    generationConfig: { temperature: 0.1, maxOutputTokens: 8192 },
-    timeoutMs: 90000,
-  })
-
   // one retry on transient failure
-  if (!result.ok) {
+  if (!result.ok || !result.text) {
     result = await callGeminiCentral({
-      parts: [{ text: buildAiPrompt(needAI) }],
+      parts: [{ text: promptN8 }],
+      models: GEMINI_GRADING_MODELS.concat(GEMINI_MODELS),
       generationConfig: { temperature: 0.1, maxOutputTokens: 8192 },
       timeoutMs: 90000,
     })
