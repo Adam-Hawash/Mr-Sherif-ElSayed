@@ -84,6 +84,14 @@ export async function PATCH(
       data.grade = grN
     }
 
+    /* (ر2 — طلب المستر) تغيير اسم الواجب بعد النشر — الأسئلة والتسليمات متتلمسش */
+    if (body.title !== undefined) {
+      var tiN = String(body.title == null ? '' : body.title).trim()
+      if (!tiN) return NextResponse.json({ error: 'الاسم مطلوب — اكتب الاسم الجديد' }, { status: 400 })
+      if (tiN.length > 200) tiN = tiN.slice(0, 200)
+      data.title = tiN
+    }
+
     /* (2026-و26) استهداف الطلاب: array ids → JSON string (فاضي = الكل) */
     if (body.targetStudentIds !== undefined) {
       var tArr: unknown[] = []

@@ -90,6 +90,14 @@ export async function PATCH(
 
     const data: Record<string, unknown> = {}
 
+    /* (ر2 — طلب المستر) تغيير اسم الامتحان بعد النشر — الأسئلة والنتايج متتلمسش */
+    if (body.title !== undefined) {
+      var tiN = String(body.title == null ? '' : body.title).trim()
+      if (!tiN) return NextResponse.json({ error: 'الاسم مطلوب — اكتب الاسم الجديد' }, { status: 400 })
+      if (tiN.length > 200) tiN = tiN.slice(0, 200)
+      data.title = tiN
+    }
+
     // إظهار/إخفاء الإجابات بعد التسليم
     if (body.showResult !== undefined) {
       data.showResult = body.showResult === true || body.showResult === 'true' || body.showResult === 1

@@ -1994,6 +1994,20 @@ function ExamSettingsRow({ exam, adminId, onChanged }: { exam: any; adminId: str
     } catch { toast.error('خطأ في الاتصال', { duration: 8000 }); return false }
   }
 
+  /* (ر2 — طلب المستر) تغيير اسم الامتحان بعد النشر */
+  const [renaming, setRenaming] = useState(false)
+  const [nameVal, setNameVal] = useState('')
+  const [savingName, setSavingName] = useState(false)
+
+  const saveExamName = async function () {
+    var nv = nameVal.trim()
+    if (!nv) { toast.error('اكتب الاسم الجديد الأول'); return }
+    setSavingName(true)
+    var ok = await patchExam({ title: nv }, 'تم تغيير اسم الامتحان إلى «' + nv + '»')
+    if (ok) { setNameVal(''); setRenaming(false); onChanged() }
+    setSavingName(false)
+  }
+
   /* سوتش الإجابات — يكتب فورًا مع toast (طلب المستر حرفيًا) */
   const toggleShowResult = async function (checked: boolean) {
     setShowResult(checked) /* تفاؤلي — بيرجع لو فشل */
@@ -2053,6 +2067,24 @@ function ExamSettingsRow({ exam, adminId, onChanged }: { exam: any; adminId: str
   return (
     <div className="mt-2 p-2 rounded-lg border border-dashed border-emerald-500/40 bg-emerald-500/5 space-y-1.5"
       onClick={function (e) { e.stopPropagation() }}>
+      {/* (ر2 — طلب المستر) سطر تغيير اسم الامتحان */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {!renaming ? (
+          <Button type="button" variant="outline" size="sm" className="h-7 text-[10px] px-2"
+            onClick={function () { setRenaming(true); setNameVal(exam.title || '') }}>
+            📝 تغيير الاسم
+          </Button>
+        ) : (
+          <>
+            <Input value={nameVal} onChange={function (e) { setNameVal(e.target.value) }}
+              placeholder={exam.title || ''} className="h-7 text-[11px] max-w-[240px]" />
+            <Button type="button" variant="outline" size="sm" className="h-7 text-[10px] px-2"
+              disabled={savingName || !nameVal.trim()} onClick={saveExamName}>حفظ الاسم</Button>
+            <Button type="button" variant="ghost" size="sm" className="h-7 text-[10px] px-2"
+              disabled={savingName} onClick={function () { setRenaming(false); setNameVal('') }}>إلغاء</Button>
+          </>
+        )}
+      </div>
       {/* سطر 1: سوتش الإجابات + بادج الجدولة */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
@@ -3957,6 +3989,10 @@ function ContentManager<T extends { id: string; grade: string; createdAt: string
   const [gradeEditId, setGradeEditId] = useState<string | null>(null)
   const [gradeEditVal, setGradeEditVal] = useState('')
   const [gradeSaving, setGradeSaving] = useState(false)
+  /* (ر2 — طلب المستر) تغيير اسم الواجب بعد النشر */
+  const [nameEditId, setNameEditId] = useState<string | null>(null)
+  const [nameEditVal, setNameEditVal] = useState('')
+  const [nameSaving, setNameSaving] = useState(false)
   /* (2026-و26) استهداف الطلاب للواجب — زي الفيديوهات بالظبط */
   const [targetEditId, setTargetEditId] = useState<string | null>(null)
   /* (ز37) جدولة المجموعات للواجب — نفس نظام الفيديوهات بالظبط (ميعاد لكل مجموعة)
@@ -4212,6 +4248,29 @@ function ContentManager<T extends { id: string; grade: string; createdAt: string
     setGradeSaving(false)
   }
 
+  /* (ر2 — طلب المستر) PATCH تغيير اسم الواجب — نفس تحقق الأدمن */
+  const patchHwTitle = async function (id: string, title: string) {
+    if (!currentAdminId) { toast.error('مفيش جلسة أدمن — سجل دخول تاني', { duration: 8000 }); return }
+    setNameSaving(true)
+    try {
+      var res = await fetch(`${apiPath}/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminId: currentAdminId, title }),
+      })
+      if (res.ok) {
+        toast.success('تم تغيير اسم الواجب إلى «' + title + '»')
+        setNameEditId(null); setNameEditVal('')
+        loadItems(false); if (onRefresh) onRefresh()
+      } else {
+        var dT: any = {}
+        try { dT = await res.json() } catch (e) {}
+        toast.error(dT.error || 'خطأ في تغيير الاسم', { duration: 8000 })
+      }
+    } catch { toast.error('خطأ في الاتصال', { duration: 8000 }) }
+    setNameSaving(false)
+  }
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -4435,6 +4494,18 @@ function ContentManager<T extends { id: string; grade: string; createdAt: string
                       🎓
                     </Button>
                   )}
+                  {/* (ر2 — طلب المستر) زرار تغيير اسم الواجب */}
+                  {isHomeworkManager && (
+                    <Button size="icon" variant="ghost"
+                      className={'h-8 w-8 shrink-0 ' + (nameEditId === item.id ? 'text-amber-600' : 'text-muted-foreground')}
+                      title="تغيير اسم الواجب"
+                      onClick={function () {
+                        if (nameEditId === item.id) { setNameEditId(null); setNameEditVal('') }
+                        else { setNameEditId(item.id); setNameEditVal(item.title || '') }
+                      }}>
+                      📝
+                    </Button>
+                  )}
                   {/* (2026-و26) زرار استهداف الطلاب — مين يشوف الواجب (زي الفيديوهات) */}
                   {isHomeworkManager && (
                     <Button size="icon" variant="ghost"
@@ -4520,6 +4591,25 @@ function ContentManager<T extends { id: string; grade: string; createdAt: string
                     <Button type="button" variant="ghost" size="sm" className="h-7 text-[10px] px-2"
                       disabled={gradeSaving}
                       onClick={function () { setGradeEditId(null); setGradeEditVal('') }}>
+                      إلغاء
+                    </Button>
+                  </div>
+                )}
+                {/* (ر2 — طلب المستر) محرر تغيير اسم الواجب المضغوط */}
+                {isHomeworkManager && nameEditId === item.id && (
+                  <div className="flex items-center gap-1.5 flex-wrap p-2 rounded-lg border border-dashed border-amber-500/40 bg-amber-500/5">
+                    <span className="text-[10px] font-medium shrink-0">الاسم الجديد:</span>
+                    <Input value={nameEditVal} onChange={function (e) { setNameEditVal(e.target.value) }}
+                      placeholder={renderTitle(item)}
+                      className="h-7 text-[11px] max-w-[260px]" />
+                    <Button type="button" variant="outline" size="sm" className="h-7 text-[10px] px-2"
+                      disabled={nameSaving || !nameEditVal.trim()}
+                      onClick={function () { patchHwTitle(item.id, nameEditVal.trim()) }}>
+                      حفظ الاسم
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" className="h-7 text-[10px] px-2"
+                      disabled={nameSaving}
+                      onClick={function () { setNameEditId(null); setNameEditVal('') }}>
                       إلغاء
                     </Button>
                   </div>
