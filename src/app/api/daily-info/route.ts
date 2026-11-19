@@ -27,9 +27,10 @@ async function ensureDailyInfoTables(): Promise<void> {
     'CREATE TABLE IF NOT EXISTS DailyInfoView (infoId TEXT NOT NULL, studentId TEXT NOT NULL, seenAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(infoId, studentId))',
     'CREATE INDEX IF NOT EXISTS idx_daily_info_date ON DailyInfo(dateKey)',
   ]
-  for (var i = 0; i < DDL.length; i++) {
-    try { await db.$executeRawUnsafe(DDL[i]) } catch (e) { console.error('[daily-info] DDL fail #' + i, e) }
-  }
+  /* (ر23) الجداول بالتوازي — توفير ~٢ RTT على الإقلاع البارد عشان التحميل ما يتأخرش */
+  await Promise.all(DDL.map(function (q, i) {
+    return db.$executeRawUnsafe(q).catch(function (e) { console.error('[daily-info] DDL fail #' + i, e) })
+  }))
   _tablesReady = true
 }
 

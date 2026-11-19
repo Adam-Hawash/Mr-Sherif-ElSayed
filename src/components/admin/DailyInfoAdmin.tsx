@@ -21,7 +21,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  CalendarDays, CheckCircle2, Eye, FileText, Lightbulb, ListOrdered, Loader2, Pencil, Plus, Trash2, Upload, X,
+  ArrowUp, CalendarDays, CheckCircle2, Eye, FileText, Lightbulb, ListOrdered, Loader2, Pencil, Plus, Trash2, Upload, X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -64,14 +64,54 @@ function addDaysKey(key: string, add: number): string {
 
 /* ============================================================
    تقسيم الملف/النص لمعلومات — طلب المستر: «أقسم كل معلومة في يوم»
-   الفصل بيتفهم بالترتيب: فاصل صريح (--- /*** ===) ← ترقيم (1. / ٢- / أ) ← سطر فاضي ← كل سطر
+   قواعد صارمة عشان المعلومات تطلع بالظبط زي ما المستر كاتبها —
+   ما تضيعش معلومة وما تتزودش معلومة من عندنا وما يقلبش الترتيب:
+   1) فاصل صريح (--- أو *** أو ===) → كل ما بين الفواصل معلومة
+   2) ترقيم متسلسل حقيقي (1. 2. 3. أو ١- ٢- ٣- أو أ) ب) ج)) → كل بند معلومة
+      — الترقيم لازم يكون متسلسل فعلًا (كل رقم = اللي قبله + 1) عشان أي رقم
+      أو حرف جوه نص المعلومة ما يتفهمش غلط كمعلومة جديدة (7 معلومات تبقى 8!)
+      — والكلام اللي قبل أول رقم بيتحفظ كأول معلومة (عمره ما بيضيع —
+      ولو كان عنوان للملف المستر يشيله بضغطة من المعاينة)
+   3) سطر فاضي بين الفقرات → كل فقرة معلومة
+   4) مفيش فصل واضح → النص كله معلومة واحدة — عمره ما بنقطع كل سطر لوحده
+      (عشان ما يفصلش السطور ويزود معلومات من عنده)
    ============================================================ */
 
 interface ParsedFact { title: string; body: string }
 interface PlanItem { dateKey: string; title: string; body: string }
 
 var SEP_LINE = /^[=\-_*~•·]{3,}$/
-var NUM_START = /^\s*(?:\d{1,3}|[٠-٩]{1,3}|[أ-ى]{1,2}|[A-Za-z]{1,2})\s*[.):\-،:]\s*/
+/* بادئة ترقيم: رقم لاتيني/عربي أو حرف واحد (عربي/لاتيني) + علامة فصل */
+var NUM_START = /^\s*(\d{1,3}|[٠-٩]{1,3}|[أ-ى]|[A-Za-z])\s*[.):\-،:]\s*/
+
+/* ترتيب حروف الترقيم العربي — أبجد هوز حطي كلمن سعفص قرشت ثخذ ضظغ */
+var ABJAD = 'أبجدهوزحطيكلمنسعفصقرشتثخذضظغ'
+
+function normAbjad(c: string): string {
+  if (c === 'ا' || c === 'إ' || c === 'آ') return 'أ'
+  if (c === 'ى') return 'ي'
+  if (c === 'ة') return 'ه'
+  return c
+}
+
+/** يطلع من أول السطر نوع وقيمة رقم التسلسل — أو null لو مش بادئة ترقيم */
+function numToken(line: string): { type: 'digit' | 'letter'; value: number } | null {
+  const m = NUM_START.exec(line)
+  if (!m) return null
+  const tok = m[1]
+  if (/^\d{1,3}$/.test(tok)) return { type: 'digit', value: parseInt(tok, 10) }
+  if (/^[٠-٩]{1,3}$/.test(tok)) {
+    var v = parseInt(tok.replace(/[٠-٩]/g, function (c) { return String('٠١٢٣٤٥٦٧٨٩'.indexOf(c)) }), 10)
+    return isNaN(v) ? null : { type: 'digit', value: v }
+  }
+  if (/[أ-ى]/.test(tok)) {
+    const idx = ABJAD.indexOf(normAbjad(tok))
+    return idx < 0 ? null : { type: 'letter', value: idx + 1 }
+  }
+  const L = tok.toLowerCase()
+  if (L >= 'a' && L <= 'z') return { type: 'letter', value: L.charCodeAt(0) - 96 }
+  return null
+}
 
 function toFacts(blocks: string[][], stripNum?: boolean): ParsedFact[] {
   const out: ParsedFact[] = []
@@ -80,13 +120,9 @@ function toFacts(blocks: string[][], stripNum?: boolean): ParsedFact[] {
     if (!ls.length) continue
     let first = ls[0]
     if (stripNum) first = first.replace(NUM_START, '')
-    // أول سطر قصير في كتلة من سطرين+ يبقى عنوان — والباقي النص
-    if (ls.length >= 2 && first.length > 0 && first.length <= 80) {
-      out.push({ title: first, body: ls.slice(1).join('\n') })
-    } else {
-      const rest = ls.slice(1)
-      out.push({ title: '', body: [first].concat(rest).join('\n') })
-    }
+    /* النص بيترجع زي ما هو بالحرف — من غير تفكير عناوين من عندنا (طلب المستر:
+       «انت كاتب حتى الاسامي غلط») — المعلومة كاملة في النص زي ما المستر كاتبها */
+    out.push({ title: '', body: [first].concat(ls.slice(1)).join('\n') })
   }
   return out
 }
@@ -113,18 +149,35 @@ function parseFacts(raw: string): ParsedFact[] {
   if (cur.length) blocks.push(cur)
   if (sawSep && blocks.length >= 2) return toFacts(blocks)
 
-  // 2) بنود مرقّمة — 1. أو ٢- أو أ) أو a) (سطرين+ ترقيم = قايمة معلومات)
-  var numIdx: number[] = []
+  // 2) ترقيم متسلسل حقيقي — بنمشي على السطور ونقسم عند كل رقم بيكمل التسلسل
+  //    (اللي قبله + 1) — أي رقم مش مكمل للتسلسل معناه رقم جوه نص معلومة
+  //    فبنسايه عشان ما يتزودش معلومة من عنده وما يبوظش الترتيب (7 تبقى 8!)
+  var cands: { line: number; value: number; type: 'digit' | 'letter' }[] = []
   for (var j = 0; j < lines.length; j++) {
-    if (lines[j].trim().length > 2 && NUM_START.test(lines[j])) numIdx.push(j)
+    const t = numToken(lines[j])
+    if (t && lines[j].trim().length > 2) cands.push({ line: j, value: t.value, type: t.type })
   }
-  if (numIdx.length >= 2) {
-    blocks = []
-    for (var k = 0; k < numIdx.length; k++) {
-      const end = k + 1 < numIdx.length ? numIdx[k + 1] : lines.length
-      blocks.push(lines.slice(numIdx[k], end))
+  if (cands.length >= 2) {
+    var picked: typeof cands = []
+    var expected = -1
+    for (var c = 0; c < cands.length; c++) {
+      if (!picked.length || (cands[c].type === picked[0].type && cands[c].value === expected)) {
+        picked.push(cands[c])
+        expected = cands[c].value + 1
+      }
     }
-    return toFacts(blocks, true)
+    if (picked.length >= 2) {
+      blocks = []
+      /* الكلام اللي قبل أول رقم بيتحفظ كأول معلومة — عمره ما بيضيع
+         (المستر: «بيبدأ من تاني معلومة مش من أول معلومة») */
+      const pre = lines.slice(0, picked[0].line)
+      if (pre.map(function (l) { return l.trim() }).filter(Boolean).length) blocks.push(pre)
+      for (var k = 0; k < picked.length; k++) {
+        const end = k + 1 < picked.length ? picked[k + 1].line : lines.length
+        blocks.push(lines.slice(picked[k].line, end))
+      }
+      return toFacts(blocks, true)
+    }
   }
 
   // 3) فقرات مفصولة بسطر فاضي
@@ -140,36 +193,35 @@ function parseFacts(raw: string): ParsedFact[] {
   if (cur.length) blocks.push(cur)
   if (blocks.length >= 2) return toFacts(blocks)
 
-  // 4) مفيش فاصل — كل سطر = معلومة
-  const single = lines.map(function (l) { return l.trim() }).filter(Boolean)
-  return single.map(function (l) { return { title: '', body: l } })
+  // 4) مفيش فصل واضح — النص كله معلومة واحدة (ما بنفصلش السطر لوحده عمرنا)
+  return [{ title: '', body: text }]
 }
 
-/** توزيع المعلومات على الأيام — كل معلومة في يوم:
-    • معلومات أكتر من (أو يساوي) الأيام: كل يوم بياخد نصيبه ورا بعض (ومع التساوي = معلومة لكل يوم)
-    • أيام أكتر من المعلومات: كل معلومة في يومها بالتساوي بدءًا من يوم البداية
-      والأيام الزيادة بتفضل من غير معلومة جديدة */
+/** توزيع المعلومات على الأيام — بالترتيب من غير قفزات ومن غير ضياع:
+    • معلومات ≤ الأيام: كل معلومة في يوم ورا بعض بالظبط (يوم1=معلومة1…) —
+      والأيام الزيادة بتفضل من غير معلومة جديدة
+    • معلومات أكتر من الأيام: كل يوم بياخد نصيبه ورا بعض — حدود صحيحة متتالية
+      فمفيش معلومة بتضيع ولا بتتكرر ولا الترتيب بيتقلب */
 function distributeDays(facts: ParsedFact[], days: number, startKey: string): PlanItem[] {
   const n = facts.length
   if (!n) return []
   const d = Math.max(1, Math.min(60, Math.floor(Number(days) || n)))
   const out: PlanItem[] = []
-  if (n >= d) {
-    for (var i = 0; i < d; i++) {
-      const a = Math.round((n * i) / d)
-      const b = Math.round((n * (i + 1)) / d)
-      const slice = facts.slice(a, b)
-      if (!slice.length) continue
-      out.push({
-        dateKey: addDaysKey(startKey, i),
-        title: slice.length === 1 ? slice[0].title : '',
-        body: slice.map(function (s) { return s.body }).filter(Boolean).join('\n\n'),
-      })
+  if (n <= d) {
+    for (var i = 0; i < n; i++) {
+      out.push({ dateKey: addDaysKey(startKey, i), title: facts[i].title, body: facts[i].body })
     }
   } else {
-    for (var k = 0; k < n; k++) {
-      const dayIdx = Math.min(d - 1, Math.round((k * d) / n))
-      out.push({ dateKey: addDaysKey(startKey, dayIdx), title: facts[k].title, body: facts[k].body })
+    for (var j = 0; j < d; j++) {
+      const a = Math.floor((n * j) / d)
+      const b = Math.floor((n * (j + 1)) / d)
+      const slice = facts.slice(a, Math.max(b, a + 1))
+      if (!slice.length) continue
+      out.push({
+        dateKey: addDaysKey(startKey, j),
+        title: slice.length === 1 ? slice[0].title : '',
+        body: slice.map(function (s) { return (s.title ? s.title + '\n' : '') + s.body }).filter(Boolean).join('\n\n'),
+      })
     }
   }
   return out
@@ -320,12 +372,60 @@ export function DailyInfoAdmin({ adminId }: { adminId: string }) {
   const parsedFacts = useMemo(function () { return parseFacts(bRaw) }, [bRaw])
   const factsCount = parsedFacts.length
 
-  /* عدد الأيام بيتظبط تلقائيًا على عدد المعلومات المكتشفة (والمناولة تقدر تغيره بعدها) */
+  /* عدد الأيام بيتظبط تلقائيًا على عدد المعلومات لأول مرة بس — وأول ما المناولة
+     تحدد عدد الأيام بنفسها بنحترم اختيارها (طلب المستر: يحدد 10 أو 6 أو 7) */
+  const [daysTouched, setDaysTouched] = useState(false)
   useEffect(function () {
-    if (factsCount > 0) setBDays(factsCount)
-  }, [factsCount])
+    if (factsCount > 0 && !daysTouched) setBDays(factsCount)
+  }, [factsCount, daysTouched])
 
   const batchPlan = useMemo(function () { return distributeDays(parsedFacts, bDays, bStart) }, [parsedFacts, bDays, bStart])
+
+  /* تعديل المعاينة قبل الحفظ — اللي بتشوفه في المعاينة هو اللي بيتحفظ بالحرف:
+     تعدّل أي معلومة أو تشيلها أو تدمجها في اللي فوقها */
+  const [planEdits, setPlanEdits] = useState<PlanItem[] | null>(null)
+  const [editIdx, setEditIdx] = useState(-1)
+  useEffect(function () {
+    setPlanEdits(null)
+    setEditIdx(-1)
+  }, [bRaw, bDays, bStart])
+  const effectivePlan = planEdits || batchPlan
+
+  const updatePlanItem = function (i: number, field: 'title' | 'body', v: string) {
+    setPlanEdits(function (prev) {
+      const arr = (prev || batchPlan).slice()
+      if (!arr[i]) return prev
+      const next: PlanItem = { dateKey: arr[i].dateKey, title: arr[i].title, body: arr[i].body }
+      if (field === 'title') next.title = v
+      else next.body = v
+      arr[i] = next
+      return arr
+    })
+  }
+  const removePlanItem = function (i: number) {
+    setPlanEdits(function (prev) {
+      const arr = (prev || batchPlan).slice()
+      arr.splice(i, 1)
+      return arr
+    })
+    if (editIdx === i) setEditIdx(-1)
+  }
+  const mergePlanItem = function (i: number) {
+    setPlanEdits(function (prev) {
+      const arr = (prev || batchPlan).slice()
+      if (i <= 0 || !arr[i] || !arr[i - 1]) return prev
+      const p = arr[i - 1]
+      const c = arr[i]
+      arr[i - 1] = {
+        dateKey: p.dateKey,
+        title: p.title,
+        body: [p.body, c.title, c.body].map(function (x) { return String(x || '').trim() }).filter(Boolean).join('\n'),
+      }
+      arr.splice(i, 1)
+      return arr
+    })
+    if (editIdx === i) setEditIdx(-1)
+  }
 
   const resetForm = function () {
     setEditId('')
@@ -438,9 +538,9 @@ export function DailyInfoAdmin({ adminId }: { adminId: string }) {
     }
   }
 
-  /* حفظ الدفعة — كل معلومة في يومها بالپريفيو بالحرف */
+  /* حفظ الدفعة — اللي في المعاينة بالحرف (بعد أي تعديل عمله المناولة) */
   const saveBatch = async function () {
-    if (!batchPlan.length) {
+    if (!effectivePlan.length) {
       toast.error('مفيش معلومات — الصق النص أو ارفع ملف الأول')
       return
     }
@@ -449,11 +549,11 @@ export function DailyInfoAdmin({ adminId }: { adminId: string }) {
       const res = await fetch('/api/daily-info/batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adminId: adminId, kind: bKind, items: batchPlan }),
+        body: JSON.stringify({ adminId: adminId, kind: bKind, items: effectivePlan }),
       })
       const data = await res.json().catch(function () { return null })
       if (res.ok && data && data.ok) {
-        toast.success('اتحفظت ' + String((data as any).created || batchPlan.length) + ' معلومة — كل معلومة في يومها والطالب هيشوفها أول ما يفتح 💡')
+        toast.success('اتحفظت ' + String((data as any).created || effectivePlan.length) + ' معلومة — كل معلومة في يومها والطالب هيشوفها أول ما يفتح 💡')
         setBRaw('')
         await load()
       } else {
@@ -524,7 +624,8 @@ export function DailyInfoAdmin({ adminId }: { adminId: string }) {
         </p>
         <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
           معلومة واحدة: اكتب المعلومة واختار اليوم بتوقيت القاهرة (وتقدر ترفع ملف/صورة معاها).
-          وملف كامل: حدد عدد الأيام (7 أو 6 أو 10 أو أي عدد) وارفع الملف وبيتقسم لوحده — كل معلومة في يوم.
+          وملف كامل: حدد عدد الأيام (7 أو 6 أو 10 أو أي عدد) وارفع الملف — بيتقسم بالظبط زي ما كاتبها
+          (فاصل أو ترقيم متسلسل أو سطر فاضي) وبتشوف المعاينة وتعدل فيها قبل الحفظ.
           الكارت هيظهر للكل على الصفحة الرئيسية حتى غير المسجلين، وبيفضل ثابت بعد تسجيل الدخول،
           وبيتقفل بس لما الطالب يدوس على الـ X — من غير أي وقت — ومش بيظهر تاني على نفس الجهاز.
         </p>
@@ -572,13 +673,13 @@ export function DailyInfoAdmin({ adminId }: { adminId: string }) {
               </div>
             </div>
 
-            {/* عدد الأيام — طلب المستر: يحدد 10 أو 6 أو 7 أو أي عدد */}
+            {/* عدد الأيام — طلب المستر: يحدد 10 أو 6 أو 7 أو أي عدد — واختياره محترم */}
             <div>
               <label className="mb-1.5 block text-sm font-medium">عدد الأيام</label>
               <div className="flex flex-wrap items-center gap-1.5">
                 {QUICK_DAYS.map(function (n) {
                   return (
-                    <Button key={n} type="button" variant={bDays === n ? 'default' : 'outline'} size="sm" className="h-9 min-w-10 px-2.5 text-xs" onClick={function () { setBDays(n) }}>
+                    <Button key={n} type="button" variant={bDays === n ? 'default' : 'outline'} size="sm" className="h-9 min-w-10 px-2.5 text-xs" onClick={function () { setDaysTouched(true); setBDays(n) }}>
                       {n}
                     </Button>
                   )
@@ -586,12 +687,12 @@ export function DailyInfoAdmin({ adminId }: { adminId: string }) {
                 <Input
                   type="number" dir="ltr" min={1} max={60}
                   value={bDays}
-                  onChange={function (e) { setBDays(Math.max(1, Math.min(60, Math.floor(Number(e.target.value) || 1)))) }}
+                  onChange={function (e) { setDaysTouched(true); setBDays(Math.max(1, Math.min(60, Math.floor(Number(e.target.value) || 1)))) }}
                   className="h-9 w-24" aria-label="عدد الأيام"
                 />
                 <span className="text-xs text-muted-foreground">يوم</span>
               </div>
-              <p className="mt-1 text-[11px] text-muted-foreground">عدد الأيام بيتظبط لوحده على عدد المعلومات اللي اتكتشفت — وتقدر تغيره براحتك.</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">بتتظبط لوحده على عدد المعلومات لأول مرة بس — وبعد ما تحددها بنفسك بنحترم اختيارك.</p>
             </div>
 
             {/* مصدر المعلومات — لصق أو ملف */}
@@ -601,7 +702,7 @@ export function DailyInfoAdmin({ adminId }: { adminId: string }) {
                 rows={10}
                 value={bRaw}
                 onChange={function (e) { setBRaw(e.target.value) }}
-                placeholder={'الصق المعلومات هنا أو ارفع ملف…\n\nبيتقسم لوحده: كل معلومة في سطر — أو افصل بينها بسطر فاضي أو --- — أو رقّمهم:\n1. معلومة أول يوم\n2. معلومة تاني يوم\n3. …'}
+                placeholder={'الصق المعلومات هنا أو ارفع ملف…\n\nبيتقسم بالظبط زي ما كاتبها لما يلاقي:\n• فاصل --- بين المعلومات\n• أو ترقيم متسلسل: 1. معلومة أول يوم\n2. معلومة تاني يوم\n3. … (أو ١- ٢- ٣-)\n• أو سطر فاضي بين كل معلومة والتانية\nواللي يظهر في المعاينة تحت هو اللي بيتحفظ بالحرف — وتقدر تعدل أي معلومة قبل الحفظ'}
               />
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <input
@@ -620,7 +721,7 @@ export function DailyInfoAdmin({ adminId }: { adminId: string }) {
                 {factsCount > 0 ? (
                   <Badge className="border-0 bg-sky-600 text-white text-[10px]">اتكتشفت {factsCount} معلومة</Badge>
                 ) : (
-                  <span className="text-[11px] text-muted-foreground">بيتقسم تلقائيًا: سطر لكل معلومة — أو سطر فاضي بين المعلومات — أو --- — أو ترقيم 1. 2. 3.</span>
+                  <span className="text-[11px] text-muted-foreground">بيتقسم لما يلاقي: فاصل --- أو ترقيم متسلسل 1. 2. 3. أو سطر فاضي — ومفيش حاجة بتتفصل من عندنا</span>
                 )}
                 {bRaw ? (
                   <Button type="button" variant="ghost" size="sm" className="h-7 text-[11px] text-red-600 hover:bg-red-500/10" onClick={function () { setBRaw('') }}>
@@ -630,36 +731,68 @@ export function DailyInfoAdmin({ adminId }: { adminId: string }) {
               </div>
             </div>
 
-            {/* پريفيو التوزيع — معلومة في يومها */}
-            {factsCount > 0 ? (
+            {/* پريفيو التوزيع — اللي تشوفه هنا هو اللي بيتحفظ بالحرف — عدّل/اشيل/ادمج براحتك */}
+            {effectivePlan.length > 0 ? (
               <div className="rounded-lg border bg-muted/30 p-2.5 space-y-2">
                 <p className="text-xs font-bold">
-                  معاينة التوزيع — {factsCount} معلومة على {batchPlan.length} يوم (من {fmtDate(bStart)})
+                  معاينة التوزيع — {effectivePlan.length} معلومة (من {fmtDate(bStart)}) — عدّل براحتك قبل الحفظ
                 </p>
                 {factsCount > bDays ? (
                   <p className="rounded-md bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">
-                    المعلومات أكتر من الأيام — بعض الأيام هتاخد أكتر من معلومة ورا بعض.
+                    المعلومات أكتر من الأيام — بعض الأيام هتاخد أكتر من معلومة ورا بعض بالترتيب.
                   </p>
                 ) : null}
                 {factsCount < bDays ? (
                   <p className="rounded-md bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">
-                    الأيام أكتر من المعلومات — في أيام مش هيكون فيها معلومة جديدة.
+                    الأيام أكتر من المعلومات — كل معلومة في يومها ورا بعض، والأيام الزيادة من غير معلومة جديدة.
                   </p>
                 ) : null}
-                <div className="max-h-56 space-y-1.5 overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-track]:bg-transparent">
-                  {batchPlan.map(function (p, i) {
+                <div className="max-h-72 space-y-1.5 overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-track]:bg-transparent">
+                  {effectivePlan.map(function (p, i) {
                     const dayNo = (() => {
                       const t0 = Date.parse(bStart + 'T00:00:00Z')
                       const t1 = Date.parse(p.dateKey + 'T00:00:00Z')
                       if (isNaN(t0) || isNaN(t1)) return i + 1
                       return Math.round((t1 - t0) / 86400000) + 1
                     })()
+                    const editing = editIdx === i
                     return (
-                      <div key={p.dateKey + ':' + i} className="flex items-start gap-2 rounded-md border bg-card px-2 py-1.5">
-                        <Badge variant="outline" className="shrink-0 gap-1 text-[10px]"><CalendarDays className="h-3 w-3" />يوم {dayNo} — {fmtDate(p.dateKey)}</Badge>
-                        <p className="min-w-0 flex-1 whitespace-pre-wrap break-words text-[11px] leading-relaxed text-muted-foreground line-clamp-2">
-                          {(p.title ? p.title + ' — ' : '') + p.body}
-                        </p>
+                      <div key={p.dateKey + ':' + i} className="rounded-md border bg-card px-2 py-1.5 space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <Badge variant="outline" className="shrink-0 gap-1 text-[10px]"><CalendarDays className="h-3 w-3" />يوم {dayNo} — {fmtDate(p.dateKey)}</Badge>
+                          <div className="flex shrink-0 items-center gap-0.5">
+                            <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label="تعديل المعلومة" title="تعديل" onClick={function () { setEditIdx(editing ? -1 : i) }}>
+                              <Pencil className={editing ? 'h-3.5 w-3.5 text-sky-600' : 'h-3.5 w-3.5'} />
+                            </Button>
+                            <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label="دمج في اليوم اللي فوقه" title="دمج في اليوم اللي فوقه" disabled={i === 0} onClick={function () { mergePlanItem(i) }}>
+                              <ArrowUp className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-600 hover:bg-red-500/10" aria-label="شيل المعلومة دي" title="شيل" onClick={function () { removePlanItem(i) }}>
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                        {editing ? (
+                          <div className="space-y-1.5">
+                            <Input
+                              value={p.title}
+                              placeholder="العنوان (اختياري)"
+                              onChange={function (e) { updatePlanItem(i, 'title', e.target.value) }}
+                              className="h-8 text-xs"
+                            />
+                            <Textarea
+                              rows={3}
+                              value={p.body}
+                              placeholder="نص المعلومة"
+                              onChange={function (e) { updatePlanItem(i, 'body', e.target.value) }}
+                              className="text-xs"
+                            />
+                          </div>
+                        ) : (
+                          <p className="min-w-0 whitespace-pre-wrap break-words text-[11px] leading-relaxed text-muted-foreground line-clamp-2">
+                            {(p.title ? p.title + ' — ' : '') + p.body}
+                          </p>
+                        )}
                       </div>
                     )
                   })}
@@ -668,11 +801,11 @@ export function DailyInfoAdmin({ adminId }: { adminId: string }) {
             ) : null}
 
             <div className="flex flex-wrap items-center gap-3">
-              <Button onClick={saveBatch} disabled={batchSaving || bFileBusy || !batchPlan.length} className="bg-sky-600 text-white hover:bg-sky-700 gap-1.5">
+              <Button onClick={saveBatch} disabled={batchSaving || bFileBusy || !effectivePlan.length} className="bg-sky-600 text-white hover:bg-sky-700 gap-1.5">
                 {batchSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                احفظ الدفعة{batchPlan.length ? ' (' + batchPlan.length + ' معلومة)' : ''}
+                احفظ الدفعة{effectivePlan.length ? ' (' + effectivePlan.length + ' معلومة)' : ''}
               </Button>
-              <span className="text-[11px] text-muted-foreground">هتتسجل كل معلومة في يومها بالترتيب — وتقدر تعدل أي واحدة من القايمة تحت.</span>
+              <span className="text-[11px] text-muted-foreground">اللي في المعاينة فوق هو اللي بيتحفظ بالحرف — وتقدر تعدل أي واحدة بعد الحفظ من القايمة تحت.</span>
             </div>
           </CardContent>
         ) : (

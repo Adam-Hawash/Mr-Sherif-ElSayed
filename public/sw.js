@@ -34,18 +34,23 @@ self.addEventListener('activate', function (event) {
 self.addEventListener('fetch', function (event) {
   var req = event.request
   if (req.mode === 'navigate') {
-    /* (ز17) فشل أول fetch؟ غالبًا خدعة شبكة لحظية — إعادة محاولة بعد ٧٠٠ms
-       قبل ما نطوع صفحة الأوفلاين (المستر: الصفحة كانت بتظهر مع إن النت شغال) */
+    /* (ر23) فشل الشبكة اللحظي مش معناه مفيش نت — ٣ محاولات إعادة متدرجة
+       (٧٠٠ ثم ١٣٠٠ ثم ٢٢٠٠ms) قبل ما نطوع صفحة الأوفلاين — عشان رسالة
+       «مفيش اتصال» ما تظهرش والمنصة شغالة (المستر: بتقول مفيش نت وبعدين تشتغل) */
     event.respondWith(
-      fetch(req).catch(function () {
-        return new Promise(function (resolveRetry) {
-          setTimeout(function () {
-            fetch(req).then(resolveRetry).catch(function () {
-              caches.match(OFFLINE_URL).then(function (hit) { resolveRetry(hit || Response.error()) })
-            })
-          }, 700)
-        })
-      })
+      (async function () {
+        var waits = [700, 1300, 2200]
+        for (var i = -1; i < waits.length; i++) {
+          try {
+            if (i >= 0) {
+              await new Promise(function (resolve) { setTimeout(resolve, waits[i]) })
+            }
+            return await fetch(req)
+          } catch (e) { /* خدعة شبكة لحظية — محاولة تانية */ }
+        }
+        var hit = await caches.match(OFFLINE_URL)
+        return hit || Response.error()
+      })()
     )
   }
   /* غير التنقلات (API/ملفات) — تمرير عادي. ممنوع كاش أي API (بيانات حية) */
