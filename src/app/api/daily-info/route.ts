@@ -1,10 +1,13 @@
 // @ts-nocheck
 // FILE: src/app/api/daily-info/route.ts
-// (2026-ت4) معلومة اليوم / حكمة اليوم — طلب المستر حرفيًا:
-//   «كل يوم اقدر احط ملف ويكون في معلومات… هيقول له معلومة اليوم او حكمة اليوم
-//    ويجيب له كذا كذا ويكتبها له — زي اشعار كبير اول ما يفتح المنصة
-//    وفي علامة اكس فوق عشان الطالب يقفله — هو بيقعد 30 ثانية وبعد كده يتقفل»
-//   • GET  ?studentId=            → آخر معلومة (آخر 7 أيام) الطالب ما شافهاش
+// (ر22) معلومة اليوم / حكمة اليوم — طلب المستر حرفيًا:
+//   «عايز كارت المعلومات يظهر في الصفحة الرئيسية تظهر لكل الطلاب حتى اللي
+//    مش مسجلين معانا وتفضل ثابتة معاه حتى لما يعمل لوج ان — تتقفل لما
+//    يدوس بس على حرف الـ X — ما يكونش بوقت»
+//   • GET (بدون باراماترات)       → الوضع العام: معلومة النهاردة للكل بلا تسجيل
+//                                    دخول — ولو مفيش لنهاردة آخر معلومة نشطة
+//                                    في آخر 7 أيام (الإخفاء بيتعمل من الجهاز
+//                                    بالـ X + localStorage مش من السيرفر)
 //   • GET  ?adminId=              → كل المعلومات (للوحة الأدمن) + عدد المشاهدات
 //   • POST {adminId, ...}         → إضافة معلومة/حكمة ليوم محدد
 //   • PUT  {adminId, id, ...}     → تعديل
@@ -64,7 +67,6 @@ export async function GET(req: NextRequest) {
   try {
     var sp = new URL(req.url).searchParams
     var adminId = sp.get('adminId') || ''
-    var studentId = sp.get('studentId') || ''
     await ensureDailyInfoTables()
 
     /* وضع الأدمن — قايمة كاملة لآخر 60 معلومة + عدد اللي شافوا كل واحدة */
@@ -83,22 +85,22 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ items: out })
     }
 
-    /* وضع الطالب — آخر معلومة نشطة في آخر 7 أيام ما شافهاش لسه */
-    if (!studentId) return NextResponse.json({ error: 'studentId مطلوب' }, { status: 400 })
+    /* (ر22) الوضع العام — للكل بلا تسجيل دخول (زائر/طالب) بطلب المستر:
+       الكارت يظهر عامة على الصفحة الرئيسية — معلومة النهاردة أولًا،
+       ولو مفيش لنهاردة آخر معلومة نشطة في آخر 7 أيام.
+       الإخفاء مسؤولية الجهاز (X + localStorage) مش السيرفر. */
     var today = cairoDateKey()
+    var todayRows: any = await db.$queryRawUnsafe(
+      'SELECT * FROM DailyInfo WHERE active = 1 AND dateKey = ? ORDER BY createdAt DESC LIMIT 1',
+      today
+    ) || []
+    if (todayRows.length > 0) return NextResponse.json({ info: rowToInfo(todayRows[0]), today: today })
     var from = cairoDaysAgo(7)
     var rows: any = await db.$queryRawUnsafe(
-      "SELECT * FROM DailyInfo WHERE active = 1 AND dateKey >= ? AND dateKey <= ? ORDER BY dateKey DESC, createdAt DESC LIMIT 10",
+      'SELECT * FROM DailyInfo WHERE active = 1 AND dateKey >= ? AND dateKey <= ? ORDER BY dateKey DESC, createdAt DESC LIMIT 1',
       from, today
     ) || []
-    for (var j = 0; j < rows.length; j++) {
-      var cand = rowToInfo(rows[j])
-      var seen: any = []
-      try {
-        seen = await db.$queryRawUnsafe('SELECT 1 AS x FROM DailyInfoView WHERE infoId = ? AND studentId = ? LIMIT 1', cand.id, studentId) || []
-      } catch (e) {}
-      if (seen.length === 0) return NextResponse.json({ info: cand, today: today })
-    }
+    if (rows.length > 0) return NextResponse.json({ info: rowToInfo(rows[0]), today: today })
     return NextResponse.json({ info: null, today: today })
   } catch (error) {
     console.error('daily-info GET error:', error)

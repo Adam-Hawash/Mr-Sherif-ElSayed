@@ -2,18 +2,23 @@
 
 // ============================================================
 // FILE: src/components/student/DailyInfoToast.tsx
-// (2026-ت4) معلومة اليوم / حكمة اليوم — طلب المستر حرفيًا:
-//   «زي اشعار كده كبير جاي من ناحية الشمال اول ما يفتح المنصة
-//    وفي علامة اكس فوق عشان الطالب يقفله — هو بيقعد 30 ثانية وبعد كده يتقفل»
-//   • إشعار كبير ينزلق من الشمال أول ما الطالب يفتح منصته
-//   • علامة X فوق = يقفلها خالص ومش بتظهر تاني (تُسجّل كمشاهدة)
-//   • لو ما قفلهاش: بتعيد العد 30 ثانية وتتقفل لوحدها
-//   • كل معلومة بتظهر مرة واحدة بس لكل طالب (DailyInfoView)
+// (وN11) معلومة اليوم / حكمة اليوم — نسخة عامة للجميع بطلب المستر حرفيًا:
+//   «عايز كارت المعلومات يظهر في القسم أول ما الطالب يفتح المنصة —
+//    العادية اللي فيها صورة المستر — تظهر لكل الطلاب حتى اللي مش مسجلين
+//    معانا، تظهر عامة في الصفحة الرئيسية جنب الهيرو سيكشن وتفضل ثابتة
+//    معاه حتى لما يعمل لوج ان — تتقفل لما يدوس بس على حرف الـ X»
+//   «ما يكونش بوقت — مش بوقت ويختفي — لما أدوس X يختفي»
+//   • بتنزلق من الشمال أول ما أي حد يفتح المنصة (زائر/طالب — حتى غير المسجلين)
+//   • بتفضل ثابتة بعد تسجيل الدخول كمان — نفس الكارت بلا انقطاع
+//   • من غير أي مؤقت ولا إغلاق تلقائي — الإغلاق الوحيد هو زرار الـ X
+//   • الـ X = تتقفل خالص ومش بتظهر تاني (localStorage) + تسجيل مشاهدة للأدمن
+//   • أسفل الكارت توقيع بخط صغير: «MR احمد شعبان» في ناحية و«أدهم حواش» في ناحية
 // ============================================================
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { FileText, Lightbulb, Brain, X } from 'lucide-react'
+import { useAppStore } from '@/stores/app-store'
 
 interface DailyInfo {
   id: string
@@ -25,60 +30,73 @@ interface DailyInfo {
   mediaName: string
 }
 
-const AUTO_CLOSE_SECONDS = 30
+/* توقيع الكارت بطلب المستر: اختصار اسم المدرس بالإنجليزي في ناحية واسم المطور في ناحية */
+var TEACHER_TAG = 'MR شريف السيد'
+var DEV_TAG = 'أدهم حواش'
 
-export function DailyInfoToast({ studentId }: { studentId: string }) {
+/** معرفات الكروت المقفولة بالـ X — محفوظة محليًا فمش بتظهر تاني */
+var CLOSED_KEY = 'daily_info_closed_ids'
+
+function readClosed(): string[] {
+  try {
+    var raw = String(localStorage.getItem(CLOSED_KEY) || '[]')
+    var arr = JSON.parse(raw)
+    if (!Array.isArray(arr)) return []
+    return arr
+      .filter(function (x) { return typeof x === 'string' && x.length > 0 })
+      .slice(-200)
+  } catch (e) { return [] }
+}
+
+function rememberClosed(id: string): void {
+  try {
+    var arr = readClosed().filter(function (x) { return x !== id })
+    arr.push(id)
+    if (arr.length > 200) arr = arr.slice(-200)
+    localStorage.setItem(CLOSED_KEY, JSON.stringify(arr))
+  } catch (e) { /* صامت — الإغلاق المحلي شغال على أي حال */ }
+}
+
+export function DailyInfoToast() {
   const [info, setInfo] = useState<DailyInfo | null>(null)
-  const [secondsLeft, setSecondsLeft] = useState(AUTO_CLOSE_SECONDS)
-  const closedRef = useRef(false)
+  const currentStudent = useAppStore(function (s) { return s.currentStudent })
 
-  /* أول ما يفتح المنصة — نجيب آخر معلومة ما شافهاش */
+  /* أول ما أي حد يفتح المنصة — نجيب معلومة النهاردة (عامة للكل من غير تسجيل دخول)
+     والكروت المقفولة بالـ X على الجهاز ده عمرها ما بترجع تظهر */
   useEffect(function () {
-    if (!studentId || closedRef.current) return
     var alive = true
     ;(async function () {
+      var closed = readClosed()
       try {
-        const res = await fetch('/api/daily-info?studentId=' + encodeURIComponent(studentId), { cache: 'no-store' })
+        const res = await fetch('/api/daily-info', { cache: 'no-store' })
         const data = await res.json().catch(function () { return null })
         if (alive && res.ok && data && data.info && data.info.id) {
-          setInfo(data.info as DailyInfo)
-          setSecondsLeft(AUTO_CLOSE_SECONDS)
+          if (closed.indexOf(String(data.info.id)) < 0) {
+            setInfo(data.info as DailyInfo)
+          }
         }
       } catch (e) { /* صامت — مفيش معلومة النهاردة */ }
     })()
     return function () { alive = false }
-  }, [studentId])
+  }, [])
 
-  const close = useCallback(async function (markSeen: boolean) {
+  /* الإغلاق الوحيد = زرار الـ X — من غير أي وقت أو عد تنازلي (طلب المستر) */
+  const close = useCallback(async function () {
     const current = info
     setInfo(null)
-    closedRef.current = true
-    if (current && markSeen) {
+    if (!current) return
+    rememberClosed(String(current.id))
+    var sid = currentStudent && currentStudent.id ? String(currentStudent.id) : ''
+    if (sid) {
       try {
         await fetch('/api/daily-info/seen', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ studentId: studentId, infoId: current.id }),
+          body: JSON.stringify({ studentId: sid, infoId: current.id }),
         })
-      } catch (e) { /* صامت — مقفولة محليًا على أي حال */ }
+      } catch (e) { /* صامت — الإغلاق المحلي شغال على أي حال */ }
     }
-  }, [info, studentId])
-
-  /* العد التنازلي 30 ثانية — وبعدها تتقفل لوحدها */
-  useEffect(function () {
-    if (!info) return
-    setSecondsLeft(AUTO_CLOSE_SECONDS)
-    var left = AUTO_CLOSE_SECONDS
-    var timer = setInterval(function () {
-      left = left - 1
-      setSecondsLeft(Math.max(0, left))
-      if (left <= 0) {
-        clearInterval(timer)
-        void close(true)
-      }
-    }, 1000)
-    return function () { clearInterval(timer) }
-  }, [info, close])
+  }, [info, currentStudent])
 
   const isWisdom = info ? info.kind === 'wisdom' : false
 
@@ -96,17 +114,9 @@ export function DailyInfoToast({ studentId }: { studentId: string }) {
           aria-label={isWisdom ? 'حكمة اليوم' : 'معلومة اليوم'}
         >
           <div className="relative overflow-hidden rounded-2xl border-2 border-amber-400/60 bg-white text-right shadow-[0_20px_60px_rgba(0,0,0,0.35)] dark:border-amber-500/50 dark:bg-zinc-900">
-            {/* شريط العد التنازلي — بيفضى مع الـ 30 ثانية */}
-            <div className="absolute inset-x-0 top-0 h-1 bg-amber-100 dark:bg-zinc-800">
-              <div
-                className="h-full bg-gradient-to-l from-amber-400 to-emerald-400 transition-all duration-1000 ease-linear"
-                style={{ width: Math.max(0, (secondsLeft / AUTO_CLOSE_SECONDS) * 100) + '%' }}
-              />
-            </div>
-
-            {/* علامة X فوق — طلب المستر: الطالب يقفلها بيها خالص */}
+            {/* علامة X فوق — الإغلاق الوحيد للكارت بطلب المستر */}
             <button
-              onClick={function () { void close(true) }}
+              onClick={function () { void close() }}
               aria-label="إغلاق"
               className="absolute left-2.5 top-2.5 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-zinc-900/10 text-zinc-600 transition-colors hover:bg-zinc-900/20 hover:text-zinc-900 dark:bg-white/10 dark:text-zinc-300 dark:hover:bg-white/20 dark:hover:text-white"
             >
@@ -146,9 +156,11 @@ export function DailyInfoToast({ studentId }: { studentId: string }) {
                   />
                 )
               ) : null}
-              <p className="mt-2.5 text-[10px] font-medium text-zinc-400">
-                هتتقفل لوحدها بعد {secondsLeft} ثانية — أو اقفلها من الـ X
-              </p>
+              {/* (وN11) توقيع الكارت بطلب المستر: اسم المدرس في ناحية واسم المطور في ناحية — الاثنين بخط صغير */}
+              <div className="mt-3 flex items-center justify-between border-t border-zinc-200/80 pt-2 dark:border-zinc-700/60">
+                <span className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400">{TEACHER_TAG}</span>
+                <span className="text-[9px] font-semibold text-zinc-400 dark:text-zinc-500">{DEV_TAG}</span>
+              </div>
             </div>
           </div>
         </motion.div>

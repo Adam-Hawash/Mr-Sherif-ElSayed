@@ -72,8 +72,7 @@ import { GamifyNavbar } from '@/components/student/gamify/GamifyNavbar'
 import { GamifyHub } from '@/components/student/gamify/GamifyHub'
 /* (2026-ج2) سؤال اليوم بيجي زي إشعار أول ما الطالب يدخل صفحته — وتقدمه بيتحفظ */
 import { DailyQuestionPopup } from '@/components/student/gamify/DailyQuestionPopup'
-/* (2026-ت4) معلومة/حكمة اليوم — إشعار كبير ينزلق من الشمال أول ما يفتح المنصة */
-import { DailyInfoToast } from '@/components/student/DailyInfoToast'
+/* (وN11) معلومة/حكمة اليوم انتقلت لمستوى الصفحة (page.tsx) — مش محتاجينها هنا */
 /* (2026-ت5) أزرار تصوير صفحات الواجب/الامتحان — صفحة كاملة بأسئلتها وأجوبتها */
 import { PagePhotoCapture } from '@/components/student/PagePhotoCapture'
 
@@ -306,8 +305,7 @@ function StudentPortalInner() {
         <div className="mx-auto max-w-4xl space-y-5">
           {/* (2026-ج2) إشعار سؤال اليوم — أول حاجة الطالب يشوفها وهو داخل */}
           <DailyQuestionPopup studentId={studentId} grade={grade} />
-          {/* (2026-ت4) معلومة/حكمة اليوم — إشعار كبير من الشمال + X + إغلاق تلقائي 30 ثانية */}
-          <DailyInfoToast studentId={studentId} />
+          {/* (وN11) معلومة/حكمة اليوم انتقلت لمستوى الصفحة (page.tsx) — تفضل ثابتة جوه البورتال كمان */}
 
 
           {/* Welcome Card + Quick Actions on top */}
@@ -473,8 +471,7 @@ function StudentPortalInner() {
     <div className="flex-1 flex flex-col">
       {/* (2026-ج2) إشعار سؤال اليوم — بيجي زي الإشعارات، وبيختفي خالص بالـ X — مخفي لو الطالب واقف في تاب التحدي نفسه */}
       <DailyQuestionPopup studentId={studentId} grade={grade} suppressed={activeTab === 'gamify'} />
-      {/* (2026-ت4) معلومة/حكمة اليوم — إشعار كبير من الشمال + X + إغلاق تلقائي 30 ثانية */}
-      <DailyInfoToast studentId={studentId} />
+      {/* (وN11) معلومة/حكمة اليوم انتقلت لمستوى الصفحة (page.tsx) — للكل ومن غير مؤقت */}
 
 
       {/* Top Bar */}

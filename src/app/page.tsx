@@ -7,6 +7,8 @@ import { StudentPendingView } from '@/components/landing/StudentPendingView'
 import { StudentPaymentView } from '@/components/landing/StudentPaymentView'
 import { LoginView, RegisterView } from '@/components/landing/AuthPages'
 import { Reveal } from '@/components/landing/Reveal'
+/* (وN11) معلومة/حكمة اليوم — عامة للكل على الرئيسية وتفضل ثابتة بعد الدخول — X يقفلها بس */
+import { DailyInfoToast } from '@/components/student/DailyInfoToast'
 import dynamic from 'next/dynamic'
 import { useEffect, useState, useRef } from 'react'
 import { PlatformLoader } from '@/components/PlatformLoader'
@@ -210,6 +212,11 @@ export default function HomePage() {
     <div className="min-h-screen flex flex-col">
       <VideoProtection />
       <Navbar />
+
+      {/* (وN11) معلومة/حكمة اليوم بطلب المستر — عامة للكل على الصفحة الرئيسية
+          جنب الهيرو سيكشن حتى اللي مش مسجلين، وبتفضل ثابتة معاه حتى بعد تسجيل
+          الدخول — وبتتقفل بس لما يدوس على الـ X — من غير أي وقت خالص */}
+      {currentView !== 'admin-dashboard' && <DailyInfoToast />}
 
       {currentView === 'landing' && (
         <main className="flex-1">
