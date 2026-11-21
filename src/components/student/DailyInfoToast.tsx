@@ -2,6 +2,20 @@
 
 // ============================================================
 // FILE: src/components/student/DailyInfoToast.tsx
+// (وN14) قاعدة الفتح الجديدة بطلب المستر حرفيًا: «اللي يدوس على الحبة دي
+//   تفتح له المعلومة اللي هو الكارت الكبير بس يكون فوق زرار الـ install
+//   app بالضبط، فوقيه بالضبط ما يكونش سايب مسافة وما يكونش عالي قوي»:
+//   • الكارت المفتوح قاعده بييجي **فوق زرار «ثبّت التطبيق» بالضبط** —
+//     الزرار نفسه bottom 1rem + ارتفاعه 44px → قمة الزرار عند 3.75rem،
+//     والكارت قاعده على القمة دي بالظبط — صفر مسافة بينهم
+//   • على الديسكتوب مفيش زرار تثبيت (موبايل بس) — الكارت بيقعد فوق
+//     زرار الواتساب بالضبط بنفس قاعدة الصفر مسافة (الواتساب هنا ثابت
+//     على 4.75rem في كل الشاشات → قمته 8.25rem)
+//   • «ما يكونش عالي قوي» = سقف ارتفاع للكارت (60vh على الموبايل) —
+//     الكلام الزياد بيسكرول جوه الكارت نفسه من غير ما الكارت يعلى
+//   • والحبة في باقي المشاهد كانت بتقع ورا زرار التثبيت (نفس مكان).
+//     بقت قاعدة فوقيه بالضبط زي الكارت — وفوق الواتساب في مشاهد الهيرو
+//     (وكانت على الديسكتوب بتغطي الواتساب — اتظبطت كمان)
 // (ر24) معلومة اليوم / حكمة اليوم — تصميم «الحبة الذكية» بطلب المستر حرفيًا:
 //   «في اللابتوب او في الموبايل بتداري المستر مثلا... لما الطالب بيدخل
 //    على مواعيد السنتر ويشوف البرايفت كلاس من على الموبايل ما بتبقاش
@@ -126,31 +140,37 @@ export function DailyInfoToast() {
 
   const isWisdom = info ? info.kind === 'wisdom' : false
 
-  /* مكان الحبة: فوق زرار التثبيت والواتساب في مشاهد الهيرو، وتحت خالص في باقي المشاهد */
+  /* (وN14) مكان الحبة والكارت — طلب المستر حرفيًا:
+     الحبة: فوق زرار التثبيت والواتساب في مشاهد الهيرو (وعلى الديسكتوب فوق
+     الواتساب بالضبط — كانت بتغطيه)، وفي باقي المشاهد قاعدة **فوق زرار
+     التثبيت بالضبط** (كانت بتقع وراه من قبل) */
   var crowded = CROWDED_VIEWS.indexOf(String(currentView)) >= 0
-  var anchorClass = crowded
-    ? 'bottom-[calc(9.75rem+env(safe-area-inset-bottom))] md:bottom-24'
-    : 'bottom-[calc(1.25rem+env(safe-area-inset-bottom))]'
+  var pillAnchor = crowded
+    ? 'bottom-[calc(9.75rem+env(safe-area-inset-bottom))] md:bottom-[8.25rem]'
+    : 'bottom-[calc(3.75rem+env(safe-area-inset-bottom))] md:bottom-[1.25rem]'
+  /* (وN14) الكارت: فوق زرار «ثبّت التطبيق» بالضبط — صفر مسافة (1rem + 44px
+     = 3.75rem قمة الزرار). ديسكتوب: فوق الواتساب بالضبط (4.75rem + h-14
+     = 8.25rem قمة الواتساب) — نفس قاعدة الصفر مسافة */
+  var cardAnchor = 'bottom-[calc(3.75rem+env(safe-area-inset-bottom))] md:bottom-[8.25rem]'
 
   return (
-    <div
-      ref={wrapRef}
-      className={'fixed left-3 z-[85] sm:left-4 ' + anchorClass}
-    >
-      <AnimatePresence mode="wait">
-        {info && !open && (
-          /* ==================== الحبة الصغيرة ==================== */
-          <motion.button
-            key="pill"
-            initial={{ opacity: 0, y: 18, scale: 0.9 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 12, scale: 0.94 }}
-            transition={{ type: 'spring', stiffness: 320, damping: 24 }}
-            onClick={function () { setOpen(true) }}
-            aria-expanded={false}
-            aria-label={isWisdom ? 'حكمة اليوم — اضغط تفتحها' : 'معلومة اليوم — اضغط تفتحها'}
-            className="flex items-center gap-2 rounded-full border-2 border-amber-400/70 bg-white/95 py-2 pl-3.5 pr-3 shadow-[0_10px_35px_rgba(0,0,0,0.35)] backdrop-blur transition-transform hover:scale-[1.05] active:scale-95 dark:border-amber-500/60 dark:bg-zinc-900/95"
-          >
+    <div ref={wrapRef}>
+      {/* (وN14) حاوية الحبة — مكانها لوحدها عشان الكارت لما يفتح ينزل يقعد
+          فوق زرار التثبيت بالضبط من غير ما الحبة تتحرك من مكانها أثناء الخروج */}
+      <div className={'fixed left-3 z-[85] sm:left-4 ' + pillAnchor}>
+        <AnimatePresence mode="wait">
+          {info && !open && (
+            <motion.button
+              key="pill"
+              initial={{ opacity: 0, y: 18, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.94 }}
+              transition={{ type: 'spring', stiffness: 320, damping: 24 }}
+              onClick={function () { setOpen(true) }}
+              aria-expanded={false}
+              aria-label={isWisdom ? 'حكمة اليوم — اضغط تفتحها' : 'معلومة اليوم — اضغط تفتحها'}
+              className="flex items-center gap-2 rounded-full border-2 border-amber-400/70 bg-white/95 py-2 pl-3.5 pr-3 shadow-[0_10px_35px_rgba(0,0,0,0.35)] backdrop-blur transition-transform hover:scale-[1.05] active:scale-95 dark:border-amber-500/60 dark:bg-zinc-900/95"
+            >
             <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400">
               {isWisdom ? <Brain className="h-3.5 w-3.5" /> : <Lightbulb className="h-3.5 w-3.5" />}
             </span>
@@ -158,89 +178,100 @@ export function DailyInfoToast() {
               {isWisdom ? 'حكمة اليوم' : 'معلومة اليوم'}
             </span>
             {/* نقطة نابضة — بتلفت النظر من غير صوت ولا حركة مزعجة */}
-            <span className="relative flex h-2 w-2 shrink-0" aria-hidden="true">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-            </span>
-          </motion.button>
-        )}
+              <span className="relative flex h-2 w-2 shrink-0" aria-hidden="true">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+              </span>
+            </motion.button>
+          )}
+        </AnimatePresence>
+      </div>
 
-        {info && open && (
-          /* ==================== الكارت المفتوح — أصغر على الموبايل ==================== */
-          <motion.div
-            key="card"
-            initial={{ opacity: 0, y: 14, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 12, scale: 0.95 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 26 }}
-            style={{ transformOrigin: 'bottom left' }}
-            role="alertdialog"
-            aria-label={isWisdom ? 'حكمة اليوم' : 'معلومة اليوم'}
-            className="relative w-[calc(100vw-1.5rem)] max-w-[330px] overflow-hidden rounded-2xl border-2 border-amber-400/60 bg-white text-right shadow-[0_20px_60px_rgba(0,0,0,0.35)] dark:border-amber-500/50 dark:bg-zinc-900 sm:max-w-sm"
-          >
-            {/* شريط تدرج علوي — لمسة ديزاين ثابتة من غير أي وقت */}
-            <div className="h-1 w-full bg-gradient-to-l from-amber-400 via-emerald-400 to-amber-400" aria-hidden="true" />
+      {/* (وN14) حاوية الكارت — قاعده على قمة زرار «ثبّت التطبيق» بالضبط (صفر مسافة) */}
+      <div className={'fixed left-4 z-[85] ' + cardAnchor}>
+        <AnimatePresence mode="wait">
+          {info && open && (
+            /* ==================== الكارت المفتوح — فوق زرار التثبيت بالضبط،
+               بسقف ارتفاع (ما يكونش عالي قوي) وسكرول للمحتوى الزياد ==================== */
+            <motion.div
+              key="card"
+              initial={{ opacity: 0, y: 14, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.95 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 26 }}
+              style={{ transformOrigin: 'bottom left' }}
+              role="alertdialog"
+              aria-label={isWisdom ? 'حكمة اليوم' : 'معلومة اليوم'}
+              className="flex max-h-[min(60vh,24rem)] w-[calc(100vw-1.5rem)] max-w-[330px] flex-col overflow-hidden rounded-2xl border-2 border-amber-400/60 bg-white text-right shadow-[0_20px_60px_rgba(0,0,0,0.35)] dark:border-amber-500/50 dark:bg-zinc-900 sm:max-h-[26rem] sm:max-w-sm"
+            >
+              {/* شريط تدرج علوي — لمسة ديزاين ثابتة من غير أي وقت */}
+              <div className="h-1 w-full shrink-0 bg-gradient-to-l from-amber-400 via-emerald-400 to-amber-400" aria-hidden="true" />
 
-            {/* أزرار الكارت: التصغير (يرجع حبة) + الـ X (القفل النهائي الوحيد) */}
-            <div className="absolute left-2 top-3 z-10 flex items-center gap-1.5">
-              <button
-                onClick={function () { setOpen(false) }}
-                aria-label="تصغير — ترجع تاني من الحبة"
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-900/10 text-zinc-600 transition-colors hover:bg-zinc-900/20 hover:text-zinc-900 dark:bg-white/10 dark:text-zinc-300 dark:hover:bg-white/20 dark:hover:text-white"
-              >
-                <ChevronDown className="h-4 w-4" />
-              </button>
-              <button
-                onClick={function () { void closeForever() }}
-                aria-label="إغلاق نهائي"
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-900/10 text-zinc-600 transition-colors hover:bg-red-500/20 hover:text-red-600 dark:bg-white/10 dark:text-zinc-300 dark:hover:bg-red-500/30 dark:hover:text-red-300"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="px-3.5 pb-3 pt-4 sm:px-4 sm:pb-4 sm:pt-5">
-              <p className="flex items-center gap-1.5 text-xs font-extrabold text-amber-600 dark:text-amber-400">
-                {isWisdom ? <Brain className="h-4 w-4" /> : <Lightbulb className="h-4 w-4" />}
-                {isWisdom ? '🧠 حكمة اليوم' : '💡 معلومة اليوم'}
-              </p>
-              {info.title ? (
-                <h3 className="mt-1.5 text-sm font-extrabold leading-snug text-zinc-900 dark:text-zinc-100 sm:text-base">{info.title}</h3>
-              ) : null}
-              {info.body ? (
-                <p className="mt-1.5 max-h-36 overflow-y-auto whitespace-pre-wrap break-words text-[13px] leading-relaxed text-zinc-700 dark:text-zinc-300 sm:max-h-56 sm:text-sm">
-                  {info.body}
+              {/* رأس الكارت ثابت: العنوان يمين + أزرار التصغير والـ X شمال —
+                  ما بيتغطوش لما المحتوى ييسكرول تحتهم */}
+              <div dir="rtl" className="flex shrink-0 items-center justify-between gap-2 px-3.5 pt-3 sm:px-4 sm:pt-4">
+                <p className="flex items-center gap-1.5 text-xs font-extrabold text-amber-600 dark:text-amber-400">
+                  {isWisdom ? <Brain className="h-4 w-4" /> : <Lightbulb className="h-4 w-4" />}
+                  {isWisdom ? '🧠 حكمة اليوم' : '💡 معلومة اليوم'}
                 </p>
-              ) : null}
-              {info.mediaPath ? (
-                info.mediaPath.toLowerCase().indexOf('.pdf') >= 0 ? (
-                  <a
-                    href={info.mediaPath}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-2.5 inline-flex min-h-11 items-center gap-2 rounded-lg border border-sky-300 bg-sky-50 px-3 text-sm font-bold text-sky-700 hover:bg-sky-100 dark:border-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={function () { setOpen(false) }}
+                    aria-label="تصغير — ترجع تاني من الحبة"
+                    className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-900/10 text-zinc-600 transition-colors hover:bg-zinc-900/20 hover:text-zinc-900 dark:bg-white/10 dark:text-zinc-300 dark:hover:bg-white/20 dark:hover:text-white"
                   >
-                    <FileText className="h-4 w-4" />
-                    افتح الملف {info.mediaName ? '— ' + info.mediaName.slice(0, 40) : ''}
-                  </a>
-                ) : (
-                  /* eslint-disable-next-line @next/next/no-img-element */
-                  <img
-                    src={info.mediaPath}
-                    alt={info.title || 'مرفق معلومة اليوم'}
-                    className="mt-2.5 max-h-40 w-full rounded-xl border border-zinc-200 object-contain dark:border-zinc-700 sm:max-h-64"
-                  />
-                )
-              ) : null}
-              {/* توقيع الكارت بطلب المستر: اسم المستر في ناحية واسم المطور في ناحية — الاثنين بخط صغير */}
-              <div className="mt-3 flex items-center justify-between border-t border-zinc-200/80 pt-2 dark:border-zinc-700/60">
-                <span className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400">{TEACHER_TAG}</span>
-                <span className="text-[9px] font-semibold text-zinc-400 dark:text-zinc-500">{DEV_TAG}</span>
+                    <ChevronDown className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={function () { void closeForever() }}
+                    aria-label="إغلاق نهائي"
+                    className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-900/10 text-zinc-600 transition-colors hover:bg-red-500/20 hover:text-red-600 dark:bg-white/10 dark:text-zinc-300 dark:hover:bg-red-500/30 dark:hover:text-red-300"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+
+              {/* المحتوى بيسكرول جوه الكارت — الكارت نفسه عمره ما يعلى فوق السقف */}
+              <div className="min-h-0 flex-1 overflow-y-auto px-3.5 pb-3 pt-1 sm:px-4 sm:pb-4">
+                {info.title ? (
+                  <h3 className="text-sm font-extrabold leading-snug text-zinc-900 dark:text-zinc-100 sm:text-base">{info.title}</h3>
+                ) : null}
+                {info.body ? (
+                  <p className="mt-1.5 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-zinc-700 dark:text-zinc-300 sm:text-sm">
+                    {info.body}
+                  </p>
+                ) : null}
+                {info.mediaPath ? (
+                  info.mediaPath.toLowerCase().indexOf('.pdf') >= 0 ? (
+                    <a
+                      href={info.mediaPath}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-2.5 inline-flex min-h-11 items-center gap-2 rounded-lg border border-sky-300 bg-sky-50 px-3 text-sm font-bold text-sky-700 hover:bg-sky-100 dark:border-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
+                    >
+                      <FileText className="h-4 w-4" />
+                      افتح الملف {info.mediaName ? '— ' + info.mediaName.slice(0, 40) : ''}
+                    </a>
+                  ) : (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img
+                      src={info.mediaPath}
+                      alt={info.title || 'مرفق معلومة اليوم'}
+                      className="mt-2.5 max-h-40 w-full rounded-xl border border-zinc-200 object-contain dark:border-zinc-700 sm:max-h-64"
+                    />
+                  )
+                ) : null}
+                {/* توقيع الكارت بطلب المستر: اسم المستر في ناحية واسم المطور في ناحية — الاثنين بخط صغير */}
+                <div className="mt-3 flex items-center justify-between border-t border-zinc-200/80 pt-2 dark:border-zinc-700/60">
+                  <span className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400">{TEACHER_TAG}</span>
+                  <span className="text-[9px] font-semibold text-zinc-400 dark:text-zinc-500">{DEV_TAG}</span>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   )
 }

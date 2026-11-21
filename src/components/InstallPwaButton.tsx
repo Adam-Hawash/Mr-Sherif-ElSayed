@@ -14,6 +14,7 @@
 // (2026-و111) النصوص بقت ثنائية اللغة عربي/إنجليزي — المستر بيفتح المنصة EN
 // ============================================================
 import { useEffect, useState } from 'react'
+import { usePathname } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Smartphone, X, Download } from 'lucide-react'
 import { toast } from 'sonner'
@@ -187,10 +188,15 @@ export function InstallPwaButton({ variant = 'default', size, className = '', la
 }
 
 /* (2026-و109) الزرار العايم الثابت — شمال تحت في كل الصفحات حتى مع النزول
-   (2026-و110) بقى ظاهر دايمًا كمان — مفيش حالة بيختفي فيها خالص */
+   (2026-و110) بقى ظاهر دايمًا كمان — مفيش حالة بيختفي فيها خالص
+   (وN14) استثناء واحد جديد بطلب المستر حرفيًا: «لما الطالب يجي يدخل مواعيد
+   السنتر زرار الـ install app يتشال من قدامه» — الزرار كان بيغطي لينك
+   حصص البرايفت اللي تحت على الشمال في صفحة المواعيد على الموبايل */
 export function FloatingInstallButton() {
   var pwa = usePwaInstall()
   var T = useT()
+  var pathname = usePathname()
+  if (pathname && pathname.indexOf('/schedule') === 0) return null
   return (
     <>
       <button
