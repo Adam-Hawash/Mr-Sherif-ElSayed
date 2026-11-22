@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "next start",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "build:cf": "prisma generate && opennextjs-cloudflare build",
+    "prebuild:cf": "node scripts/patch-canvas-cf.cjs",
+    "preview:cf": "opennextjs-cloudflare preview",
+    "deploy:cf": "opennextjs-cloudflare deploy"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",
@@ -55,6 +59,7 @@
     "zustand": "^5.0.5"
   },
   "devDependencies": {
+    "@opennextjs/cloudflare": "1.20.18",
     "@types/katex": "^0.16.8",
     "@types/web-push": "^3.6.4"
   }

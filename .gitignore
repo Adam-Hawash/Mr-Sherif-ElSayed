@@ -7,3 +7,5 @@ dev.log
 *.db
 prisma/db/*.db*
 db/custom.db*
+.open-next/
+.wrangler/

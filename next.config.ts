@@ -8,6 +8,8 @@ const nextConfig: NextConfig = {
   serverExternalPackages: [
     '@libsql/client',
     '@prisma/adapter-libsql',
+    '@prisma/client',
+    '@prisma/engines',
     '@libsql/isomorphic-fetch',
     '@libsql/isomorphic-ws',
     /* (ز29) القص السيرفري للرسومات — pdf.js legacy + napi canvas لازم يفضلوا خارجية
@@ -37,6 +39,13 @@ const nextConfig: NextConfig = {
       './node_modules/@napi-rs/canvas/**',
       './node_modules/@napi-rs/canvas-linux-x64-gnu/**',
       './node_modules/@napi-rs/canvas-linux-x64-musl/**',
+    ],
+    '/api/**': [
+      './node_modules/@prisma/engines/**',
+      './node_modules/.prisma/**',
+      './node_modules/@prisma/client/**',
+      './node_modules/pdfjs-dist/**',
+      './node_modules/@napi-rs/canvas/**',
     ],
   },
   experimental: {
