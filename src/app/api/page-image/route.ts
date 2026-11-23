@@ -1,17 +1,20 @@
-// @ts-nocheck
 // ============================================================
-// (Z-40e) /api/page-image — رندر صفحة من الملف الأصلي المخزن على السيرفر
+// (Z-40e → وN16) /api/page-image — رندر صفحة من الملف الأصلي المخزن على السيرفر
 // ============================================================
 // الهدف: زرار «✂️ عدّل القص» يبقى مستحيل يفشل. لو المتصفح عجز (المستند
 // اتقفل من الذاكرة أو pdf.js وقع) — السيرفر نفسه بيرندر صفحة الأصل من
 // الملف المتخزن في Media ويرجّعها JPEG بجودة عالية — من غير أي pdf.js
 // على جهاز المستر.
+// (وN16) الرندر بقى عبر mupdf WASM مسبق الترجمة (src/lib/image-engine.ts)
+// — بيشتغل على Cloudflare Workers وNode بنفس الكود، بدون napi canvas ولا
+// pdf.js سيرفري ولا أي مكتبة native.
 // مصدر الملف: Media.data (base64) — نفس مصدر /api/crop-figures.
 // الحماية: isAdmin زي باقي راوتات الأدمن.
 // ============================================================
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { isAdmin } from '@/lib/video-guard'
+import { renderPdfPageToJpeg } from '@/lib/image-engine'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -53,63 +56,15 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    /* PDF → رندر سيرفري بنفس طبقة /api/crop-figures (napi canvas قبل استيراد pdf.js) */
-    var { createCanvas, DOMMatrix, Path2D, ImageData } = await import('@napi-rs/canvas')
-    if (!(globalThis as any).DOMMatrix) (globalThis as any).DOMMatrix = DOMMatrix
-    if (!(globalThis as any).Path2D) (globalThis as any).Path2D = Path2D
-    if (!(globalThis as any).ImageData) (globalThis as any).ImageData = ImageData
-    /* (Z-40e) تسجيل worker الـ pdf.js صراحة — على فيرسل الـ import الداخلي
-       بتاع pdf.worker.mjs مش بيتتبع فالملف بيتبعد عن النشر ويقع «fake worker».
-       الاستيراد الصريح بيخلي الباندلر يشمله + بنسجله في globalThis زي ما
-       pdf.js بيفحصه الأول في setupFakeWorkerGlobal */
-    try {
-      var wmod: any = await import('pdfjs-dist/legacy/build/pdf.worker.mjs')
-      if (wmod && !(globalThis as any).pdfjsWorker) (globalThis as any).pdfjsWorker = wmod
-    } catch (eW) {}
-    var pdfjs: any = await import('pdfjs-dist/legacy/build/pdf.mjs')
-
-    var pathMod = await import('path')
-    var fsMod = await import('fs')
-    var standardFonts = ''
-    try {
-      var pkgJson = 'node_modules/pdfjs-dist/standard_fonts/'
-      if (fsMod.existsSync(pkgJson)) standardFonts = pathMod.resolve(pkgJson)
-    } catch (eF) { standardFonts = '' }
-
-    var doc: any = null
-    try {
-      doc = await pdfjs.getDocument({
-        data: new Uint8Array(buf),
-        isEvalSupported: false,
-        useSystemFonts: true,
-        standardFontDataUrl: standardFonts || undefined,
-      }).promise
-    } catch (eOpen: any) {
-      return NextResponse.json({ error: 'مقدرتش أفتح ملف الـ PDF على السيرفر: ' + String((eOpen && eOpen.message) || eOpen) }, { status: 422 })
+    /* PDF → رندر mupdf WASM سيرفري (وN16) */
+    var outJpeg = await renderPdfPageToJpeg(buf, pageNo, 2000, 0.9)
+    if (!outJpeg) {
+      return NextResponse.json({ error: 'مقدرتش أفتح ملف الـ PDF على السيرفر' }, { status: 422 })
     }
-
-    try {
-      var numPages = Number(doc.numPages) || 1
-      var n = Math.min(Math.max(1, pageNo), numPages)
-      var page = await doc.getPage(n)
-      var base = page.getViewport({ scale: 1 })
-      var longest = Math.max(base.width, base.height) || 1600
-      var scale = Math.min(4, 2000 / longest)
-      var vp = page.getViewport({ scale: scale })
-      var canvas = createCanvas(Math.max(1, Math.ceil(vp.width)), Math.max(1, Math.ceil(vp.height)))
-      var ctx = canvas.getContext('2d')
-      ctx.fillStyle = '#ffffff'
-      ctx.fillRect(0, 0, canvas.width, canvas.height)
-      await page.render({ canvasContext: ctx, viewport: vp }).promise
-      page.cleanup()
-      var outJpeg = await canvas.encode('jpeg', 90)
-      return new NextResponse(new Uint8Array(outJpeg), {
-        status: 200,
-        headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'no-store' },
-      })
-    } finally {
-      try { doc.destroy() } catch (eD) {}
-    }
+    return new NextResponse(new Uint8Array(outJpeg), {
+      status: 200,
+      headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'no-store' },
+    })
   } catch (e: any) {
     console.error('[page-image] error:', e)
     return NextResponse.json({ error: 'فشل رندر الصفحة على السيرفر: ' + String((e && e.message) || e) }, { status: 500 })

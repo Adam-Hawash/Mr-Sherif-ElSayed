@@ -1,12 +1,15 @@
 // ============================================================
-// SERVER-FIGURES (و49) — قص رسومات الأسئلة **على السيرفر**
+// SERVER-FIGURES (و49 → وN16) — قص رسومات الأسئلة **على السيرفر**
 // ============================================================
-// سبب الإصلاح الجذري: القص كان كله على متصفح المستر (pdf.js + canvas +
-// رفع) — أي فشل (متصفح قديم، ملف كبير، pdf.js وقع، الرفع وقع) كان بيقع
-// **بصمت** وبتفضل bbox من غير url → placeholder «في صورة بس مش شايفها».
-// دلوقتي: ملف الاستخراج بيوصلك للسيرفر أصلًا (FormData أو لينك) — فبنقص
-// الرسمات هنا مباشرة ونرفعها على جدول Media ونرجّع figure.url معباية
-// من غير ما أي حاجة تعتمد على متصفح المستر.
+// (وN16) محرك الصور بقى موحد يعمل في كل البيئات: Node + Cloudflare Workers
+// - رندر PDF: mupdf WASM مسبق الترجمة (بدل pdf.js + napi canvas اللي ما
+//   بيشتغلوش في workerd نهائيًا) — see src/lib/image-engine.ts
+// - فك/ترميز الصور: @jsquash jpeg/png مسبق الترجمة (بدل @napi-rs/canvas)
+// - القص والتكبير ومسح الحبر: pure JS على مصفوفة RGBA — نفس النتائج بالحرف
+//
+// سبب الإصلاح الجذري الأصلي: القص كان كله على متصفح المستر — أي فشل كان
+// بيقع **بصمت** وبتفضل bbox من غير url. دلوقتي: ملف الاستخراج بيوصلك للسيرفر
+// أصلًا فبنقص الرسمات هنا مباشرة ونرفعها على جدول Media.
 //
 // القص على المتصفح (ensureFigureUrls) فضل موجود كطبقة تانية للأمان —
 // أي رسمة السيرفر قصّها بتبقى فيها url فالمتصفح بيتخطاها خالص.
@@ -16,6 +19,16 @@ import { db } from '@/lib/db'
 import { splitMergedRegion } from '@/lib/figure-demerger'
 /* (ز42) حارس الحبر — لصق القص الفاضي على أقرب رسمة حقيقية (نفس منطق المتصفح) */
 import { snapCropFromPx } from '@/lib/figure-locator'
+/* (وN16) المحرك الموحد — mupdf + jsquash + pure JS — شغال Node وWorkers */
+import {
+  decodeImage,
+  encodeJpeg,
+  cropImage,
+  resizeImage,
+  regionPixels,
+  renderPdfPage,
+  type RawImage,
+} from '@/lib/image-engine'
 
 /* تطبيع bbox ذكي — النموذج ساعات بيرجع مقياس 0..1000 (بروتوكول Gemini)
    بدل 0..1 — بنكتشف ده ونحوّله، وإلا بيتقفل في sanitize (قيمة >1) والقص
@@ -90,38 +103,27 @@ export interface ServerCropResult {
 export interface ServerCropCrop { q: any; buf: Buffer }
 
 /* ============================================================
- * (و52) جودة القص — إصلاح «الرسومات متلخبطة وجودتها وحشة ومش كاملة»:
- * 1) padding حوالين bbox — الـ AI بيرجع bbox ضيّق فالقص بيقص من الرسمة نفسها
- * 2) رصّ على المحتوى الفعلي (refineByContent): جوّه المنطقة الموسعة بنلاقي
- *    البكسلات الغير بيضا ونعمل tight bounds حوالين الرسمة + هامش صغير —
- *    ده بيفسّر bbox المزاح أوتوماتيك بدل ما يطلع قص فاضي/ناقص
- * 3) الجودة: JPEG 0.92 + كاب 1600 بدل 0.85/1200 — ورندر صفحة أعلى (2000)
- * (و53) فك الالتحام (figure-demerger): «بيقص رسمتين جنب بعض والسؤال فيه
- *    رسمة واحدة» — بنحط الكتلة المطلوبة لوحدها بدل اتحاد الرسمتين
- * (و53) ترتيب المسار اتقلب: السيرفر بقى **إنقاذ فقط** — الاستخراج بيرجّع
- *    bbox من غير urls والمتصفح بيقص الأول من الملف الأصلي بجودته الكاملة
- *    (كان القص السيرفري وقت الاستخراج بيملا الـ urls وبيمنع قص المتصفح
- *    الأعلى جودة — وده اللي نزل جودة الرسمات — والمحرر اليدوي بيثبت ده:
- *    نفس القص من المتصفح بطلع أنضف)
+ * (و52) جودة القص — padding + رصّ على المحتوى + JPEG 0.92 + كاب 1600
+ * (و53) فك الالتحام + السيرفر إنقاذ فقط والمتصفح يقص الأول
+ * (وN16) المحرك بقى mupdf + jsquash — شغال على كلاود فلير وNode بنفس الكود
  * ============================================================ */
 
 /* منطقة قص بعد التنقيط — فشل التنقيط بيرجّع المنطقة الأصلية (آمن) */
 interface CropRegion { x: number; y: number; w: number; h: number }
 
 /** تقليم الهوامش البيضا داخل منطقة القص — بيرجّع tight region حوالين المحتوى */
-function refineByContent(canvas: any, sx: number, sy: number, sw: number, sh: number): CropRegion {
+function refineByContent(img: RawImage, sx: number, sy: number, sw: number, sh: number): CropRegion {
   var fallback: CropRegion = { x: sx, y: sy, w: sw, h: sh }
   try {
-    var ctx = canvas.getContext('2d')
-    if (!ctx || sw < 16 || sh < 16) return fallback
-    var img = ctx.getImageData(sx, sy, sw, sh)
-    var d = img.data
+    if (sw < 16 || sh < 16) return fallback
+    var W = img.w
+    var d = img.d
     var rowHas = new Uint8Array(sh)
     var colHas = new Uint8Array(sw)
     /* خطوة 2 للمستطيلات العريضة — سرعة من غير فقدان دقة ملموس */
     var step = sw > 1000 ? 2 : 1
     for (var y = 0; y < sh; y++) {
-      var base = y * sw * 4
+      var base = (sy + y) * W * 4 + sx * 4
       for (var x = 0; x < sw; x += step) {
         var i = base + x * 4
         var lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]
@@ -150,7 +152,6 @@ function refineByContent(canvas: any, sx: number, sy: number, sw: number, sh: nu
  * src: base64 أو Buffer للـ PDF/الصورة + اسم/نوع الملف — أو **صفحات جاهزة**:
  *   src.pages = [{ n: رقم الصفحة, base64: JPEG بدون dataURL prefix }] (و50)
  *   — مسار «الملفات الكبيرة/الكتاب» بيبعت صفحات متصورة أصلًا فبنقص منها مباشرة
- *   من غير pdf.js ولا rasterizer — أسرع وأثبت.
  * بيرجع إحصائية (قصّ ناجح/فشل/إجمالي) عشان الرد يوضّح للأدمن لو حاجة فشلت.
  * أي فشل في رسمة واحدة مش بيوقف الباقي — والفشل الكلي مش بيكسر الاستخراج.
  */
@@ -170,26 +171,19 @@ export async function cropFiguresServerSide(
 
     /* (و50) وضع الصفحات الجاهزة (مسار ai-extract-pages) — قص مباشر من صور الصفحات */
     if (Array.isArray(src.pages) && src.pages.length > 0) {
-      var canvasByPage: Record<number, any> = {}
-      var { createCanvas: cc1 } = await import('@napi-rs/canvas')
+      var imgByPage: Record<number, RawImage | null> = {}
       for (var pi = 0; pi < src.pages.length; pi++) {
         var pg = src.pages[pi]
         if (!pg || typeof pg.n !== 'number' || !pg.base64) continue
         try {
-          var pbuf = Buffer.from(pg.base64, 'base64')
+          var pbuf = toBuffer({ base64: pg.base64 })
           if (!pbuf || pbuf.length === 0) continue
-          var { loadImage: li1 } = await import('@napi-rs/canvas')
-          var pimg = await li1(pbuf)
-          var pc = cc1(pimg.width, pimg.height)
-          var pctx = pc.getContext('2d')
-          pctx.fillStyle = '#ffffff'
-          pctx.fillRect(0, 0, pc.width, pc.height)
-          pctx.drawImage(pimg, 0, 0)
-          canvasByPage[pg.n] = pc
+          var pimg = await decodeImage(pbuf)
+          imgByPage[pg.n] = pimg
         } catch (eP) { /* صفحة فاسدة → رسماتها تفشل والباقي يتم */ }
       }
-      var getFromPages = async function (pageNo: number): Promise<any | null> {
-        return canvasByPage[pageNo] || null
+      var getFromPages = async function (pageNo: number): Promise<RawImage | null> {
+        return imgByPage[pageNo] || null
       }
       for (var tpi = 0; tpi < targets.length; tpi++) {
         var okP = await cropOne(targets[tpi], getFromPages, wantBuf, cropsOut)
@@ -210,81 +204,43 @@ export async function cropFiguresServerSide(
 
     if (!isPdf) {
       /* صورة مفردة = صفحة 1 كاملة — القص منها مباشرة */
-      var imgCanvas = await imageToCanvas(buf)
-      if (!imgCanvas) { result.failed = targets.length; return result }
+      var imgSingle = await decodeImage(buf)
+      if (!imgSingle) { result.failed = targets.length; return result }
       for (var ti = 0; ti < targets.length; ti++) {
-        var ok = await cropOne(targets[ti], async function () { return imgCanvas }, wantBuf, cropsOut)
+        var ok = await cropOne(targets[ti], async function () { return imgSingle }, wantBuf, cropsOut)
         if (ok) result.cropped++; else result.failed++
       }
       if (wantBuf && cropsOut.length > 0) result.crops = cropsOut
       return result
     }
 
-    /* PDF: pdf.js legacy build + napi canvas — نفس المستند متقفل في الآخر
-       (و49 مهم: الـ polyfills بتاعة napi canvas لازم تتنصب **قبل** استيراد
-       pdf.js — pdf.js بياخد نسخة من الكلاسات العالمية وقت الاستيراد، لو
-       Path2D/DOMMatrix مش موجودين بيستخدم شكله الداخلي وnapi canvas يرفضه
-       بخطأ «Value is none of these types String, Path» والقص يفشل كله) */
-    var { createCanvas, DOMMatrix, Path2D, ImageData } = await import('@napi-rs/canvas')
-    if (!(globalThis as any).DOMMatrix) (globalThis as any).DOMMatrix = DOMMatrix
-    if (!(globalThis as any).Path2D) (globalThis as any).Path2D = Path2D
-    if (!(globalThis as any).ImageData) (globalThis as any).ImageData = ImageData
-    /* (Z-40e) تسجيل worker الـ pdf.js صراحة — على فيرسل الـ import الداخلي
-       بتاع pdf.worker.mjs مش بيتتبع فالملف بيتبعد عن النشر ويقع «fake worker»
-       (نفس العلة اللي كانت هتقع في /api/page-image) — الاستيراد الصريح بيخلي
-       الباندلر يشمله وبنسجله في globalThis زي ما pdf.js بيفحصه الأول */
+    /* (وN16) PDF → رندر mupdf WASM مباشرة — نفس المستند متقفل في الآخر.
+       رندر أعلى (2000) — مصدر القص نفسه هو اللي بيحدد نعومة الرسمة (و52) */
+    var doc = null
+    var numPages = 0
     try {
-      var wmod: any = await import('pdfjs-dist/legacy/build/pdf.worker.mjs')
-      if (wmod && !(globalThis as any).pdfjsWorker) (globalThis as any).pdfjsWorker = wmod
-    } catch (eW) {}
-    var pdfjs: any = await import('pdfjs-dist/legacy/build/pdf.mjs')
-
-    var pathMod = await import('path')
-    var fsMod = await import('fs')
-    var standardFonts = ''
-    try {
-      var pkgJson = 'node_modules/pdfjs-dist/standard_fonts/'
-      if (fsMod.existsSync(pkgJson)) standardFonts = pathMod.resolve(pkgJson)
-    } catch (eF) { standardFonts = '' }
-
-    var doc: any = null
-    try {
-      doc = await pdfjs.getDocument({
-        data: new Uint8Array(buf),
-        isEvalSupported: false,
-        useSystemFonts: true,
-        standardFontDataUrl: standardFonts || undefined,
-      }).promise
+      var firstPage = await renderPdfPage(buf, 1, 2000)
+      if (!firstPage) { result.failed = targets.length; return result }
+      /* رندر الصفحة الأولى نجح — المستند مفتوح؛ نعرف عدد الصفحات من الرندر
+         نفسه مش مطلوب — كل استدعاء رندر بيحصّر حد الصفحات لوحده */
+      numPages = -1
     } catch (eOpen) {
       result.failed = targets.length
       return result
     }
 
     try {
-      var numPages = Number(doc.numPages) || 0
       /* كاش صفحات — الصفحة الواحدة بتطلع منها أكتر من رسمة */
-      var pageCache: Record<number, any> = {}
-      var getPage = async function (pageNo: number): Promise<any | null> {
-        if (pageCache[pageNo]) return pageCache[pageNo]
+      var pageCache: Record<number, RawImage | null> = {}
+      var getPage = async function (pageNo: number): Promise<RawImage | null> {
+        if (pageCache[pageNo] !== undefined) return pageCache[pageNo]
         var n = pageNo
         if (n < 1) n = 1
-        if (numPages > 0 && n > numPages) n = numPages /* صفحة خارجة عن المستند → آخر صفحة (أفضل من الفشل الصامت) */
         try {
-          var page = await doc.getPage(n)
-          var base = page.getViewport({ scale: 1 })
-          var longest = Math.max(base.width, base.height) || 1600
-          /* (و52) رندر أعلى — مصدر القص نفسه هو اللي بيحدد نعومة الرسمة */
-          var scale = Math.min(4, 2000 / longest)
-          var vp = page.getViewport({ scale: scale })
-          var canvas = createCanvas(Math.max(1, Math.ceil(vp.width)), Math.max(1, Math.ceil(vp.height)))
-          var ctx = canvas.getContext('2d')
-          ctx.fillStyle = '#ffffff'
-          ctx.fillRect(0, 0, canvas.width, canvas.height)
-          await page.render({ canvasContext: ctx, viewport: vp }).promise
-          page.cleanup()
-          pageCache[pageNo] = canvas
-          return canvas
-        } catch (ePage) { return null }
+          var img = await renderPdfPage(buf, n, 2000)
+          pageCache[pageNo] = img
+          return img
+        } catch (ePage) { pageCache[pageNo] = null; return null }
       }
 
       for (var i = 0; i < targets.length; i++) {
@@ -293,7 +249,7 @@ export async function cropFiguresServerSide(
       }
       if (wantBuf && cropsOut.length > 0) result.crops = cropsOut
     } finally {
-      try { doc.destroy() } catch (eD) {}
+      /* (وN16) مفيش مستند مفتوح يحتاج destroy — الرندر بيفتح ويقفل لكل صفحة */
     }
     return result
   } catch (eAll: any) {
@@ -303,12 +259,12 @@ export async function cropFiguresServerSide(
   }
 }
 
-/* قص هدف واحد من canvas الصفحة ورفعه — يرجع true لو نجح
+/* قص هدف واحد من صورة الصفحة ورفعه — يرجع true لو نجح
    (وN4) wantBuf + cropsOut: جمع buffer الرسمة المقصوصة (مستوى السؤال بس)
    عشان figure-zoom يقراها بالتكبير من غير DB إضافي */
 async function cropOne(
   tgt: CropTarget,
-  getPageCanvas: (page: number) => Promise<any | null>,
+  getPageCanvas: (page: number) => Promise<RawImage | null>,
   wantBuf?: boolean,
   cropsOut?: ServerCropCrop[]
 ): Promise<boolean> {
@@ -318,14 +274,13 @@ async function cropOne(
     var bbox = smartBbox(fig && fig.bbox)
     if (!bbox) return false
     var page = parseInt(String((fig && fig.page) || q.sourcePage || 1), 10) || 1
-    var pageCanvas = await getPageCanvas(page)
-    if (!pageCanvas) return false
+    var pageImg = await getPageCanvas(page)
+    if (!pageImg) return false
 
-    var { createCanvas } = await import('@napi-rs/canvas')
     /* (و52) padding حوالين bbox — رسمة السؤال هامش أكبر، رسومات الاختيارات
        أقل (العناوين جنب بعض عشان ماحضنش رسمة الاختيار اللي جنبه) */
     var padFrac = tgt.kind === 'q' ? 0.025 : 0.012
-    var pW = pageCanvas.width, pH = pageCanvas.height
+    var pW = pageImg.w, pH = pageImg.h
     var sx = Math.max(0, Math.floor((bbox.x - padFrac) * pW))
     var sy = Math.max(0, Math.floor((bbox.y - padFrac) * pH))
     var ex = Math.min(pW, Math.ceil((bbox.x + bbox.w + padFrac) * pW))
@@ -334,15 +289,14 @@ async function cropOne(
     if (sw < 8 || sh < 8) return false
 
     /* (و52) رصّ القص على المحتوى الفعلي — تقليم البيض جوه المنطقة الموسعة */
-    var reg = refineByContent(pageCanvas, sx, sy, sw, sh)
+    var reg = refineByContent(pageImg, sx, sy, sw, sh)
     /* (و53) فك الالتحام — لو المنطقة التهمت رسمة مجاورة (رسمتين جنب بعض
        والسؤال فيه رسمة واحدة) بنقص الكتلة اللي bbox السؤال بيشاور عليها بس */
     var regD = splitMergedRegion(function (gx: number, gy: number, gw: number, gh: number) {
       try {
-        var gctx = pageCanvas.getContext('2d')
-        if (!gctx) return null
-        var gimg = gctx.getImageData(gx, gy, gw, gh)
-        return { d: gimg.data, w: gimg.width, h: gimg.height }
+        var r = regionPixels(pageImg, gx, gy, gw, gh)
+        if (!r) return null
+        return { d: r.d, w: r.w, h: r.h }
       } catch (eG) { return null }
     }, reg, { x0: bbox.x * pW, y0: bbox.y * pH, x1: (bbox.x + bbox.w) * pW, y1: (bbox.y + bbox.h) * pH })
     sx = regD.x; sy = regD.y; sw = regD.w; sh = regD.h
@@ -352,32 +306,22 @@ async function cropOne(
        في مكان غلط على الصفحة) بنلصقها على أقرب كتلة محتوى حقيقية مكشوفة
        من بكسلات الصفحة نفسها — نفس منطق المتصفح بالظبط */
     try {
-      var { createCanvas: ccA } = await import('@napi-rs/canvas')
-      var longestA = Math.max(pageCanvas.width, pageCanvas.height) || 1
+      var longestA = Math.max(pageImg.w, pageImg.h) || 1
       var scaleA = Math.min(1, 760 / longestA)
-      var wA = Math.max(8, Math.round(pageCanvas.width * scaleA))
-      var hA = Math.max(8, Math.round(pageCanvas.height * scaleA))
-      var cA = ccA(wA, hA)
-      var ctxA = cA.getContext('2d')
-      ctxA.fillStyle = '#ffffff'
-      ctxA.fillRect(0, 0, wA, hA)
-      ctxA.drawImage(pageCanvas, 0, 0, wA, hA)
-      var imgA = ctxA.getImageData(0, 0, wA, hA)
-      var snapS = snapCropFromPx({ d: imgA.data, w: wA, h: hA }, bbox, { x: sx, y: sy, w: sw, h: sh })
+      var wA = Math.max(8, Math.round(pageImg.w * scaleA))
+      var hA = Math.max(8, Math.round(pageImg.h * scaleA))
+      var smallA = resizeImage(pageImg, wA, hA)
+      var snapS = snapCropFromPx({ d: smallA.d, w: wA, h: hA }, bbox, { x: sx, y: sy, w: sw, h: sh })
       if (snapS) { sx = snapS.x; sy = snapS.y; sw = snapS.w; sh = snapS.h }
     } catch (eInkS) {}
 
     var scale = Math.min(1, 1600 / Math.max(sw, sh))
     var outW = Math.max(8, Math.round(sw * scale))
     var outH = Math.max(8, Math.round(sh * scale))
-    var out = createCanvas(outW, outH)
-    var octx = out.getContext('2d')
-    octx.fillStyle = '#ffffff'
-    octx.fillRect(0, 0, outW, outH)
-    octx.imageSmoothingEnabled = true
-    octx.imageSmoothingQuality = 'high'
-    octx.drawImage(pageCanvas, sx, sy, sw, sh, 0, 0, outW, outH)
-    var outBuf: Buffer = out.toBuffer('image/jpeg', 0.92)
+    var cropped = cropImage(pageImg, sx, sy, sw, sh)
+    if (!cropped) return false
+    var out = resizeImage(cropped, outW, outH)
+    var outBuf: Buffer | null = await encodeJpeg(out, 0.92)
     if (!outBuf || outBuf.length < 100) return false
 
     var url = await saveFigure(outBuf)
@@ -395,18 +339,4 @@ async function cropOne(
   } catch (e1) {
     return false
   }
-}
-
-/* صورة مفردة → canvas (صفحة 1) */
-async function imageToCanvas(buf: Buffer): Promise<any | null> {
-  try {
-    var { createCanvas, loadImage } = await import('@napi-rs/canvas')
-    var img = await loadImage(buf)
-    var canvas = createCanvas(img.width, img.height)
-    var ctx = canvas.getContext('2d')
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
-    ctx.drawImage(img, 0, 0)
-    return canvas
-  } catch (e) { return null }
 }

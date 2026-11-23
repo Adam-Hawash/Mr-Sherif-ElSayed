@@ -99,3 +99,32 @@ bun run build:cf          # بناء كامل للـ Worker (لو نجح هتل�
 bun run preview:cf        # تشغيل الـ Worker محلياً بنفس بيئة كلاود فلير
 bun run deploy:cf         # نشر مباشر (محتاج login: bunx wrangler login)
 ```
+
+## أهم نقطة: أمر البناء المخصص (إجباري لمنصة Math Genius)
+
+> المنصة دي فيها محرك صور WASM (mupdf + jsquash) مسبق الترجمة — لازم أمر البناء
+> يكون `npm run build:cf` بالحرف. الأمر التلقائي اللي كلاود بيكشفه
+> (`opennextjs-cloudflare build`) بيبني بتوربوباك وبيفشل مع الـ wasm.
+
+**في مكانها**: Workers & Pages → مشروعك → Settings → Build & Deploy →
+**Build command** → غيّرها إلى:
+```
+npm run build:cf
+```
+(الـ Deploy command يفضل زي ما هو: `npx opennextjs-cloudflare deploy`)
+
+## ملخص الخطوات الفعلية (زي ما اللوج بيأكد)
+
+1. Cloudflare Dashboard → Workers & Pages → Create → Workers → Connect to Git → اختار المستودع
+2. أول بناء هيجري تلقائيًا (bun install) — غيّر Build command لـ `npm run build:cf` من Settings
+3. Settings → Variables and Secrets → ضيف TURSO_DATABASE_URL و TURSO_AUTH_TOKEN (من لوحة Turso بتاعة المنصة دي نفسها — مش قاعدة زيكولا)
+4. كل push جديد على main = بناء ونشر تلقائي
+5. Settings → Domains & Routes → Add Custom Domain للدومين بتاعك
+
+## القص السيرفري (محدّث وN16)
+
+- القص دلوقتي شغال على كلاود فلير بالكامل: رندر PDF عبر mupdf WASM مسبق الترجمة
+  وفك/ترميز الصور عبر jsquash WASM — من غير أي مكتبة native.
+- ملفات الـ .cf.js اللي بتتعمل تلقائيًا وقت البناء هي اللي بتخلي الـ wasm
+  يتحول لموديولات مسبقة الترجمة (كلاود بيمنع الترجمة الديناميكية).
+- متغير التشخيص FF_IMAGE_DEBUG=1 في Variables يطبع تفاصيل محرك الصور في اللوج لو حصلت مشكلة.

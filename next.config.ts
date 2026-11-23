@@ -12,31 +12,25 @@ const nextConfig: NextConfig = {
     '@prisma/engines',
     '@libsql/isomorphic-fetch',
     '@libsql/isomorphic-ws',
-    /* (ز29) القص السيرفري للرسومات — pdf.js legacy + napi canvas لازم يفضلوا خارجية
-       من غير كده Turbopack بيحاول يلف الـ .node binary ويقع البناء
-       («non-ecmascript placeable asset») */
-    'pdfjs-dist',
-    '@napi-rs/canvas',
+    /* (وN16) محرك الصور — خارجي عشان توربوباك ما يلفش الـ wasm،
+       وwrangler هو اللي بيحوله لموديول مسبق الترجمة وقت النشر */
+    'mupdf',
+    '@jsquash/jpeg',
+    '@jsquash/png',
   ],
   /* (ز29) كل أصول القص السيرفري لازم توصل مع الدالة على Vercel:
      خطوط pdf.js + باكجات napi canvas الأصلية (.node binaries) — من غيرها
      import('@napi-rs/canvas') بيقع في الـ lambda والقص بيفشل بصمت */
   outputFileTracingIncludes: {
     '/api/ai-extract': [
-      './node_modules/pdfjs-dist/**',
-      './node_modules/@napi-rs/canvas/**',
       './node_modules/@napi-rs/canvas-linux-x64-gnu/**',
       './node_modules/@napi-rs/canvas-linux-x64-musl/**',
     ],
     '/api/ai-extract-pages': [
-      './node_modules/pdfjs-dist/**',
-      './node_modules/@napi-rs/canvas/**',
       './node_modules/@napi-rs/canvas-linux-x64-gnu/**',
       './node_modules/@napi-rs/canvas-linux-x64-musl/**',
     ],
     '/api/crop-figures': [
-      './node_modules/pdfjs-dist/**',
-      './node_modules/@napi-rs/canvas/**',
       './node_modules/@napi-rs/canvas-linux-x64-gnu/**',
       './node_modules/@napi-rs/canvas-linux-x64-musl/**',
     ],
@@ -44,8 +38,6 @@ const nextConfig: NextConfig = {
       './node_modules/@prisma/engines/**',
       './node_modules/.prisma/**',
       './node_modules/@prisma/client/**',
-      './node_modules/pdfjs-dist/**',
-      './node_modules/@napi-rs/canvas/**',
     ],
   },
   experimental: {
@@ -68,6 +60,23 @@ const nextConfig: NextConfig = {
     ];
   },
   turbopack: {},
+  /* (وN16) بناء كلاود فلير بس: FF_CF_BUILD=1 → webpack + DefinePlugin
+     بتحول توكنات مواصفات ملفات .cf.js لسلايت حرفية، فويبپاك يحولها
+     خارجيات وwrangler يحول الـ wasm لموديولات مسبقة الترجمة —
+     توربوباك في التطوير ما يشوف التوكنات خالص فالتطوير بيفضل سليم */
+  webpack: (config: any, { webpack: wp }: any) => {
+    if (process.env.FF_CF_BUILD) {
+      config.plugins.push(
+        new wp.DefinePlugin({
+          __FF_SPEC_JPEG_ENC__: JSON.stringify('@jsquash/jpeg/codec/enc/mozjpeg_enc.cf.js'),
+          __FF_SPEC_JPEG_DEC__: JSON.stringify('@jsquash/jpeg/codec/dec/mozjpeg_dec.cf.js'),
+          __FF_SPEC_PNG__: JSON.stringify('@jsquash/png/codec/pkg/squoosh_png.cf.js'),
+          __FF_SPEC_MUPDF_CF__: JSON.stringify('mupdf/dist/mupdf.cf.js'),
+        })
+      );
+    }
+    return config;
+  },
 };
 
 export default nextConfig;
