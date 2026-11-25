@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAdmin, getStudentAnyStatus, computePlayback, safeThumb } from "@/lib/video-guard";
+import { isAdmin, getStudentAnyStatus, computePlayback, safeThumb } from "@/lib/video-guard-server";
 
 export const dynamic = "force-dynamic";
 

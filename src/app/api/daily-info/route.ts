@@ -15,7 +15,7 @@
 // الجداول بتتعمل ذاتيًا (CREATE IF NOT EXISTS) — نفس نمط الشفاء الذاتي
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { isAdmin } from '@/lib/video-guard'
+import { isAdmin } from '@/lib/video-guard-server'
 
 var _tablesReady = false
 async function ensureDailyInfoTables(): Promise<void> {

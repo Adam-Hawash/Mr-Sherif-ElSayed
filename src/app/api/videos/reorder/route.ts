@@ -8,7 +8,7 @@
 // ============================================================
 import { NextRequest, NextResponse } from 'next/server'
 import { db, safeWrite } from '@/lib/db'
-import { isAdmin, ensureVideoTable } from '@/lib/video-guard'
+import { isAdmin, ensureVideoTable } from '@/lib/video-guard-server'
 
 export const dynamic = 'force-dynamic'
 

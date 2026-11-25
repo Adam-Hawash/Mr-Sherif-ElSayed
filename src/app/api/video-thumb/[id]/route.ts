@@ -3,7 +3,7 @@
 // معرف الفيديو في مصدر الصفحة (الصورة بتيجي من الدومين بتاعنا).
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getYouTubeId } from '@/lib/video-guard'
+import { getYouTubeId } from '@/lib/video-guard-server'
 
 export const revalidate = 86400
 

@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db, safeWrite } from '@/lib/db'
-import { isAdmin } from '@/lib/video-guard'
+import { isAdmin } from '@/lib/video-guard-server'
 import { notifyStudents } from '@/lib/notify'
 import { notifyParentsOfNewContent } from '@/lib/parent-notify'
 

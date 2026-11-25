@@ -22,7 +22,7 @@
 // ============================================================
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { isAdmin, verifyVideoToken } from '@/lib/video-guard'
+import { isAdmin, verifyVideoToken } from '@/lib/video-guard-server'
 
 var FILE_PREFIX = '__file/'
 var CHUNK_PREFIX = '__chunks/'

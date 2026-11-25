@@ -24,7 +24,7 @@
 // ============================================================
 import { useEffect, useRef, useState } from 'react'
 import { X, Loader2, ShieldCheck } from 'lucide-react'
-import { notifyVideoOpened } from '@/lib/video-guard'
+import { notifyVideoOpened, notifyVideoClosed } from '@/lib/video-guard'
 
 export function SecurePlayerModal({
   ticket,
@@ -49,11 +49,12 @@ export function SecurePlayerModal({
   var onWatchRef = useRef(onWatch)
   useEffect(function () { onWatchRef.current = onWatch }, [onWatch])
 
-  // (وN19) حارس الفيديو — أي فتح للمشغل الآمن (دروس/صفحة فيديو/جاليري)
-  // بيطلع التنبيه بعد التنازلي 10 ثواني على المنصة كلها — طلب المستر الحرفي:
-  // «اي حد يفتح في الفيديو سواء من التلات نقط أو الفيديو يفتح ذات نفسه»
+  // (وN19 ثم وN20) حارس الفيديو — أي فتح للمشغل الآمن بيطلع التنبيه بالمهلة
+  // المحددة من لوحة الأدمن (افتراضي 8 ثواني)، وقفل المشغل بيبعت إشارة
+  // الإغلاق عشان الحارس يسامح ويصفّر الحالة فورًا
   useEffect(function () {
     notifyVideoOpened()
+    return function () { notifyVideoClosed() }
   }, [])
 
   // ===== ملء الشاشة (بيتحكم فيه الأب) =====

@@ -10,7 +10,7 @@
 // ============================================================
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { ensureVideoTable } from '@/lib/video-guard'
+import { ensureVideoTable } from '@/lib/video-guard-server'
 
 export const dynamic = 'force-dynamic'
 

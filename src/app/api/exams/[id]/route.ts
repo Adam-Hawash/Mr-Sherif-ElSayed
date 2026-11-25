@@ -1,7 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db, safeWrite } from '@/lib/db'
-import { isAdmin } from '@/lib/video-guard'
+import { isAdmin } from '@/lib/video-guard-server'
 import { autoCleanExam } from '@/lib/stored-questions-clean'
 
 /* (25-ب1) defensive ALTERs — نفس نمط المشروع: ممنوع db:push */

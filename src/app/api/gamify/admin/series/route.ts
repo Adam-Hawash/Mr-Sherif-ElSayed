@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { ensureGamifyTables, getSeriesQuestions, DEFAULT_PRIZE_TEXT, parseDayDates } from '@/lib/gamify'
 import { notifyStudents } from '@/lib/notify'
-import { isAdmin } from '@/lib/video-guard'
+import { isAdmin } from '@/lib/video-guard-server'
 
 function gid(): string {
   return 'csr' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)

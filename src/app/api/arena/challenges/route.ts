@@ -15,7 +15,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db, safeWrite } from '@/lib/db'
 import { ensureArenaTables } from '@/lib/arena'
-import { signVideoToken, mediaIdFromPath } from '@/lib/video-guard'
+import { signVideoToken, mediaIdFromPath } from '@/lib/video-guard-server'
 
 export const runtime = 'nodejs'
 

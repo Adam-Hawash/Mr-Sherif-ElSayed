@@ -12,8 +12,11 @@ import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { Slider } from '@/components/ui/slider'
-import { ShieldCheck, Loader2 } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { ShieldCheck, Loader2, Timer } from 'lucide-react'
 import { toast } from 'sonner'
+import { GUARD_COUNTDOWN_KEY } from '@/lib/video-guard'
 import { useAppStore } from '@/stores/app-store'
 
 function useConfig(key: string, defaultValue: string) {
@@ -44,6 +47,32 @@ export function VideoProtectionSettings() {
   var intervalC = useConfig('wm_interval', '14')
   var wmInterval = intervalC[0]
   var setWmInterval = intervalC[1]
+  /* (وN20) مهلة حارس الفيديو وأدوات المطوّر — طلب المستر: «المهلة 8 ثواني بدل 10
+     والمهلة أقدر أتحكم فيها من صفحة الأدمن» */
+  var guardC = useConfig(GUARD_COUNTDOWN_KEY, '8')
+  var guardSecs = guardC[0]
+  var setGuardSecs = guardC[1]
+  var guardSaving = useState(false)
+  var guardSavingOn = guardSaving[0]
+  var setGuardSaving = guardSaving[1]
+
+  var saveGuardSecs = async function () {
+    var n = parseInt(guardSecs, 10)
+    if (isNaN(n) || n < 3 || n > 120) {
+      toast.error('اكتب رقم من 3 لـ 120 ثانية')
+      return
+    }
+    setGuardSaving(true)
+    try {
+      // (Z-36a) الكتابة في site-config محتاجة أدمن موثّق — نفس أسلوب save فوق
+      var res = await fetch('/api/site-config?adminId=' + encodeURIComponent(adminId), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: GUARD_COUNTDOWN_KEY, value: String(n) }) })
+      if (!res.ok) throw new Error()
+      toast.success('اتحفظت المهلة: ' + n + ' ثانية — بتشتغل على الطلاب من أول تحميل جديد للمنصة')
+    } catch {
+      toast.error('خطأ في حفظ المهلة')
+    }
+    setGuardSaving(false)
+  }
   var ls = useState(false)
   var loading = ls[0]
   var setLoading = ls[1]
@@ -122,12 +151,47 @@ export function VideoProtectionSettings() {
           </div>
         </div>
 
+        {/* (وN20) مهلة حارس الفيديو وأدوات المطوّر — طلب المستر الحرفي */}
+        <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-3">
+          <div className="flex items-center gap-2">
+            <Timer className="h-4 w-4 text-primary" />
+            <p className="text-sm font-bold">مهلة حارس الفيديو وأدوات المطوّر (ثواني)</p>
+          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            العد التنازلي اللي بيظهر للطالب قبل رفض حسابه — تنبيه فتح الفيديو + شاشة السودة اللي بتطلع أول ما حد يفتح
+            Developer Tools. الافتراضي <b className="text-foreground">8 ثواني</b> (يقبل من 3 لـ 120). لو الطالب قفل
+            الأدوات أو الفيديو خلال العدّ بيتسامح وبيكمل عادي — لو العد خلص حسابه بيترفض نهائيًا وانت اللي بترجّعه
+            من تاب الطلاب المرفوضين.
+          </p>
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min={3}
+              max={120}
+              value={guardSecs}
+              onChange={function (e) { setGuardSecs(e.target.value) }}
+              className="w-24 text-center font-bold"
+              aria-label="مهلة العد التنازلي بالثواني"
+            />
+            <Button
+              size="sm"
+              onClick={saveGuardSecs}
+              disabled={guardSavingOn}
+              className="font-bold"
+            >
+              {guardSavingOn && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              حفظ المهلة
+            </Button>
+            <span className="text-[10px] text-muted-foreground">بتشتغل على الطلاب من أول تحميل جديد للمنصة</span>
+          </div>
+        </div>
+
         {/* ملخص المنظومة */}
         <div className="rounded-lg bg-muted/50 p-3 text-[11px] leading-relaxed text-muted-foreground space-y-1">
           <p className="font-bold text-foreground text-xs">🛡️ منظومة الحماية الشغالة:</p>
           <p>• معرف اليوتيوب مش بيظهر خالص للطالب — التشغيل بتم عن طريق تذكرة سرية واحدة الاستخدام (صفحة المشغل المحمية بس اللي بتشوف الـ ID مشفّر)</p>
           <p>• الصور المصغرة بتتحمل من السيرفر — مفيش لينكات يوتيوب في مصدر الصفحة</p>
-          <p>• كليك يمين + F12 + Ctrl+Shift+I/J/C + Ctrl+U مقفولين بتنبيه لطيف، ولو أدوات المطور اتفتحت الفيديو بيوقف مؤقتًا</p>
+          <p>• كليك يمين + F12 + Ctrl+Shift+I/J/C + Ctrl+U مقفولين بتنبيه لطيف، ولو أدوات المطوّر اتفتحت: شاشة سودة فورية بمهلة العد اللي حددتها فوق — قفلها خلال العد = مسامحة، وعدّاها = رفض نهائي بيرجّعه انت بس</p>
           <p>• ملء الشاشة بيحصل جوه المشغل المحمي — الووترمارك يفضل ظاهر دايمًا</p>
           <p>• ملفات الفيديو المرفوعة بتتخدم بتوكن موقّع مرتبط بالطالب وصلاحية قصيرة</p>
           <p className="text-amber-600 dark:text-amber-400">• ملاحظة صادقة: تسجيل الشاشة الخارجي مش بيتمنع 100% في أي منصة — الووترمارك برقم الطالب هو الردع الأقوى لأن أي تسجيل يطلع فيه اسمه ورقمه</p>

@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ensureGamifyTables, resetAcademicLeaderboard, xpLeaderboard } from '@/lib/gamify'
 import { db } from '@/lib/db'
-import { isAdmin } from '@/lib/video-guard'
+import { isAdmin } from '@/lib/video-guard-server'
 
 /* حارس الأدمن — adminId من الـ body أو الكويري (2026-غ2 تأمين) */
 async function guardAdmin(req: NextRequest, body?: any): Promise<boolean> {

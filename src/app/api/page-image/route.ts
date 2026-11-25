@@ -13,7 +13,7 @@
 // ============================================================
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { isAdmin } from '@/lib/video-guard'
+import { isAdmin } from '@/lib/video-guard-server'
 import { renderPdfPageToJpeg } from '@/lib/image-engine'
 
 export const runtime = 'nodejs'

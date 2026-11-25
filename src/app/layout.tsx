@@ -8,7 +8,6 @@ import { RadixDirection } from "@/components/RadixDirection";
 import { AIAssistant } from "@/components/student/AIAssistant";
 import { RecordingGuard } from "@/components/RecordingGuard";
 import { DevToolsGuard } from "@/components/DevToolsGuard";
-import { VideoCountdownGuard } from "@/components/security/VideoCountdownGuard";
 import { FloatingInstallButton } from "@/components/InstallPwaButton";
 import { DeviceMessages } from "@/components/DeviceMessages";
 import { LangBoot } from "@/lib/i18n";
@@ -144,10 +143,8 @@ export default async function RootLayout({
         <DeviceMessages />
         {/* حماية عامة من التسجيل/التصوير + أدوات المطوّر في كل الصفحات */}
         <RecordingGuard />
-        {/* (ز19) حارس أدوات المطوّر — شاشة سودة + عداد 35 ثانية + مسح الحساب (طلب المستر) */}
+        {/* (وN20) الحارس الموحد — تنبيه الفيديو بمهلة الأدمن + سودة فورية عند فتح أدوات المطوّر + رفض نهائي يرجّعه الأدمن فقط (طلب المستر الحرفي) */}
         <DevToolsGuard />
-        {/* (وN19) حارس الفيديو — تنبيه بعد تنازلي 10 ثواني على أي فتح فيديو — الصفر من غير قفل = رفض الحساب نهائيًا والرجوع من صفحة الأدمن فقط (طلب المستر الحرفي) */}
-        <VideoCountdownGuard />
         <Toaster />
         {/* Toaster بتاع sonner — كل رسائل التنبيه في المنصة بتستخدمه */}
         <SonnerToaster position="top-center" richColors closeButton expand={false} />

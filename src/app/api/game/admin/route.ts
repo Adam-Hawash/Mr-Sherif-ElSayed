@@ -12,7 +12,7 @@
 // ============================================================
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { isAdmin } from '@/lib/video-guard'
+import { isAdmin } from '@/lib/video-guard-server'
 import {
   ensureGameTables, addXp, evaluateBadges, BADGE_DEFS, parseQuestions,
 } from '@/lib/game'

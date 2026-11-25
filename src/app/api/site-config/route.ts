@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { isAdmin } from '@/lib/video-guard'
+import { isAdmin } from '@/lib/video-guard-server'
 
 // (Z-36a) سد ثغرة /api/site-config:
 // - قبل: GET كان بيرجّع كل الصفوف الخام (حتى الأسرار زي session_secret)

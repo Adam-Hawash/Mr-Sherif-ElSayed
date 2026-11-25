@@ -4,7 +4,7 @@ import { notifyStudents } from '@/lib/notify'
 /* (2026-و97) إشعار فوري لولي الأمر: واجب جديد نزل */
 import { notifyAssignmentPosted } from '@/lib/assignment-notify'
 import { notifyParentsOfNewContent } from '@/lib/parent-notify'
-import { isAdmin } from '@/lib/video-guard'
+import { isAdmin } from '@/lib/video-guard-server'
 import { autoCleanHomework } from '@/lib/stored-questions-clean'
 
 /* (25-ب1) جدولة الظهور للواجبات — defensive ALTER بنفس نمط المشروع

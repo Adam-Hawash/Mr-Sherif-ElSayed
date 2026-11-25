@@ -5,7 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { ensureGamifyTables, getStudentBadges } from '@/lib/gamify'
-import { isAdmin } from '@/lib/video-guard'
+import { isAdmin } from '@/lib/video-guard-server'
 
 function bid(): string {
   return 'bdg' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)

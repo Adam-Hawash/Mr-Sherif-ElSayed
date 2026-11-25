@@ -11,7 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { db } from '@/lib/db'
-import { computePlayback, isAdmin, ensurePlayTicketTable, checkSequentialUnlock } from '@/lib/video-guard'
+import { computePlayback, isAdmin, ensurePlayTicketTable, checkSequentialUnlock } from '@/lib/video-guard-server'
 
 export const dynamic = 'force-dynamic'
 

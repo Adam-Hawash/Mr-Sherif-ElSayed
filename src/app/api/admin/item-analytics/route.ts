@@ -12,7 +12,7 @@
 // ============================================================
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { isAdmin } from '@/lib/video-guard'
+import { isAdmin } from '@/lib/video-guard-server'
 import { resolveQuestionsForStudent } from '@/lib/exam-models'
 
 export const runtime = 'nodejs'

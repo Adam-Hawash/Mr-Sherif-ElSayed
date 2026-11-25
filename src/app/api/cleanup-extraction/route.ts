@@ -20,7 +20,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db, safeWrite } from '@/lib/db'
 import { cleanTextDeep } from '@/lib/math-text'
 import { splitEmbeddedOptions } from '@/lib/question-figures'
-import { isAdmin } from '@/lib/video-guard'
+import { isAdmin } from '@/lib/video-guard-server'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300

@@ -4,7 +4,7 @@
 //   بيوصل لكل طالب لسه ما حلش سؤال النهاردة + إشعار لأولياء أمورهم
 import { NextRequest, NextResponse } from 'next/server'
 import { ensureGamifyTables, nagUnsolvedStudents } from '@/lib/gamify'
-import { isAdmin } from '@/lib/video-guard'
+import { isAdmin } from '@/lib/video-guard-server'
 
 export async function POST(req: NextRequest) {
   try {
